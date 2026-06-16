@@ -124,17 +124,17 @@ def _build_sidebar_items():
     # ── Time & Attendance ──
     _section("Time & Attendance", "clock")
     _link("Biometric Punch Log", "Biometric Punch Log", "file-text")
-    _link("Attendance Marker", "Attendance Marker", "check-square")
+    _link("Attendance Marker", "Attendance Marker", "square-check")
     _link("Employee Checkin", "Employee Checkin", "file-text")
-    _link("Attendance", "Attendance", "check-square")
+    _link("Attendance", "Attendance", "square-check")
     _link("Shift Type", "Shift Type", "clock")
-    _link("Shift Assignment", "Shift Assignment", "check-square")
+    _link("Shift Assignment", "Shift Assignment", "square-check")
 
     # ── Employee ──
     _section("Employee", "user")
     _link("Employee", "Employee", "user")
-    _link("Department", "Department", "grid")
-    _link("Designation", "Designation", "grid")
+    _link("Department", "Department", "layout-grid")
+    _link("Designation", "Designation", "layout-grid")
     _link("Employee Onboarding", "Employee Onboarding", "user")
     _link("Employee Separation", "Employee Separation", "user")
 
@@ -142,18 +142,18 @@ def _build_sidebar_items():
     _section("Recruitment", "briefcase")
     _link("Job Opening", "Job Opening", "file-text")
     _link("Job Applicant", "Job Applicant", "user")
-    _link("Job Offer", "Job Offer", "check-square")
+    _link("Job Offer", "Job Offer", "square-check")
 
     # ── Leaves ──
     _section("Leaves", "book-open")
     _link("Leave Application", "Leave Application", "file-text")
     _link("Leave Type", "Leave Type", "settings")
-    _link("Leave Allocation", "Leave Allocation", "check-square")
+    _link("Leave Allocation", "Leave Allocation", "square-check")
 
     # ── Payroll ──
     _section("Payroll", "banknote")
     _link("Salary Slip", "Salary Slip", "file-text")
-    _link("Payroll Entry", "Payroll Entry", "check-square")
+    _link("Payroll Entry", "Payroll Entry", "square-check")
     _link("Salary Structure", "Salary Structure", "settings")
 
     # ── Expense & Travel ──
@@ -162,7 +162,7 @@ def _build_sidebar_items():
     _link("Travel Request", "Travel Request", "file-text")
 
     # ── Performance ──
-    _section("Performance", "bar-chart")
+    _section("Performance", "chart-bar")
     _link("Appraisal", "Appraisal", "file-text")
     _link("Goal", "Goal", "file-text")
 
@@ -175,7 +175,7 @@ def _build_sidebar_items():
     _section("Settings", "settings")
     _link("SLHRM Settings", "SLHRM Settings", "settings")
     _link("HR Settings", "HR Settings", "settings")
-    _link("Company", "Company", "grid")
+    _link("Company", "Company", "layout-grid")
 
     return items
 
@@ -228,8 +228,8 @@ def _get_workspace_content():
     """Return workspace content blocks: shortcuts + headers + card blocks."""
     return [
         # ── Shortcuts ──
-        {"id": "sc_dashboard", "type": "shortcut", "label": "Attendance Dashboard", "format": "{}", "link_to": "/desk/dashboard-view/Attendance", "doc_view": "Form", "icon": "bar-chart", "color": "#3b82f6"},
-        {"id": "sc_marker", "type": "shortcut", "label": "New Attendance Marker", "format": "{}", "link_to": "Attendance Marker", "doc_view": "Form", "icon": "check-square", "color": "#3b82f6"},
+        {"id": "sc_dashboard", "type": "shortcut", "label": "Attendance Dashboard", "format": "{}", "link_to": "/desk/dashboard-view/Attendance", "doc_view": "Form", "icon": "chart-bar", "color": "#3b82f6"},
+        {"id": "sc_marker", "type": "shortcut", "label": "New Attendance Marker", "format": "{}", "link_to": "Attendance Marker", "doc_view": "Form", "icon": "square-check", "color": "#3b82f6"},
         {"id": "sc_punch", "type": "shortcut", "label": "Biometric Punch Log", "format": "{}", "link_to": "Biometric Punch Log", "doc_view": "List", "icon": "file-text", "color": "#22c55e"},
         {"id": "sc_emp", "type": "shortcut", "label": "Employees", "format": "{}", "link_to": "Employee", "doc_view": "List", "icon": "user", "color": "#8b5cf6"},
         {"id": "sc_leave", "type": "shortcut", "label": "Leave Applications", "format": "{}", "link_to": "Leave Application", "doc_view": "List", "icon": "book-open", "color": "#f59e0b"},
@@ -319,7 +319,7 @@ def _get_workspace_links():
         {"type": "Link", "label": "Travel Request", "link_to": "Travel Request", "link_type": "DocType", "onboard": 0},
 
         # Performance
-        {"type": "Card Break", "label": "Performance", "icon": "bar-chart"},
+        {"type": "Card Break", "label": "Performance", "icon": "chart-bar"},
         {"type": "Link", "label": "Appraisal", "link_to": "Appraisal", "link_type": "DocType", "onboard": 1},
         {"type": "Link", "label": "Goal", "link_to": "Goal", "link_type": "DocType", "onboard": 0},
 
