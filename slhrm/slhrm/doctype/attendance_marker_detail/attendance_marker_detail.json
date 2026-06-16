@@ -1,0 +1,167 @@
+{
+    "name": "Attendance Marker Detail",
+    "module": "SLHRM",
+    "doctype": "DocType",
+    "document_type": "Document",
+    "issingle": 0,
+    "istable": 1,
+    "is_submittable": 0,
+    "track_changes": 0,
+    "editable_grid": 1,
+    "fields": [
+        {
+            "fieldname": "employee",
+            "fieldtype": "Link",
+            "label": "Employee",
+            "options": "Employee",
+            "reqd": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "employee_name",
+            "fieldtype": "Data",
+            "label": "Employee Name",
+            "read_only": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "department",
+            "fieldtype": "Link",
+            "label": "Department",
+            "options": "Department",
+            "read_only": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "column_break_1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "shift",
+            "fieldtype": "Link",
+            "label": "Shift Type",
+            "options": "Shift Type",
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "attendance_status",
+            "fieldtype": "Select",
+            "label": "Status",
+            "options": "\nPresent\nAbsent\nOn Leave\nHalf Day",
+            "default": "Present",
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "section_break_times",
+            "fieldtype": "Section Break",
+            "label": "Times"
+        },
+        {
+            "fieldname": "in_time",
+            "fieldtype": "Time",
+            "label": "IN Time",
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "out_time",
+            "fieldtype": "Time",
+            "label": "OUT Time",
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "column_break_t1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "auto_in_time",
+            "fieldtype": "Time",
+            "label": "Auto IN",
+            "read_only": 1,
+            "description": "Auto-detected from biometric punches"
+        },
+        {
+            "fieldname": "auto_out_time",
+            "fieldtype": "Time",
+            "label": "Auto OUT",
+            "read_only": 1,
+            "description": "Auto-detected from biometric punches"
+        },
+        {
+            "fieldname": "section_break_calc",
+            "fieldtype": "Section Break",
+            "label": "Calculation"
+        },
+        {
+            "fieldname": "worked_hours",
+            "fieldtype": "Float",
+            "label": "Worked Hours",
+            "read_only": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "column_break_c1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "overtime_hours",
+            "fieldtype": "Float",
+            "label": "Overtime Hours",
+            "read_only": 1,
+            "in_list_view": 1,
+            "depends_on": "eval:!doc.override_overtime"
+        },
+        {
+            "fieldname": "shift_hours",
+            "fieldtype": "Float",
+            "label": "Shift Hours",
+            "read_only": 1,
+            "hidden": 1
+        },
+        {
+            "fieldname": "section_break_leave",
+            "fieldtype": "Section Break",
+            "label": "Leave"
+        },
+        {
+            "fieldname": "leave_type",
+            "fieldtype": "Link",
+            "label": "Leave Type",
+            "options": "Leave Type",
+            "depends_on": "eval:doc.attendance_status=='On Leave'"
+        },
+        {
+            "fieldname": "leave_application",
+            "fieldtype": "Link",
+            "label": "Leave Application",
+            "options": "Leave Application",
+            "read_only": 1
+        },
+        {
+            "fieldname": "column_break_l1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "attendance_source",
+            "fieldtype": "Select",
+            "label": "Source",
+            "options": "\nBiometric\nManual\nLeave\nHoliday",
+            "default": "Biometric",
+            "read_only": 1
+        },
+        {
+            "fieldname": "attendance_record",
+            "fieldtype": "Link",
+            "label": "Attendance Record",
+            "options": "Attendance",
+            "read_only": 1,
+            "hidden": 1
+        },
+        {
+            "fieldname": "override_overtime",
+            "fieldtype": "Check",
+            "label": "Override OT",
+            "description": "Check to manually set overtime hours"
+        }
+    ],
+    "permissions": []
+}

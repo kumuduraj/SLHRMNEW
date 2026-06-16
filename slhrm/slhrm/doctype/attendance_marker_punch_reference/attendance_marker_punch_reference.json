@@ -1,0 +1,56 @@
+{
+    "name": "Attendance Marker Punch Reference",
+    "module": "SLHRM",
+    "doctype": "DocType",
+    "document_type": "Document",
+    "issingle": 0,
+    "istable": 1,
+    "is_submittable": 0,
+    "track_changes": 0,
+    "editable_grid": 1,
+    "fields": [
+        {
+            "fieldname": "employee",
+            "fieldtype": "Link",
+            "label": "Employee",
+            "options": "Employee",
+            "reqd": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "punch_log",
+            "fieldtype": "Link",
+            "label": "Punch Log",
+            "options": "Biometric Punch Log",
+            "reqd": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "punch_time",
+            "fieldtype": "Datetime",
+            "label": "Punch Time",
+            "read_only": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "column_break_1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "punch_sequence",
+            "fieldtype": "Int",
+            "label": "Sequence",
+            "read_only": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "used_as",
+            "fieldtype": "Select",
+            "label": "Used As",
+            "options": "\nIN\nOUT\nIntermediate",
+            "read_only": 1,
+            "in_list_view": 1
+        }
+    ],
+    "permissions": []
+}

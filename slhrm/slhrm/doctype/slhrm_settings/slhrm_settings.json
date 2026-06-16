@@ -1,0 +1,112 @@
+{
+    "name": "SLHRM Settings",
+    "module": "SLHRM",
+    "doctype": "DocType",
+    "document_type": "Document",
+    "issingle": 1,
+    "istable": 0,
+    "is_submittable": 0,
+    "track_changes": 1,
+    "fields": [
+        {
+            "fieldname": "general_settings",
+            "fieldtype": "Section Break",
+            "label": "General Settings"
+        },
+        {
+            "fieldname": "shift_match_window_before",
+            "fieldtype": "Int",
+            "label": "Shift Match Window Before (minutes)",
+            "default": "120",
+            "description": "How many minutes before shift start to include punches"
+        },
+        {
+            "fieldname": "shift_match_window_after",
+            "fieldtype": "Int",
+            "label": "Shift Match Window After (minutes)",
+            "default": "180",
+            "description": "How many minutes after shift end to include punches"
+        },
+        {
+            "fieldname": "column_break_gen1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "auto_mark_attendance",
+            "fieldtype": "Check",
+            "label": "Auto Mark Attendance",
+            "default": "0",
+            "description": "Reserved for future auto-marking feature"
+        },
+        {
+            "fieldname": "overtime_threshold",
+            "fieldtype": "Float",
+            "label": "Overtime Threshold (hours)",
+            "default": "0",
+            "description": "Minimum extra hours before counting as OT. 0 = count all extra time."
+        },
+        {
+            "fieldname": "section_break_defaults",
+            "fieldtype": "Section Break",
+            "label": "Default Values"
+        },
+        {
+            "fieldname": "default_company",
+            "fieldtype": "Link",
+            "label": "Default Company",
+            "options": "Company"
+        },
+        {
+            "fieldname": "column_break_def1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "default_department",
+            "fieldtype": "Link",
+            "label": "Default Department",
+            "options": "Department"
+        },
+        {
+            "fieldname": "section_break_api",
+            "fieldtype": "Section Break",
+            "label": "Device API Security"
+        },
+        {
+            "fieldname": "device_api_enabled",
+            "fieldtype": "Check",
+            "label": "Require API Key for Device Endpoints",
+            "default": "1",
+            "description": "When enabled, biometric devices must provide the API key in the X-Device-Key header."
+        },
+        {
+            "fieldname": "device_api_key",
+            "fieldtype": "Password",
+            "label": "Device API Key",
+            "depends_on": "eval:doc.device_api_enabled",
+            "description": "Shared secret for biometric devices. Generate a strong random string."
+        },
+        {
+            "fieldname": "section_break_pwa",
+            "fieldtype": "Section Break",
+            "label": "Mobile App"
+        },
+        {
+            "fieldname": "pwa_logo",
+            "fieldtype": "Attach Image",
+            "label": "PWA Logo"
+        }
+    ],
+    "permissions": [
+        {
+            "role": "System Manager",
+            "read": 1,
+            "write": 1,
+            "create": 1
+        },
+        {
+            "role": "HR Manager",
+            "read": 1,
+            "write": 1
+        }
+    ]
+}

@@ -1,0 +1,94 @@
+{
+    "name": "Biometric Punch Log",
+    "module": "SLHRM",
+    "doctype": "DocType",
+    "document_type": "Document",
+    "issingle": 0,
+    "istable": 0,
+    "is_submittable": 0,
+    "track_changes": 1,
+    "autoname": "hash",
+    "sort_field": "punch_time",
+    "sort_order": "DESC",
+    "fields": [
+        {
+            "fieldname": "employee",
+            "fieldtype": "Link",
+            "label": "Employee",
+            "options": "Employee",
+            "reqd": 1,
+            "in_list_view": 1,
+            "search_index": 1
+        },
+        {
+            "fieldname": "employee_name",
+            "fieldtype": "Data",
+            "label": "Employee Name",
+            "fetch_from": "employee.employee_name",
+            "read_only": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "column_break_1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "punch_time",
+            "fieldtype": "Datetime",
+            "label": "Punch Time",
+            "reqd": 1,
+            "in_list_view": 1,
+            "search_index": 1
+        },
+        {
+            "fieldname": "punch_type",
+            "fieldtype": "Select",
+            "label": "Punch Type",
+            "options": "IN\nOUT\nBREAK\nRETURN",
+            "default": "IN"
+        },
+        {
+            "fieldname": "section_break_status",
+            "fieldtype": "Section Break",
+            "label": "Status"
+        },
+        {
+            "fieldname": "processing_status",
+            "fieldtype": "Select",
+            "label": "Processing Status",
+            "options": "\nPending\nMatched\nDuplicate\nUnmatched",
+            "default": "Pending",
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "column_break_2",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "source_device",
+            "fieldtype": "Data",
+            "label": "Source Device"
+        },
+        {
+            "fieldname": "raw_data",
+            "fieldtype": "Small Text",
+            "label": "Raw Data",
+            "hidden": 1
+        }
+    ],
+    "permissions": [
+        {
+            "role": "System Manager",
+            "read": 1,
+            "write": 1,
+            "create": 1,
+            "delete": 1
+        },
+        {
+            "role": "HR User",
+            "read": 1,
+            "write": 1,
+            "create": 1
+        }
+    ]
+}

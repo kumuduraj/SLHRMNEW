@@ -1,0 +1,31 @@
+[
+    {
+        "doctype": "Custom Field",
+        "dt": "Employee",
+        "module": "SLHRM",
+        "fieldname": "biometric_section",
+        "fieldtype": "Section Break",
+        "label": "Biometric Attendance",
+        "insert_after": "column_break_4"
+    },
+    {
+        "doctype": "Custom Field",
+        "dt": "Employee",
+        "module": "SLHRM",
+        "fieldname": "biometric_device_id",
+        "fieldtype": "Data",
+        "label": "Biometric Device ID",
+        "insert_after": "biometric_section",
+        "description": "Employee ID as registered on the biometric device"
+    },
+    {
+        "doctype": "Custom Field",
+        "dt": "Employee",
+        "module": "SLHRM",
+        "fieldname": "biometric_device_name",
+        "fieldtype": "Data",
+        "label": "Device Name",
+        "insert_after": "biometric_device_id",
+        "read_only": 1
+    }
+]
