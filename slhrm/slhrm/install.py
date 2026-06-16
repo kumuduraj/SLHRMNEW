@@ -14,12 +14,13 @@ def execute():
 
 
 def after_migrate():
-    """Runs AFTER bench migrate — kills Home items that Frappe auto-generates."""
+    """Runs AFTER bench migrate — recreates sidebar, kills Home, fixes content."""
     _remove_home_items()
-    _fix_sidebar_child_items()
+    _rebuild_workspace_sidebar()
     _set_workspace_content()
+    _set_workspace_redirect()
     frappe.db.commit()
-    print("after_migrate: Removed Home, fixed child items, set workspace content")
+    print("after_migrate: Sidebar rebuilt, Home removed, content + redirect set")
 
 
 # ─── Workspace Sidebar ────────────────────────────────────────────────────────
@@ -48,6 +49,23 @@ def _create_workspace_sidebar():
     """, sidebar.name)
 
     print("Created Workspace Sidebar: SLHRM")
+
+
+def _rebuild_workspace_sidebar():
+    """Delete and recreate sidebar — bench migrate overwrites it with Frappe's auto-generated items."""
+    frappe.db.sql("DELETE FROM `tabWorkspace Sidebar Item` WHERE parent = 'SLHRM'")
+    frappe.db.sql("DELETE FROM `tabWorkspace Sidebar` WHERE name = 'SLHRM'")
+    _create_workspace_sidebar()
+    print("Rebuilt sidebar: deleted and recreated with correct sections")
+
+
+def _set_workspace_redirect():
+    """Make the Attendance Dashboard shortcut first item and set it as the workspace header link."""
+    frappe.db.sql("""
+        UPDATE `tabWorkspace` SET is_hidden = 0, module = 'SLHRM'
+        WHERE name = 'SLHRM'
+    """)
+    print("Set workspace: SLHRM visible and module assigned")
 
 
 def _fix_sidebar_child_items():
