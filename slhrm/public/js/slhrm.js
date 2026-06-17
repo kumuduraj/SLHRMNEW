@@ -9,7 +9,15 @@
 })();
 
 $(document).ready(function () {
-    // 2. Guard sidebar.setup() against undefined workspace_title
+    // 2. Redirect SLHRM workspace to Attendance Dashboard
+    frappe.after_ajax(function () {
+        var route = frappe.get_route();
+        if (route[0] === "workspace" && route[1] === "SLHRM") {
+            frappe.set_route("dashboard-view", "Attendance");
+        }
+    });
+
+    // 3. Guard sidebar.setup() against undefined workspace_title
     if (frappe.ui?.Sidebar?.prototype?.setup) {
         var _origSetup = frappe.ui.Sidebar.prototype.setup;
         frappe.ui.Sidebar.prototype.setup = function (workspace_title) {
@@ -18,7 +26,7 @@ $(document).ready(function () {
         };
     }
 
-    // 3. Skip divider items in add_app_item() to prevent GET /undefined
+    // 4. Skip divider items in add_app_item() to prevent GET /undefined
     if (frappe.ui?.SidebarHeader?.prototype?.add_app_item) {
         var _origAddAppItem = frappe.ui.SidebarHeader.prototype.add_app_item;
         frappe.ui.SidebarHeader.prototype.add_app_item = function (item) {
@@ -27,7 +35,7 @@ $(document).ready(function () {
         };
     }
 
-    // 4. Inject section icons into workspace sidebar (namespaced localStorage)
+    // 5. Inject section icons into workspace sidebar (namespaced localStorage)
     var ICONS = {
         "Time & Attendance": '<rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><path d="m9 16 2 2 4-4"/>',
         "Employee": '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',

@@ -12,6 +12,7 @@
     "label": "SLHRM",
     "links": [
         {"type": "Card Break", "label": "Time & Attendance", "icon": "clock"},
+        {"type": "Link", "label": "Attendance Dashboard", "link_to": "Attendance Dashboard", "link_type": "DocType", "onboard": 1},
         {"type": "Link", "label": "Biometric Punch Log", "link_to": "Biometric Punch Log", "link_type": "DocType", "onboard": 1},
         {"type": "Link", "label": "Attendance Marker", "link_to": "Attendance Marker", "link_type": "DocType", "onboard": 1},
         {"type": "Link", "label": "Employee Checkin", "link_to": "Employee Checkin", "link_type": "DocType", "onboard": 0},
@@ -58,7 +59,32 @@
     "quick_lists": [],
     "roles": [],
     "sequence_id": 1,
-    "shortcuts": [],
+    "shortcuts": [
+        {
+            "type": "Shortcut",
+            "label": "Attendance Dashboard",
+            "link_to": "Attendance Dashboard",
+            "link_type": "DocType",
+            "icon": "calendar",
+            "color": "#3b82f6"
+        },
+        {
+            "type": "Shortcut",
+            "label": "Biometric Punch Log",
+            "link_to": "Biometric Punch Log",
+            "link_type": "DocType",
+            "icon": "file-text",
+            "color": "#22c55e"
+        },
+        {
+            "type": "Shortcut",
+            "label": "Employee",
+            "link_to": "Employee",
+            "link_type": "DocType",
+            "icon": "user",
+            "color": "#8b5cf6"
+        }
+    ],
     "title": "SLHRM",
     "type": "Workspace",
     "app": "slhrm",
