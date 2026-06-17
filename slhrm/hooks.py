@@ -8,12 +8,11 @@ app_icon = "hexagon"
 app_email = "rajitha@evonet.lk"
 app_license = "mit"
 
-# Assets — desk JS/CSS (minimal bundles, PWA is the main frontend)
+# Assets — MUST be lists
 app_include_js = ["/assets/slhrm/js/slhrm.js"]
 app_include_css = ["/assets/slhrm/css/slhrm.css"]
 
 # Install
-before_install = "slhrm.install.before_install"
 after_install = "slhrm.install.execute"
 after_migrate = "slhrm.install.after_migrate"
 
@@ -25,10 +24,6 @@ fixtures = [
     },
     {
         "dt": "Workspace",
-        "filters": [["app", "=", "slhrm"]],
-    },
-    {
-        "dt": "Desktop Icon",
         "filters": [["app", "=", "slhrm"]],
     },
 ]

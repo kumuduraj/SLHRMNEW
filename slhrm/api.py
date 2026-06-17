@@ -457,3 +457,77 @@ def get_punch_logs(device_id="", date=None):
             "processing_status",
         ],
     )
+
+# ???????????????????????????????????????????????????????????????
+# TEAM CHECK-IN ENDPOINTS
+# ???????????????????????????????????????????????????????????????
+
+@frappe.whitelist()
+def get_team_checkins(employee, date):
+    """
+    Get team members' check-in status for a given date.
+    Returns employees who report to the given employee with their check-in status.
+    """
+    if not employee or not date:
+        frappe.throw(_("Employee and Date are required."))
+
+    date_str = str(date)
+
+    # Get all employees who report to this employee (direct reports)
+    team_members = frappe.get_all(
+        "Employee",
+        filters={
+            "reports_to": employee,
+            "status": "Active",
+        },
+        fields=["name", "employee_name", "designation", "user_id"],
+        order_by="employee_name asc",
+    )
+
+    if not team_members:
+        return []
+
+    # Get check-in records for these team members on the given date
+    emp_names = [m.name for m in team_members]
+    checkins = frappe.get_all(
+        "Employee Checkin",
+        filters={
+            "employee": ["in", emp_names],
+            "time": ["between", [f"{date_str} 00:00:00", f"{date_str} 23:59:59"]],
+        },
+        fields=["employee", "log_type", "time"],
+        order_by="time asc",
+    )
+
+    # Group checkins by employee and get the latest status
+    emp_checkins = {}
+    for c in checkins:
+        emp_name = c.employee
+        if emp_name not in emp_checkins:
+            emp_checkins[emp_name] = []
+        emp_checkins[emp_name].append(c)
+
+    # Build result
+    result = []
+    for member in team_members:
+        emp_name = member.name
+        emp_logs = emp_checkins.get(emp_name, [])
+
+        log_type = None
+        last_checkin = None
+
+        if emp_logs:
+            # Get the last check-in of the day
+            last_log = emp_logs[-1]
+            log_type = last_log.log_type
+            last_checkin = last_log.time
+
+        result.append({
+            "employee": emp_name,
+            "employee_name": member.employee_name,
+            "designation": member.designation or "",
+            "log_type": log_type,
+            "last_checkin": last_checkin,
+        })
+
+    return result

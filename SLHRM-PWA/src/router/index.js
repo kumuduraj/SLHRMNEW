@@ -40,11 +40,16 @@ const routes = [
 				name: "ExpenseClaimsDashboard",
 				component: () => import("@/views/expense_claim/Dashboard.vue"),
 			},
-			{
-				path: "/dashboard/salary-slips",
-				name: "SalarySlipsDashboard",
-				component: () => import("@/views/salary_slip/Dashboard.vue"),
-			},
+		{
+			path: "/dashboard/salary-slips",
+			name: "SalarySlipsDashboard",
+			component: () => import("@/views/salary_slip/Dashboard.vue"),
+		},
+		{
+			path: "/team-checkin",
+			name: "TeamCheckinView",
+			component: () => import("@/views/TeamCheckin.vue"),
+		},
 		],
 	},
 	{

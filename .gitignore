@@ -12,36 +12,15 @@ build/
 .DS_Store
 Thumbs.db
 *.log
-
-# Node
+*.tar
 node_modules/
-frontend/node_modules/
 /package.json
 /package-lock.json
 /bun.lock
-yarn.lock
-
-# Backup files
-*.tar
-*-backup-*.tar
-
-# Vite timestamps
-*.timestamp-*.mjs
-
-# Build logs
-build-error.log
-build.log
-
-# IDE
-.env
-.env.local
-
-# Root-level duplicates (app code lives inside slhrm/)
-/__init__.py
-/api.py
-/hooks.py
-/install.py
-/modules.txt
-/patches.txt
-/public/
-/templates/
+/bun.lockb
+HRMS-PWA/
+SLHRM-PWA/vite.config.js.timestamp-*.mjs
+SLHRM-PWA/build-error.log
+SLHRM-PWA/build.log
+SLHRM-PWA/yarn.lock
+slhrm/slhrm/slhrm/

@@ -4,7 +4,7 @@
 			{{ __("Hey, {0} 👋", [employee?.data?.first_name]) }}
 		</h2>
 
-		<template v-if="settings.data?.allow_employee_checkin_from_mobile_app">
+		<template v-if="settings.data?.allow_employee_checkin_from_mobile_app && employee?.data?.allow_mobile_checkin">
 			<div class="font-medium text-sm text-gray-500 mt-1.5" v-if="lastLog">
 				<span>{{ __("Last {0} was at {1}", [__(lastLogType), formatTimestamp(lastLog.time)]) }}</span>
 				<span class="whitespace-pre"> &middot; </span>
@@ -33,7 +33,7 @@
 	</div>
 
 	<ion-modal
-		v-if="settings.data?.allow_employee_checkin_from_mobile_app"
+		v-if="settings.data?.allow_employee_checkin_from_mobile_app && employee?.data?.allow_mobile_checkin"
 		ref="modal"
 		trigger="open-checkin-modal"
 		:initial-breakpoint="1"
@@ -49,7 +49,7 @@
 				</div>
 			</div>
 
-			<template v-if="settings.data?.allow_geolocation_tracking">
+			<template v-if="settings.data?.allow_geolocation_tracking || employee?.data?.geolocation_capture">
 				<span v-if="locationStatus" class="font-medium text-gray-500 text-sm">
 					{{ locationStatus }}
 				</span>
@@ -147,7 +147,7 @@ const fetchLocation = () => {
 const handleEmployeeCheckin = () => {
 	checkinTimestamp.value = dayjs().format("YYYY-MM-DD HH:mm:ss")
 
-	if (settings.data?.allow_geolocation_tracking) {
+	if (settings.data?.allow_geolocation_tracking || employee.data?.geolocation_capture) {
 		fetchLocation()
 	}
 }
