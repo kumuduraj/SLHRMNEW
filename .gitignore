@@ -12,13 +12,26 @@ build/
 .DS_Store
 Thumbs.db
 *.log
+
+# Node
 node_modules/
+frontend/node_modules/
 /package.json
 /package-lock.json
 /bun.lock
-SLHRM/slhrm-backup-*.tar
-HRMS-PWA/
-SLHRM-PWA/vite.config.js.timestamp-*.mjs
-SLHRM-PWA/build-error.log
-SLHRM-PWA/build.log
-SLHRM-PWA/yarn.lock
+yarn.lock
+
+# Backup files
+*.tar
+*-backup-*.tar
+
+# Vite timestamps
+*.timestamp-*.mjs
+
+# Build logs
+build-error.log
+build.log
+
+# IDE
+.env
+.env.local
