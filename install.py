@@ -228,14 +228,17 @@ def _get_workspace_content():
     """Return workspace content blocks: shortcuts + headers + card blocks."""
     return [
         # ── Shortcuts ──
-        {"id": "sc_dashboard", "type": "shortcut", "label": "Attendance Dashboard", "format": "{}", "link_to": "/desk/dashboard-view/Attendance", "doc_view": "Form", "icon": "chart-bar", "color": "#3b82f6"},
-        {"id": "sc_marker", "type": "shortcut", "label": "New Attendance Marker", "format": "{}", "link_to": "Attendance Marker", "doc_view": "Form", "icon": "square-check", "color": "#3b82f6"},
+        {"id": "sc_dashboard", "type": "shortcut", "label": "Attendance Dashboard", "format": "{}", "link_to": "Attendance Dashboard", "doc_view": "List", "icon": "chart-bar", "color": "#3b82f6"},
         {"id": "sc_punch", "type": "shortcut", "label": "Biometric Punch Log", "format": "{}", "link_to": "Biometric Punch Log", "doc_view": "List", "icon": "file-text", "color": "#22c55e"},
         {"id": "sc_emp", "type": "shortcut", "label": "Employees", "format": "{}", "link_to": "Employee", "doc_view": "List", "icon": "user", "color": "#8b5cf6"},
         {"id": "sc_leave", "type": "shortcut", "label": "Leave Applications", "format": "{}", "link_to": "Leave Application", "doc_view": "List", "icon": "book-open", "color": "#f59e0b"},
         {"id": "sc_salary", "type": "shortcut", "label": "Salary Slips", "format": "{}", "link_to": "Salary Slip", "doc_view": "List", "icon": "file-text", "color": "#ef4444"},
         {"id": "sc_expense", "type": "shortcut", "label": "Expense Claims", "format": "{}", "link_to": "Expense Claim", "doc_view": "List", "icon": "file-text", "color": "#ec4899"},
         {"id": "sc_settings", "type": "shortcut", "label": "Settings", "format": "{}", "link_to": "SLHRM Settings", "doc_view": "Form", "icon": "settings", "color": "#6b7280"},
+
+        # ── Dashboard ──
+        {"id": "h_dashboard", "type": "header", "data": {"text": "Dashboard", "col": 12}},
+        {"id": "card_dashboard", "type": "card", "data": {"card_name": "Dashboard", "col": 12}},
 
         # ── Time & Attendance ──
         {"id": "h_tna", "type": "header", "data": {"text": "Time & Attendance", "col": 12}},
@@ -278,6 +281,10 @@ def _get_workspace_content():
 def _get_workspace_links():
     """Return Card Break + Link entries for workspace page body cards."""
     return [
+        # Dashboard
+        {"type": "Card Break", "label": "Dashboard", "icon": "dashboard"},
+        {"type": "Link", "label": "Attendance Dashboard", "link_to": "Attendance Dashboard", "link_type": "DocType", "onboard": 1},
+
         # Time & Attendance
         {"type": "Card Break", "label": "Time & Attendance", "icon": "clock"},
         {"type": "Link", "label": "Biometric Punch Log", "link_to": "Biometric Punch Log", "link_type": "DocType", "onboard": 1},

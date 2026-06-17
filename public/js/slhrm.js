@@ -13,7 +13,7 @@ $(document).ready(function () {
     frappe.after_ajax(function () {
         var route = frappe.get_route();
         if (route[0] === "workspace" && route[1] === "SLHRM") {
-            frappe.set_route("dashboard-view", "Attendance");
+            frappe.set_route("list", "Attendance Dashboard");
         }
     });
 
