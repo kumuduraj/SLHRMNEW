@@ -76,6 +76,7 @@ def _setup_module_path():
         "fixtures": "../fixtures",
         "workspace": "../workspace",
         "workspace_sidebar": "../workspace_sidebar",
+        "page": "../../page",
     }
     for name, target in symlinks.items():
         link_path = os.path.join(module_dir, name)
@@ -117,7 +118,7 @@ def _create_workspace_sidebar():
         "standard": 1,
         "items": _build_sidebar_items(),
     })
-    sidebar.insert(ignore_permissions=True)
+    sidebar.insert(ignore_permissions=True, ignore_links=True)
 
     frappe.db.sql("""
         UPDATE `tabWorkspace Sidebar Item`
@@ -285,7 +286,7 @@ def _create_workspace():
     for entry in _get_workspace_links():
         ws.append("links", entry)
 
-    ws.insert(ignore_permissions=True)
+    ws.insert(ignore_permissions=True, ignore_links=True)
 
     # Content field is hidden=1; Frappe overwrites it to "[]" during insert.
     frappe.db.sql(
