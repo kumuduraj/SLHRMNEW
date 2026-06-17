@@ -11,6 +11,7 @@
 		"ionic:serve": "vite dev --host"
 	},
 	"dependencies": {
+		"@ionic/core": "^7.4.3",
 		"@ionic/vue": "^7.4.3",
 		"@ionic/vue-router": "^7.4.3",
 		"@vitejs/plugin-vue": "^4.4.0",

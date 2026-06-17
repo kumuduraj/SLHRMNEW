@@ -64,7 +64,7 @@ export default defineConfig({
 		},
 	},
 	build: {
-		outDir: "../SLHRM/frontend",
+		outDir: process.env.VITE_OUT_DIR || "../SLHRM/frontend",
 		emptyOutDir: true,
 		target: "es2015",
 		commonjsOptions: {
@@ -85,6 +85,7 @@ export default defineConfig({
 			"showdown",
 			"tailwind.config.js",
 			"engine.io-client",
+			"@ionic/core",
 		],
 	},
 })
