@@ -24,3 +24,11 @@ SLHRM-PWA/build-error.log
 SLHRM-PWA/build.log
 SLHRM-PWA/yarn.lock
 slhrm/slhrm/slhrm/
+test_*.py
+verify*.py
+fix_*.py
+force_*.py
+clean_*.py
+console_*.py
+inspect_*.py
+check_*.py
