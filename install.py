@@ -5,6 +5,7 @@ import json
 
 def execute():
     """Post-install setup: workspace sidebar and workspace page."""
+    _create_module_def()
     _create_workspace()
     _create_workspace_sidebar()
     _fix_sidebar_child_items()
@@ -15,12 +16,29 @@ def execute():
 
 def after_migrate():
     """Runs AFTER bench migrate — recreates sidebar, kills Home, fixes content."""
+    _create_module_def()
     _remove_home_items()
     _rebuild_workspace_sidebar()
     _set_workspace_content()
     _set_workspace_redirect()
     frappe.db.commit()
     print("after_migrate: Sidebar rebuilt, Home removed, content + redirect set")
+
+
+# ─── Module Def ────────────────────────────────────────────────────────────────
+
+
+def _create_module_def():
+    """Create Module Def so Frappe recognizes SLHRM as a valid module."""
+    if not frappe.db.exists("Module Def", "SLHRM"):
+        frappe.get_doc({
+            "doctype": "Module Def",
+            "module_name": "SLHRM",
+            "app_name": "slhrm",
+        }).insert(ignore_permissions=True)
+        print("Created Module Def: SLHRM")
+    else:
+        print("Module Def: SLHRM already exists")
 
 
 # ─── Workspace Sidebar ────────────────────────────────────────────────────────
