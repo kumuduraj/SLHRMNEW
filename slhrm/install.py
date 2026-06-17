@@ -1,10 +1,15 @@
 # slhrm/install.py
 import frappe
 import json
+import os
+import sys
 
 
 def execute():
     """Post-install setup: workspace sidebar and workspace page."""
+    _ensure_modules_txt()
+    _setup_module_path()
+    _create_module_def()
     _create_workspace()
     _create_workspace_sidebar()
     _fix_sidebar_child_items()
@@ -15,12 +20,84 @@ def execute():
 
 def after_migrate():
     """Runs AFTER bench migrate — recreates sidebar, kills Home, fixes content."""
+    _ensure_modules_txt()
+    _setup_module_path()
+    _create_module_def()
     _remove_home_items()
     _rebuild_workspace_sidebar()
     _set_workspace_content()
     _set_workspace_redirect()
     frappe.db.commit()
     print("after_migrate: Sidebar rebuilt, Home removed, content + redirect set")
+
+
+# ─── Module Path Fix ──────────────────────────────────────────────────────────
+
+
+def _ensure_modules_txt():
+    """Ensure modules.txt exists at the package level for Frappe module discovery."""
+    app_path = frappe.get_app_path("slhrm")
+    modules_txt = os.path.join(app_path, "modules.txt")
+    if not os.path.exists(modules_txt):
+        with open(modules_txt, "w") as f:
+            f.write("SLHRM\n")
+        print("Created modules.txt at package level")
+    else:
+        content = open(modules_txt).read().strip()
+        if "SLHRM" not in content:
+            with open(modules_txt, "a") as f:
+                f.write("\nSLHRM\n")
+            print("Added SLHRM to modules.txt")
+
+
+def _setup_module_path():
+    """Create the module path directory and symlinks so get_module_path('SLHRM') works.
+
+    Since app_name='slhrm' and module='SLHRM' (scrubs to 'slhrm'),
+    Frappe tries to import 'slhrm.slhrm' which needs apps/slhrm/slhrm/slhrm/__init__.py.
+    We also symlink doctype, public, etc. so form loading finds the right files.
+    """
+    app_path = frappe.get_app_path("slhrm")
+    module_dir = os.path.join(app_path, "slhrm")
+
+    # Create slhrm/slhrm/slhrm/ directory
+    os.makedirs(module_dir, exist_ok=True)
+
+    # Create __init__.py
+    init_file = os.path.join(module_dir, "__init__.py")
+    if not os.path.exists(init_file):
+        with open(init_file, "w") as f:
+            f.write("")
+
+    # Create symlinks for directories that Frappe looks for
+    symlinks = {
+        "doctype": "../doctype",
+        "public": "../public",
+        "fixtures": "../fixtures",
+        "workspace": "../workspace",
+        "workspace_sidebar": "../workspace_sidebar",
+    }
+    for name, target in symlinks.items():
+        link_path = os.path.join(module_dir, name)
+        if not os.path.exists(link_path) and not os.path.islink(link_path):
+            os.symlink(target, link_path)
+            print(f"Created symlink: {name} -> {target}")
+
+
+def _create_module_def():
+    """Create Module Def for SLHRM if it doesn't exist."""
+    if not frappe.db.exists("Module Def", "SLHRM"):
+        try:
+            frappe.get_doc({
+                "doctype": "Module Def",
+                "module_name": "SLHRM",
+                "app_name": "slhrm",
+            }).insert(ignore_permissions=True)
+            print("Created Module Def: SLHRM")
+        except Exception:
+            print("Module Def: SLHRM already exists or creation skipped")
+    else:
+        print("Module Def: SLHRM already exists")
 
 
 # ─── Workspace Sidebar ────────────────────────────────────────────────────────
