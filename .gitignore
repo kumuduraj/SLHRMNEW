@@ -13,3 +13,12 @@ build/
 Thumbs.db
 *.log
 node_modules/
+/package.json
+/package-lock.json
+/bun.lock
+SLHRM/slhrm-backup-*.tar
+HRMS-PWA/
+SLHRM-PWA/vite.config.js.timestamp-*.mjs
+SLHRM-PWA/build-error.log
+SLHRM-PWA/build.log
+SLHRM-PWA/yarn.lock
