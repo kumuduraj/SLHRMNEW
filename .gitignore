@@ -35,3 +35,13 @@ build.log
 # IDE
 .env
 .env.local
+
+# Root-level duplicates (app code lives inside slhrm/)
+/__init__.py
+/api.py
+/hooks.py
+/install.py
+/modules.txt
+/patches.txt
+/public/
+/templates/

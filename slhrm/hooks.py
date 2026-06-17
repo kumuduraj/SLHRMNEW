@@ -8,9 +8,9 @@ app_icon = "hexagon"
 app_email = "rajitha@evonet.lk"
 app_license = "mit"
 
-# Assets — MUST be lists
-app_include_js = ["/assets/slhrm/js/slhrm.js"]
-app_include_css = ["/assets/slhrm/css/slhrm.css"]
+# Assets — desk JS/CSS (commented out until proper bundles are created)
+# app_include_js = ["/assets/slhrm/js/slhrm.js"]
+# app_include_css = ["/assets/slhrm/css/slhrm.css"]
 
 # Install
 after_install = "slhrm.install.execute"

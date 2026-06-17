@@ -140,6 +140,7 @@ def _create_workspace_sidebar():
         "standard": 1,
         "items": _build_sidebar_items(),
     })
+    sidebar.flags.ignore_links = True
     sidebar.insert(ignore_permissions=True)
 
     frappe.db.sql("""
@@ -308,6 +309,7 @@ def _create_workspace():
     for entry in _get_workspace_links():
         ws.append("links", entry)
 
+    ws.flags.ignore_links = True
     ws.insert(ignore_permissions=True)
 
     # Content field is hidden=1; Frappe overwrites it to "[]" during insert.
