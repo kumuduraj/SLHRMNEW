@@ -5,14 +5,20 @@ import os
 import sys
 
 
-def execute():
-    """Post-install setup: workspace sidebar and workspace page."""
+def before_install():
+    """Runs BEFORE DocType sync — setup module path so Frappe finds our DocTypes."""
     _ensure_modules_txt()
     _setup_module_path()
+
+
+def execute():
+    """Post-install setup: workspace sidebar, workspace page, desktop icon."""
     _create_module_def()
     _create_dashboard_page()
     _create_workspace()
     _create_workspace_sidebar()
+    _create_desktop_icon()
+    _add_to_all_desktop_layouts()
     _fix_sidebar_child_items()
     _remove_home_items()
     frappe.db.commit()
@@ -440,3 +446,50 @@ def _get_workspace_links():
         {"type": "Link", "label": "HR Settings", "link_to": "HR Settings", "link_type": "DocType", "onboard": 0},
         {"type": "Link", "label": "Company", "link_to": "Company", "link_type": "DocType", "onboard": 0},
     ]
+
+
+# ─── Desktop Icon ────────────────────────────────────────────────────────────
+
+
+def _create_desktop_icon():
+    """Create the SLHRM desktop icon record."""
+    if frappe.db.exists("Desktop Icon", "SLHRM"):
+        frappe.delete_doc("Desktop Icon", "SLHRM", force=True)
+
+    di = frappe.new_doc("Desktop Icon")
+    di.name = di.label = "SLHRM"
+    di.app = "slhrm"
+    di.icon = "hexagon"
+    di.icon_type = "Link"
+    di.link_type = "Workspace Sidebar"
+    di.link_to = "SLHRM"
+    di.hidden = 0
+    di.standard = 1
+    di.flags.ignore_links = True
+    di.insert(ignore_permissions=True)
+    print("Created Desktop Icon: SLHRM")
+
+
+def _add_to_all_desktop_layouts():
+    """Add SLHRM tile to all existing users' saved Desktop Layouts."""
+    for dl_name in frappe.get_all("Desktop Layout", pluck="name"):
+        try:
+            dl = frappe.get_doc("Desktop Layout", dl_name)
+            layout = json.loads(dl.layout or "[]")
+            layout = [x for x in layout if x.get("label") != "SLHRM"]
+            layout.append({
+                "label": "SLHRM",
+                "link_type": "Workspace Sidebar",
+                "link_to": "SLHRM",
+                "app": "slhrm",
+                "icon_type": "Link",
+                "icon": "hexagon",
+                "parent_icon": "",
+                "hidden": 0,
+                "idx": len(layout) + 1,
+            })
+            dl.layout = json.dumps(layout)
+            dl.save(ignore_permissions=True)
+        except Exception:
+            pass
+    print("Added SLHRM to all Desktop Layouts")
