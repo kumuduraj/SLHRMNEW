@@ -1,7 +1,7 @@
 // slhrm/slhrm/public/js/slhrm.js
-// Frappe v16 desk fixes — runs AFTER desk.bundle.js loads
+// Frappe v16 desk fixes
 
-// 1. Ensure sidebar_item_map exists before Frappe reads it
+// 1. Ensure sidebar_item_map exists
 (function () {
     if (localStorage.getItem("sidebar_item_map") === null) {
         localStorage.setItem("sidebar_item_map", "{}");
@@ -9,11 +9,15 @@
 })();
 
 $(document).ready(function () {
-    // 2. Redirect SLHRM workspace to Attendance Dashboard
-    frappe.after_ajax(function () {
-        var route = frappe.get_route();
-        if (route[0] === "workspace" && route[1] === "SLHRM") {
-            // Show workspace normally — dashboard section is first in sidebar
+    // 2. Intercept Attendance Dashboard click in sidebar and redirect to dashboard page
+    $(document).on("click", ".sidebar-item a, .sidebar-item .item-anchor", function(e) {
+        var text = $(this).text().trim();
+        if (text === "Attendance Dashboard") {
+            e.preventDefault();
+            e.stopPropagation();
+            window.location.hash = "#/app/slhrm-dashboard";
+            frappe.set_route("app", "slhrm-dashboard");
+            return false;
         }
     });
 
@@ -26,7 +30,7 @@ $(document).ready(function () {
         };
     }
 
-    // 4. Skip divider items in add_app_item() to prevent GET /undefined
+    // 4. Skip divider items in add_app_item()
     if (frappe.ui?.SidebarHeader?.prototype?.add_app_item) {
         var _origAddAppItem = frappe.ui.SidebarHeader.prototype.add_app_item;
         frappe.ui.SidebarHeader.prototype.add_app_item = function (item) {
@@ -35,7 +39,7 @@ $(document).ready(function () {
         };
     }
 
-    // 5. Inject section icons into workspace sidebar (namespaced localStorage)
+    // 5. Inject section icons into workspace sidebar
     var ICONS = {
         "Dashboard": '<path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
         "Time & Attendance": '<rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><path d="m9 16 2 2 4-4"/>',
