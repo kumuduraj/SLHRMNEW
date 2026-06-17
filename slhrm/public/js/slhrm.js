@@ -13,7 +13,7 @@ $(document).ready(function () {
     frappe.after_ajax(function () {
         var route = frappe.get_route();
         if (route[0] === "workspace" && route[1] === "SLHRM") {
-            frappe.set_route("dashboard-view", "Attendance");
+            // Show workspace normally — dashboard section is first in sidebar
         }
     });
 
@@ -37,6 +37,7 @@ $(document).ready(function () {
 
     // 5. Inject section icons into workspace sidebar (namespaced localStorage)
     var ICONS = {
+        "Dashboard": '<path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
         "Time & Attendance": '<rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><path d="m9 16 2 2 4-4"/>',
         "Employee": '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
         "Recruitment": '<rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>',

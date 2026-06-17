@@ -198,6 +198,10 @@ def _build_sidebar_items():
             "link_to": link_to, "icon": icon, "child": 1, "indent": 0, "idx": idx,
         })
 
+    # ── Dashboard ──
+    _section("Dashboard", "chart-bar")
+    _link("Attendance Dashboard", "Attendance Dashboard", "chart-bar")
+
     # ── Time & Attendance ──
     _section("Time & Attendance", "clock")
     _link("Biometric Punch Log", "Biometric Punch Log", "file-text")
