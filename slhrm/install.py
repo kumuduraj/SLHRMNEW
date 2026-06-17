@@ -10,6 +10,7 @@ def execute():
     _ensure_modules_txt()
     _setup_module_path()
     _create_module_def()
+    _create_dashboard_page()
     _create_workspace()
     _create_workspace_sidebar()
     _fix_sidebar_child_items()
@@ -23,6 +24,7 @@ def after_migrate():
     _ensure_modules_txt()
     _setup_module_path()
     _create_module_def()
+    _create_dashboard_page()
     _remove_home_items()
     _rebuild_workspace_sidebar()
     _set_workspace_content()
@@ -76,6 +78,7 @@ def _setup_module_path():
         "fixtures": "../fixtures",
         "workspace": "../workspace",
         "workspace_sidebar": "../workspace_sidebar",
+        "page": "../../page",
     }
     for name, target in symlinks.items():
         link_path = os.path.join(module_dir, name)
@@ -98,6 +101,26 @@ def _create_module_def():
             print("Module Def: SLHRM already exists or creation skipped")
     else:
         print("Module Def: SLHRM already exists")
+
+
+def _create_dashboard_page():
+    """Create the SLHRM Dashboard page if it doesn't exist."""
+    if not frappe.db.exists("Page", "slhrm-dashboard"):
+        try:
+            frappe.get_doc({
+                "doctype": "Page",
+                "name": "slhrm-dashboard",
+                "page_name": "slhrm-dashboard",
+                "title": "SLHRM Dashboard",
+                "icon": "chart-bar",
+                "module": "SLHRM",
+                "standard": "No",
+            }).insert(ignore_permissions=True)
+            print("Created Page: slhrm-dashboard")
+        except Exception:
+            print("Page: slhrm-dashboard already exists or creation skipped")
+    else:
+        print("Page: slhrm-dashboard already exists")
 
 
 # ─── Workspace Sidebar ────────────────────────────────────────────────────────
@@ -190,17 +213,17 @@ def _build_sidebar_items():
             "indent": 0, "collapsible": 1, "keep_closed": 0, "child": 0, "idx": idx,
         })
 
-    def _link(label, link_to, icon=""):
+    def _link(label, link_to, icon="", link_type="DocType"):
         nonlocal idx
         idx += 1
         items.append({
-            "type": "Link", "label": label, "link_type": "DocType",
+            "type": "Link", "label": label, "link_type": link_type,
             "link_to": link_to, "icon": icon, "child": 1, "indent": 0, "idx": idx,
         })
 
     # ── Dashboard ──
     _section("Dashboard", "chart-bar")
-    _link("Attendance Dashboard", "Attendance Dashboard", "chart-bar")
+    _link("Attendance Dashboard", "slhrm-dashboard", "chart-bar", link_type="Page")
 
     # ── Time & Attendance ──
     _section("Time & Attendance", "clock")
