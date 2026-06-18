@@ -189,19 +189,20 @@ def _build_sidebar_items():
         items.append({
             "type": "Section Break", "label": label, "icon": icon,
             "indent": 0, "collapsible": 1, "keep_closed": 0, "child": 0, "idx": idx,
+            "show_arrow": 1,
         })
 
-    def _link(label, link_to, icon=""):
+    def _link(label, link_to, icon="", link_type="DocType"):
         nonlocal idx
         idx += 1
         items.append({
-            "type": "Link", "label": label, "link_type": "DocType",
+            "type": "Link", "label": label, "link_type": link_type,
             "link_to": link_to, "icon": icon, "child": 1, "indent": 0, "idx": idx,
         })
 
     # â”€â”€ Dashboard â”€â”€
     _section("Dashboard", "chart-bar")
-    _link("Attendance Dashboard", "Attendance Dashboard", "chart-bar")
+    _link("Attendance Dashboard", "slhrm-dashboard", "chart-bar", link_type="Page")
 
     # â”€â”€ Time & Attendance â”€â”€
     _section("Time & Attendance", "clock")
@@ -310,7 +311,7 @@ def _get_workspace_content():
     """Return workspace content blocks: shortcuts + headers + card blocks."""
     return [
         # â”€â”€ Shortcuts â”€â”€
-        {"id": "sc_dashboard", "type": "shortcut", "label": "Attendance Dashboard", "format": "{}", "link_to": "/desk/dashboard-view/Attendance", "doc_view": "Form", "icon": "chart-bar", "color": "#3b82f6"},
+        {"id": "sc_dashboard", "type": "shortcut", "label": "Attendance Dashboard", "format": "{}", "link_to": "slhrm-dashboard", "doc_view": "Page", "icon": "chart-bar", "color": "#3b82f6"},
         {"id": "sc_marker", "type": "shortcut", "label": "New Attendance Marker", "format": "{}", "link_to": "Attendance Marker", "doc_view": "Form", "icon": "square-check", "color": "#3b82f6"},
         {"id": "sc_punch", "type": "shortcut", "label": "Biometric Punch Log", "format": "{}", "link_to": "Biometric Punch Log", "doc_view": "List", "icon": "file-text", "color": "#22c55e"},
         {"id": "sc_emp", "type": "shortcut", "label": "Employees", "format": "{}", "link_to": "Employee", "doc_view": "List", "icon": "user", "color": "#8b5cf6"},

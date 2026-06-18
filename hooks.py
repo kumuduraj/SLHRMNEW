@@ -34,6 +34,6 @@ add_to_apps_screen = [
         "name": "slhrm",
         "logo": "/assets/slhrm/icons/desktop_icons/solid/slhrm.svg",
         "title": "SLHRM",
-        "route": "/app/attendance-dashboard",
+        "route": "/app/slhrm-dashboard",
     }
 ]

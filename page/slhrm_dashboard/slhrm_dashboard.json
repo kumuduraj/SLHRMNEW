@@ -1,0 +1,14 @@
+{
+  "name": "slhrm-dashboard",
+  "page_name": "slhrm-dashboard",
+  "module": "SLHRM",
+  "title": "Attendance Dashboard",
+  "route": "/app/slhrm-dashboard",
+  "icon": "chart-bar",
+  "creation": "2026-06-17 00:00:00",
+  "modified": "2026-06-17 00:00:00",
+  "modified_by": "Administrator",
+  "owner": "Administrator",
+  "docstatus": 0,
+  "doctype": "Page"
+}

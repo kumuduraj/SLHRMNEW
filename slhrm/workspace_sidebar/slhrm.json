@@ -13,19 +13,19 @@
    "indent": 0,
    "keep_closed": 0,
    "label": "Dashboard",
-   "link_type": "DocType",
-   "show_arrow": 0,
+   "link_type": "Page",
+   "show_arrow": 1,
    "type": "Section Break"
   },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "chart-bar",
    "indent": 0,
    "keep_closed": 0,
    "label": "Attendance Dashboard",
-   "link_to": "Attendance Dashboard",
-   "link_type": "DocType",
+   "link_to": "slhrm-dashboard",
+   "link_type": "Page",
    "show_arrow": 0,
    "type": "Link"
   },
@@ -37,7 +37,7 @@
    "keep_closed": 0,
    "label": "Time & Attendance",
    "link_type": "DocType",
-   "show_arrow": 0,
+   "show_arrow": 1,
    "type": "Section Break"
   },
   {
@@ -118,10 +118,10 @@
    "icon": "user",
    "indent": 0,
    "keep_closed": 0,
-   "label": "Employee",
-   "link_type": "DocType",
-   "show_arrow": 0,
-   "type": "Section Break"
+    "label": "Employee",
+    "link_type": "DocType",
+    "show_arrow": 1,
+    "type": "Section Break"
   },
   {
    "child": 1,
@@ -189,10 +189,10 @@
    "icon": "briefcase",
    "indent": 0,
    "keep_closed": 0,
-   "label": "Recruitment",
-   "link_type": "DocType",
-   "show_arrow": 0,
-   "type": "Section Break"
+    "label": "Recruitment",
+    "link_type": "DocType",
+    "show_arrow": 1,
+    "type": "Section Break"
   },
   {
    "child": 1,
@@ -236,10 +236,10 @@
    "icon": "book-open",
    "indent": 0,
    "keep_closed": 0,
-   "label": "Leaves",
-   "link_type": "DocType",
-   "show_arrow": 0,
-   "type": "Section Break"
+    "label": "Leaves",
+    "link_type": "DocType",
+    "show_arrow": 1,
+    "type": "Section Break"
   },
   {
    "child": 1,
@@ -283,10 +283,10 @@
    "icon": "banknote",
    "indent": 0,
    "keep_closed": 0,
-   "label": "Payroll",
-   "link_type": "DocType",
-   "show_arrow": 0,
-   "type": "Section Break"
+    "label": "Payroll",
+    "link_type": "DocType",
+    "show_arrow": 1,
+    "type": "Section Break"
   },
   {
    "child": 1,
@@ -330,10 +330,10 @@
    "icon": "receipt",
    "indent": 0,
    "keep_closed": 0,
-   "label": "Expense & Travel",
-   "link_type": "DocType",
-   "show_arrow": 0,
-   "type": "Section Break"
+    "label": "Expense & Travel",
+    "link_type": "DocType",
+    "show_arrow": 1,
+    "type": "Section Break"
   },
   {
    "child": 1,
@@ -365,10 +365,10 @@
    "icon": "chart-bar",
    "indent": 0,
    "keep_closed": 0,
-   "label": "Performance",
-   "link_type": "DocType",
-   "show_arrow": 0,
-   "type": "Section Break"
+    "label": "Performance",
+    "link_type": "DocType",
+    "show_arrow": 1,
+    "type": "Section Break"
   },
   {
    "child": 1,
@@ -400,10 +400,10 @@
    "icon": "graduation-cap",
    "indent": 0,
    "keep_closed": 0,
-   "label": "Training",
-   "link_type": "DocType",
-   "show_arrow": 0,
-   "type": "Section Break"
+    "label": "Training",
+    "link_type": "DocType",
+    "show_arrow": 1,
+    "type": "Section Break"
   },
   {
    "child": 1,
@@ -435,10 +435,10 @@
    "icon": "settings",
    "indent": 0,
    "keep_closed": 0,
-   "label": "Settings",
-   "link_type": "DocType",
-   "show_arrow": 0,
-   "type": "Section Break"
+    "label": "Settings",
+    "link_type": "DocType",
+    "show_arrow": 1,
+    "type": "Section Break"
   },
   {
    "child": 1,
