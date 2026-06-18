@@ -10,6 +10,8 @@ def execute():
     _ensure_modules_txt()
     _setup_module_path()
     _create_module_def()
+    _create_page()
+    _create_desktop_icon()
     _create_workspace()
     _create_workspace_sidebar()
     _fix_sidebar_child_items()
@@ -23,6 +25,8 @@ def after_migrate():
     _ensure_modules_txt()
     _setup_module_path()
     _create_module_def()
+    _create_page()
+    _create_desktop_icon()
     _remove_home_items()
     _rebuild_workspace_sidebar()
     _set_workspace_content()
@@ -31,7 +35,7 @@ def after_migrate():
     print("after_migrate: Sidebar rebuilt, Home removed, content + redirect set")
 
 
-# --- Module Path Fix ---
+# â”€â”€â”€ Module Path Fix â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 def _ensure_modules_txt():
@@ -51,17 +55,25 @@ def _ensure_modules_txt():
 
 
 def _setup_module_path():
-    """Create the module path directory and symlinks so get_module_path('SLHRM') works."""
+    """Create the module path directory and symlinks so get_module_path('SLHRM') works.
+
+    Since app_name='slhrm' and module='SLHRM' (scrubs to 'slhrm'),
+    Frappe tries to import 'slhrm.slhrm' which needs apps/slhrm/slhrm/slhrm/__init__.py.
+    We also symlink doctype, public, etc. so form loading finds the right files.
+    """
     app_path = frappe.get_app_path("slhrm")
     module_dir = os.path.join(app_path, "slhrm")
 
+    # Create slhrm/slhrm/slhrm/ directory
     os.makedirs(module_dir, exist_ok=True)
 
+    # Create __init__.py
     init_file = os.path.join(module_dir, "__init__.py")
     if not os.path.exists(init_file):
         with open(init_file, "w") as f:
             f.write("")
 
+    # Create symlinks for directories that Frappe looks for
     symlinks = {
         "doctype": "../doctype",
         "public": "../public",
@@ -93,7 +105,40 @@ def _create_module_def():
         print("Module Def: SLHRM already exists")
 
 
-# --- Workspace Sidebar ---
+def _create_page():
+    """Create the Dashboard Page in tabPage if it doesn't exist."""
+    if not frappe.db.exists("Page", "slhrm-dashboard"):
+        frappe.db.sql("""
+            INSERT IGNORE INTO tabPage
+            (name, page_name, title, icon, module, standard, docstatus, idx, system_page, modified, creation, modified_by, owner)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW(), %s, %s)
+        """, ("slhrm-dashboard", "slhrm-dashboard", "Attendance Dashboard", "chart-bar", "SLHRM", "1", 0, 0, 0, "Administrator", "Administrator"))
+        print("Created Page: slhrm-dashboard")
+    else:
+        print("Page: slhrm-dashboard already exists")
+
+
+def _create_desktop_icon():
+    """Create Desktop Icon for SLHRM app in the apps switcher sidebar."""
+    if not frappe.db.exists("Desktop Icon", "SLHRM"):
+        frappe.db.sql("""
+            INSERT IGNORE INTO `tabDesktop Icon`
+            (name, label, icon_type, link_type, link_to, app, logo_url, standard, docstatus, idx, hidden, sidebar, modified, creation, modified_by, owner)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW(), %s, %s)
+        """, ("SLHRM", "SLHRM", "App", "External", "SLHRM", "slhrm",
+              "/assets/slhrm/icons/desktop_icons/solid/slhrm.svg",
+              1, 0, 1, 0, 1, "Administrator", "Administrator"))
+        print("Created Desktop Icon: SLHRM")
+    else:
+        frappe.db.sql("""
+            UPDATE `tabDesktop Icon`
+            SET icon_type='App', logo_url='/assets/slhrm/icons/desktop_icons/solid/slhrm.svg', app='slhrm'
+            WHERE name='SLHRM'
+        """)
+        print("Updated Desktop Icon: SLHRM")
+
+
+# â”€â”€â”€ Workspace Sidebar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 def _create_workspace_sidebar():
@@ -122,7 +167,7 @@ def _create_workspace_sidebar():
 
 
 def _rebuild_workspace_sidebar():
-    """Delete and recreate sidebar — bench migrate overwrites it with Frappe's auto-generated items."""
+    """Delete and recreate sidebar â€” bench migrate overwrites it with Frappe's auto-generated items."""
     frappe.db.sql("DELETE FROM `tabWorkspace Sidebar Item` WHERE parent = 'SLHRM'")
     frappe.db.sql("DELETE FROM `tabWorkspace Sidebar` WHERE name = 'SLHRM'")
     _create_workspace_sidebar()
@@ -192,11 +237,11 @@ def _build_sidebar_items():
             "link_to": link_to, "icon": icon, "child": 1, "indent": 0, "idx": idx,
         })
 
-    # Dashboard
+    # â”€â”€ Dashboard â”€â”€
     _section("Dashboard", "chart-bar")
     _link("Attendance Dashboard", "slhrm-dashboard", "chart-bar", link_type="Page")
 
-    # Time & Attendance
+    # â”€â”€ Time & Attendance â”€â”€
     _section("Time & Attendance", "clock")
     _link("Biometric Punch Log", "Biometric Punch Log", "file-text")
     _link("Attendance Marker", "Attendance Marker", "square-check")
@@ -205,7 +250,7 @@ def _build_sidebar_items():
     _link("Shift Type", "Shift Type", "clock")
     _link("Shift Assignment", "Shift Assignment", "square-check")
 
-    # Employee
+    # â”€â”€ Employee â”€â”€
     _section("Employee", "user")
     _link("Employee", "Employee", "user")
     _link("Department", "Department", "layout-grid")
@@ -213,40 +258,40 @@ def _build_sidebar_items():
     _link("Employee Onboarding", "Employee Onboarding", "user")
     _link("Employee Separation", "Employee Separation", "user")
 
-    # Recruitment
+    # â”€â”€ Recruitment â”€â”€
     _section("Recruitment", "briefcase")
     _link("Job Opening", "Job Opening", "file-text")
     _link("Job Applicant", "Job Applicant", "user")
     _link("Job Offer", "Job Offer", "square-check")
 
-    # Leaves
+    # â”€â”€ Leaves â”€â”€
     _section("Leaves", "book-open")
     _link("Leave Application", "Leave Application", "file-text")
     _link("Leave Type", "Leave Type", "settings")
     _link("Leave Allocation", "Leave Allocation", "square-check")
 
-    # Payroll
+    # â”€â”€ Payroll â”€â”€
     _section("Payroll", "banknote")
     _link("Salary Slip", "Salary Slip", "file-text")
     _link("Payroll Entry", "Payroll Entry", "square-check")
     _link("Salary Structure", "Salary Structure", "settings")
 
-    # Expense & Travel
+    # â”€â”€ Expense & Travel â”€â”€
     _section("Expense & Travel", "receipt")
     _link("Expense Claim", "Expense Claim", "file-text")
     _link("Travel Request", "Travel Request", "file-text")
 
-    # Performance
+    # â”€â”€ Performance â”€â”€
     _section("Performance", "chart-bar")
     _link("Appraisal", "Appraisal", "file-text")
     _link("Goal", "Goal", "file-text")
 
-    # Training
+    # â”€â”€ Training â”€â”€
     _section("Training", "graduation-cap")
     _link("Training Program", "Training Program", "file-text")
     _link("Training Event", "Training Event", "file-text")
 
-    # Settings
+    # â”€â”€ Settings â”€â”€
     _section("Settings", "settings")
     _link("SLHRM Settings", "SLHRM Settings", "settings")
     _link("HR Settings", "HR Settings", "settings")
@@ -255,7 +300,7 @@ def _build_sidebar_items():
     return items
 
 
-# --- Workspace Page ---
+# â”€â”€â”€ Workspace Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 def _create_workspace():
@@ -275,11 +320,13 @@ def _create_workspace():
     ws.is_hidden = 0
     ws.content = json.dumps(content)
 
+    # Card Break + Link format for workspace page body cards
     for entry in _get_workspace_links():
         ws.append("links", entry)
 
     ws.insert(ignore_permissions=True, ignore_links=True)
 
+    # Content field is hidden=1; Frappe overwrites it to "[]" during insert.
     frappe.db.sql(
         "UPDATE `tabWorkspace` SET content = %s WHERE name = %s",
         (json.dumps(content), ws.name),
@@ -288,7 +335,7 @@ def _create_workspace():
 
 
 def _set_workspace_content():
-    """Re-set workspace content via SQL — bench migrate overwrites it."""
+    """Re-set workspace content via SQL â€” bench migrate overwrites it."""
     content = _get_workspace_content()
     frappe.db.sql(
         "UPDATE `tabWorkspace` SET content = %s WHERE name = 'SLHRM'",
@@ -300,6 +347,7 @@ def _set_workspace_content():
 def _get_workspace_content():
     """Return workspace content blocks: shortcuts + headers + card blocks."""
     return [
+        # â”€â”€ Shortcuts â”€â”€
         {"id": "sc_dashboard", "type": "shortcut", "label": "Attendance Dashboard", "format": "{}", "link_to": "slhrm-dashboard", "doc_view": "Page", "icon": "chart-bar", "color": "#3b82f6"},
         {"id": "sc_marker", "type": "shortcut", "label": "New Attendance Marker", "format": "{}", "link_to": "Attendance Marker", "doc_view": "Form", "icon": "square-check", "color": "#3b82f6"},
         {"id": "sc_punch", "type": "shortcut", "label": "Biometric Punch Log", "format": "{}", "link_to": "Biometric Punch Log", "doc_view": "List", "icon": "file-text", "color": "#22c55e"},
@@ -309,30 +357,39 @@ def _get_workspace_content():
         {"id": "sc_expense", "type": "shortcut", "label": "Expense Claims", "format": "{}", "link_to": "Expense Claim", "doc_view": "List", "icon": "file-text", "color": "#ec4899"},
         {"id": "sc_settings", "type": "shortcut", "label": "Settings", "format": "{}", "link_to": "SLHRM Settings", "doc_view": "Form", "icon": "settings", "color": "#6b7280"},
 
+        # â”€â”€ Time & Attendance â”€â”€
         {"id": "h_tna", "type": "header", "data": {"text": "Time & Attendance", "col": 12}},
         {"id": "card_tna", "type": "card", "data": {"card_name": "Time & Attendance", "col": 4}},
 
+        # â”€â”€ Employee â”€â”€
         {"id": "h_emp", "type": "header", "data": {"text": "Employee", "col": 12}},
         {"id": "card_emp", "type": "card", "data": {"card_name": "Employee", "col": 4}},
 
+        # â”€â”€ Recruitment â”€â”€
         {"id": "h_rec", "type": "header", "data": {"text": "Recruitment", "col": 12}},
         {"id": "card_rec", "type": "card", "data": {"card_name": "Recruitment", "col": 4}},
 
+        # â”€â”€ Leaves â”€â”€
         {"id": "h_leave", "type": "header", "data": {"text": "Leaves", "col": 12}},
         {"id": "card_leave", "type": "card", "data": {"card_name": "Leaves", "col": 4}},
 
+        # â”€â”€ Payroll â”€â”€
         {"id": "h_pay", "type": "header", "data": {"text": "Payroll", "col": 12}},
         {"id": "card_pay", "type": "card", "data": {"card_name": "Payroll", "col": 4}},
 
+        # â”€â”€ Expense & Travel â”€â”€
         {"id": "h_exp", "type": "header", "data": {"text": "Expense & Travel", "col": 12}},
         {"id": "card_exp", "type": "card", "data": {"card_name": "Expense & Travel", "col": 4}},
 
+        # â”€â”€ Performance â”€â”€
         {"id": "h_perf", "type": "header", "data": {"text": "Performance", "col": 12}},
         {"id": "card_perf", "type": "card", "data": {"card_name": "Performance", "col": 4}},
 
+        # â”€â”€ Training â”€â”€
         {"id": "h_train", "type": "header", "data": {"text": "Training", "col": 12}},
         {"id": "card_train", "type": "card", "data": {"card_name": "Training", "col": 4}},
 
+        # â”€â”€ Settings â”€â”€
         {"id": "h_set", "type": "header", "data": {"text": "Settings", "col": 12}},
         {"id": "card_set", "type": "card", "data": {"card_name": "Settings", "col": 4}},
     ]
@@ -341,6 +398,7 @@ def _get_workspace_content():
 def _get_workspace_links():
     """Return Card Break + Link entries for workspace page body cards."""
     return [
+        # Time & Attendance
         {"type": "Card Break", "label": "Time & Attendance", "icon": "clock"},
         {"type": "Link", "label": "Biometric Punch Log", "link_to": "Biometric Punch Log", "link_type": "DocType", "onboard": 1},
         {"type": "Link", "label": "Attendance Marker", "link_to": "Attendance Marker", "link_type": "DocType", "onboard": 1},
@@ -349,6 +407,7 @@ def _get_workspace_links():
         {"type": "Link", "label": "Shift Type", "link_to": "Shift Type", "link_type": "DocType", "onboard": 0},
         {"type": "Link", "label": "Shift Assignment", "link_to": "Shift Assignment", "link_type": "DocType", "onboard": 0},
 
+        # Employee
         {"type": "Card Break", "label": "Employee", "icon": "user"},
         {"type": "Link", "label": "Employee", "link_to": "Employee", "link_type": "DocType", "onboard": 1},
         {"type": "Link", "label": "Department", "link_to": "Department", "link_type": "DocType", "onboard": 0},
@@ -356,33 +415,40 @@ def _get_workspace_links():
         {"type": "Link", "label": "Employee Onboarding", "link_to": "Employee Onboarding", "link_type": "DocType", "onboard": 0},
         {"type": "Link", "label": "Employee Separation", "link_to": "Employee Separation", "link_type": "DocType", "onboard": 0},
 
+        # Recruitment
         {"type": "Card Break", "label": "Recruitment", "icon": "briefcase"},
         {"type": "Link", "label": "Job Opening", "link_to": "Job Opening", "link_type": "DocType", "onboard": 1},
         {"type": "Link", "label": "Job Applicant", "link_to": "Job Applicant", "link_type": "DocType", "onboard": 0},
         {"type": "Link", "label": "Job Offer", "link_to": "Job Offer", "link_type": "DocType", "onboard": 0},
 
+        # Leaves
         {"type": "Card Break", "label": "Leaves", "icon": "book-open"},
         {"type": "Link", "label": "Leave Application", "link_to": "Leave Application", "link_type": "DocType", "onboard": 1},
         {"type": "Link", "label": "Leave Type", "link_to": "Leave Type", "link_type": "DocType", "onboard": 0},
         {"type": "Link", "label": "Leave Allocation", "link_to": "Leave Allocation", "link_type": "DocType", "onboard": 0},
 
+        # Payroll
         {"type": "Card Break", "label": "Payroll", "icon": "banknote"},
         {"type": "Link", "label": "Salary Slip", "link_to": "Salary Slip", "link_type": "DocType", "onboard": 1},
         {"type": "Link", "label": "Payroll Entry", "link_to": "Payroll Entry", "link_type": "DocType", "onboard": 0},
         {"type": "Link", "label": "Salary Structure", "link_to": "Salary Structure", "link_type": "DocType", "onboard": 0},
 
+        # Expense & Travel
         {"type": "Card Break", "label": "Expense & Travel", "icon": "receipt"},
         {"type": "Link", "label": "Expense Claim", "link_to": "Expense Claim", "link_type": "DocType", "onboard": 1},
         {"type": "Link", "label": "Travel Request", "link_to": "Travel Request", "link_type": "DocType", "onboard": 0},
 
+        # Performance
         {"type": "Card Break", "label": "Performance", "icon": "chart-bar"},
         {"type": "Link", "label": "Appraisal", "link_to": "Appraisal", "link_type": "DocType", "onboard": 1},
         {"type": "Link", "label": "Goal", "link_to": "Goal", "link_type": "DocType", "onboard": 0},
 
+        # Training
         {"type": "Card Break", "label": "Training", "icon": "graduation-cap"},
         {"type": "Link", "label": "Training Program", "link_to": "Training Program", "link_type": "DocType", "onboard": 1},
         {"type": "Link", "label": "Training Event", "link_to": "Training Event", "link_type": "DocType", "onboard": 0},
 
+        # Settings
         {"type": "Card Break", "label": "Settings", "icon": "settings"},
         {"type": "Link", "label": "SLHRM Settings", "link_to": "SLHRM Settings", "link_type": "DocType", "onboard": 1},
         {"type": "Link", "label": "HR Settings", "link_to": "HR Settings", "link_type": "DocType", "onboard": 0},

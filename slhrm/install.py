@@ -10,6 +10,8 @@ def execute():
     _ensure_modules_txt()
     _setup_module_path()
     _create_module_def()
+    _create_page()
+    _create_desktop_icon()
     _create_workspace()
     _create_workspace_sidebar()
     _fix_sidebar_child_items()
@@ -19,10 +21,12 @@ def execute():
 
 
 def after_migrate():
-    """Runs AFTER bench migrate â€” recreates sidebar, kills Home, fixes content."""
+    """Runs AFTER bench migrate — recreates sidebar, kills Home, fixes content."""
     _ensure_modules_txt()
     _setup_module_path()
     _create_module_def()
+    _create_page()
+    _create_desktop_icon()
     _remove_home_items()
     _rebuild_workspace_sidebar()
     _set_workspace_content()
@@ -99,6 +103,39 @@ def _create_module_def():
             print("Module Def: SLHRM already exists or creation skipped")
     else:
         print("Module Def: SLHRM already exists")
+
+
+def _create_page():
+    """Create the Dashboard Page in tabPage if it doesn't exist."""
+    if not frappe.db.exists("Page", "slhrm-dashboard"):
+        frappe.db.sql("""
+            INSERT IGNORE INTO tabPage
+            (name, page_name, title, icon, module, standard, docstatus, idx, system_page, modified, creation, modified_by, owner)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW(), %s, %s)
+        """, ("slhrm-dashboard", "slhrm-dashboard", "Attendance Dashboard", "chart-bar", "SLHRM", "1", 0, 0, 0, "Administrator", "Administrator"))
+        print("Created Page: slhrm-dashboard")
+    else:
+        print("Page: slhrm-dashboard already exists")
+
+
+def _create_desktop_icon():
+    """Create Desktop Icon for SLHRM app in the apps switcher sidebar."""
+    if not frappe.db.exists("Desktop Icon", "SLHRM"):
+        frappe.db.sql("""
+            INSERT IGNORE INTO `tabDesktop Icon`
+            (name, label, icon_type, link_type, link_to, app, logo_url, standard, docstatus, idx, hidden, sidebar, modified, creation, modified_by, owner)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW(), %s, %s)
+        """, ("SLHRM", "SLHRM", "App", "External", "SLHRM", "slhrm",
+              "/assets/slhrm/icons/desktop_icons/solid/slhrm.svg",
+              1, 0, 1, 0, 1, "Administrator", "Administrator"))
+        print("Created Desktop Icon: SLHRM")
+    else:
+        frappe.db.sql("""
+            UPDATE `tabDesktop Icon`
+            SET icon_type='App', logo_url='/assets/slhrm/icons/desktop_icons/solid/slhrm.svg', app='slhrm'
+            WHERE name='SLHRM'
+        """)
+        print("Updated Desktop Icon: SLHRM")
 
 
 # â”€â”€â”€ Workspace Sidebar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
