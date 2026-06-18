@@ -15,6 +15,7 @@ def execute():
     _create_workspace()
     _create_workspace_sidebar()
     _fix_sidebar_child_items()
+    _fix_sidebar_show_arrow()
     _remove_home_items()
     frappe.db.commit()
     print("SLHRM install complete.")
@@ -27,6 +28,7 @@ def after_migrate():
     _create_module_def()
     _create_page()
     _create_desktop_icon()
+    _fix_sidebar_show_arrow()
     _remove_home_items()
     _rebuild_workspace_sidebar()
     _set_workspace_content()
@@ -132,7 +134,8 @@ def _create_desktop_icon():
     else:
         frappe.db.sql("""
             UPDATE `tabDesktop Icon`
-            SET icon_type='App', logo_url='/assets/slhrm/icons/desktop_icons/solid/slhrm.svg', app='slhrm'
+            SET icon_type='App', logo_url='/assets/slhrm/icons/desktop_icons/solid/slhrm.svg',
+                app='slhrm', standard=1, link='/app/slhrm'
             WHERE name='SLHRM'
         """)
         print("Updated Desktop Icon: SLHRM")
@@ -193,6 +196,16 @@ def _fix_sidebar_child_items():
     print("Fixed sidebar child items: child=1 on all Link items")
 
 
+def _fix_sidebar_show_arrow():
+    """Set show_arrow=0 on Section Break items — show_arrow overwrites the collapsible drop icon."""
+    frappe.db.sql("""
+        UPDATE `tabWorkspace Sidebar Item`
+        SET show_arrow = 0
+        WHERE parent = 'SLHRM' AND type = 'Section Break'
+    """)
+    print("Fixed sidebar: show_arrow=0 on all Section Break items")
+
+
 def _remove_home_items():
     """Remove Home link from sidebar and any stale auto-generated entries."""
     frappe.db.sql("""
@@ -220,13 +233,13 @@ def _build_sidebar_items():
     items = []
     idx = 0
 
-    def _section(label, icon):
+    def _section(label, icon, keep_closed=0):
         nonlocal idx
         idx += 1
         items.append({
             "type": "Section Break", "label": label, "icon": icon,
-            "indent": 0, "collapsible": 1, "keep_closed": 0, "child": 0, "idx": idx,
-            "show_arrow": 1,
+            "indent": 0, "collapsible": 1, "keep_closed": keep_closed, "child": 0, "idx": idx,
+            "show_arrow": 0,
         })
 
     def _link(label, link_to, icon="", link_type="DocType"):
