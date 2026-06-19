@@ -125,16 +125,17 @@ def _create_desktop_icon():
     if not frappe.db.exists("Desktop Icon", "SLHRM"):
         frappe.db.sql("""
             INSERT IGNORE INTO `tabDesktop Icon`
-            (name, label, icon_type, link_type, link_to, app, logo_url, standard, docstatus, idx, hidden, sidebar, modified, creation, modified_by, owner)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW(), %s, %s)
-        """, ("SLHRM", "SLHRM", "App", "External", "SLHRM", "slhrm",
+            (name, label, icon_type, icon, link_type, link_to, app, logo_url, standard, docstatus, idx, hidden, sidebar, modified, creation, modified_by, owner)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW(), %s, %s)
+        """, ("SLHRM", "SLHRM", "App", "hexagon", "External", "SLHRM", "slhrm",
               "/assets/slhrm/icons/desktop_icons/solid/slhrm.svg",
               1, 0, 1, 0, 1, "Administrator", "Administrator"))
         print("Created Desktop Icon: SLHRM")
     else:
         frappe.db.sql("""
             UPDATE `tabDesktop Icon`
-            SET icon_type='App', logo_url='/assets/slhrm/icons/desktop_icons/solid/slhrm.svg',
+            SET icon_type='App', icon='hexagon',
+                logo_url='/assets/slhrm/icons/desktop_icons/solid/slhrm.svg',
                 app='slhrm', standard=1, link='/app/slhrm'
             WHERE name='SLHRM'
         """)
@@ -361,14 +362,14 @@ def _get_workspace_content():
     """Return workspace content blocks: shortcuts + headers + card blocks."""
     return [
         # â”€â”€ Shortcuts â”€â”€
-        {"id": "sc_dashboard", "type": "shortcut", "label": "Attendance Dashboard", "format": "{}", "link_to": "slhrm-dashboard", "doc_view": "Page", "icon": "chart-bar", "color": "#3b82f6"},
-        {"id": "sc_marker", "type": "shortcut", "label": "New Attendance Marker", "format": "{}", "link_to": "Attendance Marker", "doc_view": "Form", "icon": "square-check", "color": "#3b82f6"},
-        {"id": "sc_punch", "type": "shortcut", "label": "Biometric Punch Log", "format": "{}", "link_to": "Biometric Punch Log", "doc_view": "List", "icon": "file-text", "color": "#22c55e"},
-        {"id": "sc_emp", "type": "shortcut", "label": "Employees", "format": "{}", "link_to": "Employee", "doc_view": "List", "icon": "user", "color": "#8b5cf6"},
-        {"id": "sc_leave", "type": "shortcut", "label": "Leave Applications", "format": "{}", "link_to": "Leave Application", "doc_view": "List", "icon": "book-open", "color": "#f59e0b"},
-        {"id": "sc_salary", "type": "shortcut", "label": "Salary Slips", "format": "{}", "link_to": "Salary Slip", "doc_view": "List", "icon": "file-text", "color": "#ef4444"},
-        {"id": "sc_expense", "type": "shortcut", "label": "Expense Claims", "format": "{}", "link_to": "Expense Claim", "doc_view": "List", "icon": "file-text", "color": "#ec4899"},
-        {"id": "sc_settings", "type": "shortcut", "label": "Settings", "format": "{}", "link_to": "SLHRM Settings", "doc_view": "Form", "icon": "settings", "color": "#6b7280"},
+        {"id": "sc_dashboard", "type": "shortcut", "label": "Attendance Dashboard", "link_to": "slhrm-dashboard", "doc_view": "Page", "icon": "chart-bar", "color": "#3b82f6"},
+        {"id": "sc_marker", "type": "shortcut", "label": "New Attendance Marker", "link_to": "Attendance Marker", "doc_view": "Form", "icon": "square-check", "color": "#3b82f6"},
+        {"id": "sc_punch", "type": "shortcut", "label": "Biometric Punch Log", "link_to": "Biometric Punch Log", "doc_view": "List", "icon": "file-text", "color": "#22c55e"},
+        {"id": "sc_emp", "type": "shortcut", "label": "Employees", "link_to": "Employee", "doc_view": "List", "icon": "user", "color": "#8b5cf6"},
+        {"id": "sc_leave", "type": "shortcut", "label": "Leave Applications", "link_to": "Leave Application", "doc_view": "List", "icon": "book-open", "color": "#f59e0b"},
+        {"id": "sc_salary", "type": "shortcut", "label": "Salary Slips", "link_to": "Salary Slip", "doc_view": "List", "icon": "file-text", "color": "#ef4444"},
+        {"id": "sc_expense", "type": "shortcut", "label": "Expense Claims", "link_to": "Expense Claim", "doc_view": "List", "icon": "file-text", "color": "#ec4899"},
+        {"id": "sc_settings", "type": "shortcut", "label": "Settings", "link_to": "SLHRM Settings", "doc_view": "Form", "icon": "settings", "color": "#6b7280"},
 
         # â”€â”€ Time & Attendance â”€â”€
         {"id": "h_tna", "type": "header", "data": {"text": "Time & Attendance", "col": 12}},

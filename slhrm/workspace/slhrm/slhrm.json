@@ -12,7 +12,7 @@
     "label": "SLHRM",
     "links": [
         {"type": "Card Break", "label": "Dashboard", "icon": "dashboard"},
-        {"type": "Link", "label": "Attendance Dashboard", "link_to": "Attendance Dashboard", "link_type": "DocType", "onboard": 1},
+        {"type": "Link", "label": "Attendance Dashboard", "link_to": "slhrm-dashboard", "link_type": "Page", "onboard": 1},
         {"type": "Card Break", "label": "Time & Attendance", "icon": "clock"},
         {"type": "Link", "label": "Biometric Punch Log", "link_to": "Biometric Punch Log", "link_type": "DocType", "onboard": 1},
         {"type": "Link", "label": "Attendance Marker", "link_to": "Attendance Marker", "link_type": "DocType", "onboard": 1},
@@ -64,8 +64,8 @@
         {
             "type": "Shortcut",
             "label": "Attendance Dashboard",
-            "link_to": "Attendance Dashboard",
-            "link_type": "DocType",
+            "link_to": "slhrm-dashboard",
+            "link_type": "Page",
             "icon": "calendar",
             "color": "#3b82f6"
         },
