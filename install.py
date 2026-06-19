@@ -125,18 +125,18 @@ def _create_desktop_icon():
     if not frappe.db.exists("Desktop Icon", "SLHRM"):
         frappe.db.sql("""
             INSERT IGNORE INTO `tabDesktop Icon`
-            (name, label, icon_type, icon, link_type, link_to, app, logo_url, standard, docstatus, idx, hidden, sidebar, modified, creation, modified_by, owner, `link`)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW(), %s, %s, %s)
-        """, ("SLHRM", "SLHRM", "App", "hexagon", "External", "SLHRM", "slhrm",
+            (name, label, icon_type, icon, link_type, link_to, app, logo_url, standard, docstatus, idx, hidden, sidebar, modified, creation, modified_by, owner)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW(), %s, %s)
+        """, ("SLHRM", "SLHRM", "App", "hexagon", "Page", "slhrm-dashboard", "slhrm",
               "/assets/slhrm/icons/desktop_icons/solid/slhrm.svg",
-              1, 0, 1, 0, 1, "Administrator", "Administrator", "/app/slhrm"))
+              1, 0, 1, 0, 1, "Administrator", "Administrator"))
         print("Created Desktop Icon: SLHRM")
     else:
         frappe.db.sql("""
             UPDATE `tabDesktop Icon`
             SET icon_type='App', icon='hexagon',
                 logo_url='/assets/slhrm/icons/desktop_icons/solid/slhrm.svg',
-                app='slhrm', standard=1, `link`='/app/slhrm'
+                app='slhrm', standard=1, link_type='Page', link_to='slhrm-dashboard'
             WHERE name='SLHRM'
         """)
         print("Updated Desktop Icon: SLHRM")
@@ -349,13 +349,23 @@ def _create_workspace():
 
 
 def _set_workspace_content():
-    """Re-set workspace content via SQL â€” bench migrate overwrites it."""
+    """Re-set workspace content via SQL — bench migrate overwrites it.
+    Also removes any shortcut blocks that Frappe may have added to the content."""
     content = _get_workspace_content()
     frappe.db.sql(
         "UPDATE `tabWorkspace` SET content = %s WHERE name = 'SLHRM'",
         (json.dumps(content),),
     )
-    print("Set workspace content via SQL")
+    # Also clean any shortcut blocks from existing content
+    frappe.db.sql("""
+        UPDATE `tabWorkspace`
+        SET content = %s
+        WHERE name = 'SLHRM'
+        AND content LIKE '%\"type\":\"shortcut\"%'
+    """, (json.dumps(content),))
+    # Delete shortcuts from child table
+    frappe.db.sql("DELETE FROM `tabWorkspace Shortcut` WHERE parent = 'SLHRM'")
+    print("Set workspace content via SQL and cleaned shortcuts")
 
 
 def _get_workspace_content():

@@ -41,8 +41,8 @@ add_to_apps_screen = [
 # PWA route rules
 website_route_rules = [
     {
-        "from_route": "/slhrms/<path:app_path>",
-        "to_route": "/slhrms",
-        "defaults": {"doctype": "Web Page", "name": "slhrms"},
+        "from_route": "/slhrm/<path:app_path>",
+        "to_route": "/slhrm",
+        "defaults": {"doctype": "Web Page", "name": "slhrm"},
     }
 ]
