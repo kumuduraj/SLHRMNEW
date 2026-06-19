@@ -26,7 +26,7 @@ SLHRM-PWA/yarn.lock
 slhrm/slhrm/slhrm/
 test_*.py
 verify*.py
-fix_*.py
+fix_temp_*.py
 force_*.py
 clean_*.py
 console_*.py
