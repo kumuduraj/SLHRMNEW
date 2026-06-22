@@ -1,0 +1,2 @@
+import{w as c}from"./frappe-ui-76jJPVFI.js";function i(n,t,l=[]){const u=new Set([...l]),r=()=>{var e;(e=n.data)==null||e.forEach(a=>{a!=null&&a.fieldname&&u.has(a.fieldname)&&(!a._original_label&&a.label&&(a._original_label=a.label.replace(/\([^\)]*\)/g,"").trim()),u.has(a.fieldname)&&(a.label=`${a._original_label} (${t.value.currency})`))})};return c(()=>{var e;return(e=t.value)==null?void 0:e.currency},()=>{r()},{immediate:!0}),c(()=>n.data,()=>{r()},{deep:!0,immediate:!0}),{updateLabels:r}}export{i as u};
+//# sourceMappingURL=useCurrencyConversion-CX4CvGeY.js.map

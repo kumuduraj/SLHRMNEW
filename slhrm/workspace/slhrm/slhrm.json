@@ -60,32 +60,7 @@
     "quick_lists": [],
     "roles": [],
     "sequence_id": 1,
-    "shortcuts": [
-        {
-            "type": "Shortcut",
-            "label": "Attendance Dashboard",
-            "link_to": "slhrm-dashboard",
-            "link_type": "Page",
-            "icon": "calendar",
-            "color": "#3b82f6"
-        },
-        {
-            "type": "Shortcut",
-            "label": "Biometric Punch Log",
-            "link_to": "Biometric Punch Log",
-            "link_type": "DocType",
-            "icon": "file-text",
-            "color": "#22c55e"
-        },
-        {
-            "type": "Shortcut",
-            "label": "Employee",
-            "link_to": "Employee",
-            "link_type": "DocType",
-            "icon": "user",
-            "color": "#8b5cf6"
-        }
-    ],
+    "shortcuts": [],
     "title": "SLHRM",
     "type": "Workspace",
     "app": "slhrm",
