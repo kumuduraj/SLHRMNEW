@@ -129,14 +129,14 @@ def _create_desktop_icon():
             INSERT IGNORE INTO `tabDesktop Icon`
             (name, label, icon_type, icon, link_type, link_to, app, logo_url, standard, docstatus, idx, hidden, sidebar, modified, creation, modified_by, owner)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW(), %s, %s)
-        """, ("SLHRM", "SLHRM", "App", "hexagon", "Page", "slhrm-dashboard", "slhrm",
+        """, ("SLHRM", "SLHRM", "App", "hexagon", "Workspace Sidebar", "SLHRM", "slhrm",
               "/assets/slhrm/icons/desktop_icons/solid/slhrm.svg",
               1, 0, 1, 0, 1, "Administrator", "Administrator"))
         print("Created Desktop Icon: SLHRM")
     else:
         frappe.db.sql("""
             UPDATE `tabDesktop Icon`
-            SET icon_type='App', icon='hexagon', link_type='Page', link_to='slhrm-dashboard',
+            SET icon_type='App', icon='hexagon', link_type='Workspace Sidebar', link_to='SLHRM',
                 logo_url='/assets/slhrm/icons/desktop_icons/solid/slhrm.svg',
                 app='slhrm', standard=1
             WHERE name='SLHRM'
