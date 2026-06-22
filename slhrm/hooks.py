@@ -37,12 +37,3 @@ add_to_apps_screen = [
         "route": "/app/slhrm-dashboard",
     }
 ]
-
-# PWA route rules
-website_route_rules = [
-    {
-        "from_route": "/slhrm/<path:app_path>",
-        "to_route": "/slhrm",
-        "defaults": {"doctype": "Web Page", "name": "slhrm"},
-    }
-]
