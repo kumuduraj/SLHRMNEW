@@ -1,7 +1,33 @@
 # slhrm/api.py
 import frappe
 from frappe import _
+from frappe.utils import cstr
 from datetime import datetime, timedelta
+import os
+import json
+
+
+# ═══════════════════════════════════════════════════════════════
+# PWA SERVING
+# ═══════════════════════════════════════════════════════════════
+
+@frappe.whitelist(allow_guest=True)
+def serve_pwa():
+    """Serve the SLHRM PWA index.html with Frappe Jinja variables rendered."""
+    pwa_path = os.path.join(frappe.get_app_path("slhrm"), "public", "frontend", "index.html")
+    with open(pwa_path, "r") as f:
+        template = f.read()
+
+    boot_info = frappe.utils.get_bootinfo()
+    boot_json = json.dumps(boot_info)
+
+    rendered = template.replace("{{ boot }}", boot_json)
+    rendered = rendered.replace("{{ csrf_token }}", frappe.session.csrf_token or "")
+    rendered = rendered.replace("{{ site_name }}", frappe.local.site or "")
+
+    frappe.response["type"] = "html"
+    frappe.response["http_status_code"] = 200
+    return rendered
 
 
 # ═══════════════════════════════════════════════════════════════
