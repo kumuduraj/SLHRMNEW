@@ -19,11 +19,16 @@ def serve_pwa():
     with open(pwa_path, "r") as f:
         template = f.read()
 
-    boot_info = frappe.utils.get_bootinfo()
-    boot_json = json.dumps(boot_info)
+    boot_json = json.dumps(frappe.local.boot_dict or {})
+
+    csrf = ""
+    try:
+        csrf = frappe.session.csrf_token
+    except Exception:
+        pass
 
     rendered = template.replace("{{ boot }}", boot_json)
-    rendered = rendered.replace("{{ csrf_token }}", frappe.session.csrf_token or "")
+    rendered = rendered.replace("{{ csrf_token }}", csrf or "")
     rendered = rendered.replace("{{ site_name }}", frappe.local.site or "")
 
     frappe.response["type"] = "html"
