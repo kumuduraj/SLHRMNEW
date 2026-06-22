@@ -19,15 +19,16 @@ def serve_pwa():
         frappe.throw("PWA not found")
 
     with open(pwa_path, "r") as f:
-        template = f.read()
+        content = f.read()
 
-    rendered = template.replace("{{ boot }}", "{}")
+    rendered = content.replace("{{ boot }}", "{}")
     rendered = rendered.replace("{{ csrf_token }}", "")
     rendered = rendered.replace("{{ site_name }}", getattr(frappe.local, "site", ""))
 
-    frappe.response["type"] = "html"
-    frappe.response["http_status_code"] = 200
-    return rendered
+    from frappe.handler import build_response
+    response = frappe.Response(rendered)
+    response.headers["Content-Type"] = "text/html; charset=utf-8"
+    return response
 
 
 # ═══════════════════════════════════════════════════════════════
