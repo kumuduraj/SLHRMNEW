@@ -37,3 +37,15 @@ add_to_apps_screen = [
         "route": "/app/slhrm-dashboard",
     }
 ]
+
+# PWA — serve index.html through Frappe (needs Jinja rendering for boot/csrf)
+website_route_rules = [
+    {
+        "from_route": "/slhrm",
+        "to_route": "slhrm",
+    },
+    {
+        "from_route": "/slhrm/<path:app_page>",
+        "to_route": "slhrm",
+    },
+]
