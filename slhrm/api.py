@@ -14,7 +14,8 @@ import json
 @frappe.whitelist(allow_guest=True)
 def serve_pwa():
     """Serve the SLHRM PWA index.html with Frappe Jinja variables rendered."""
-    pwa_path = os.path.join(frappe.get_app_path("slhrm"), "public", "frontend", "index.html")
+    app_path = os.path.dirname(frappe.get_app_path("slhrm"))
+    pwa_path = os.path.join(app_path, "public", "frontend", "index.html")
     with open(pwa_path, "r") as f:
         template = f.read()
 
