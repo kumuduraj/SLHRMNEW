@@ -25,9 +25,11 @@ def serve_pwa():
     rendered = rendered.replace("{{ csrf_token }}", "")
     rendered = rendered.replace("{{ site_name }}", getattr(frappe.local, "site", ""))
 
-    frappe.response["type"] = "html"
-    frappe.response["http_status_code"] = 200
-    return rendered
+    frappe.local.response.filename = "index.html"
+    frappe.local.response.filecontent = rendered.encode("utf-8")
+    frappe.local.response.type = "download"
+    frappe.local.response.content_type = "text/html; charset=utf-8"
+    frappe.local.response.display_content_as = "inline"
 
 
 # ═══════════════════════════════════════════════════════════════
