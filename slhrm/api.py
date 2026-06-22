@@ -13,7 +13,7 @@ import json
 
 @frappe.whitelist(allow_guest=True)
 def serve_pwa():
-    """Serve the SLHRM PWA index.html with Frappe Jinja variables rendered."""
+    """Serve the SLHRM PWA index.html."""
     pwa_path = "/home/frappe/frappe-bench/apps/slhrm/public/frontend/index.html"
     if not os.path.exists(pwa_path):
         frappe.throw("PWA not found")
@@ -21,20 +21,8 @@ def serve_pwa():
     with open(pwa_path, "r") as f:
         template = f.read()
 
-    boot_json = "{}"
-    try:
-        boot_json = json.dumps(frappe.local.boot_dict or {})
-    except Exception:
-        pass
-
-    csrf = ""
-    try:
-        csrf = frappe.session.csrf_token
-    except Exception:
-        pass
-
-    rendered = template.replace("{{ boot }}", boot_json)
-    rendered = rendered.replace("{{ csrf_token }}", csrf or "")
+    rendered = template.replace("{{ boot }}", "{}")
+    rendered = rendered.replace("{{ csrf_token }}", "")
     rendered = rendered.replace("{{ site_name }}", getattr(frappe.local, "site", ""))
 
     frappe.response["type"] = "html"
