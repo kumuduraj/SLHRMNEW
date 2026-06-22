@@ -13,8 +13,10 @@ def execute():
     _create_page()
     _create_desktop_icon()
     _create_workspace()
+    _set_workspace_links()
     _create_workspace_sidebar()
     _fix_sidebar_child_items()
+    _fix_sidebar_show_arrow()
     _remove_home_items()
     frappe.db.commit()
     print("SLHRM install complete.")
@@ -27,9 +29,11 @@ def after_migrate():
     _create_module_def()
     _create_page()
     _create_desktop_icon()
+    _fix_sidebar_show_arrow()
     _remove_home_items()
     _rebuild_workspace_sidebar()
     _set_workspace_content()
+    _set_workspace_links()
     _set_workspace_redirect()
     frappe.db.commit()
     print("after_migrate: Sidebar rebuilt, Home removed, content + redirect set")
@@ -123,16 +127,18 @@ def _create_desktop_icon():
     if not frappe.db.exists("Desktop Icon", "SLHRM"):
         frappe.db.sql("""
             INSERT IGNORE INTO `tabDesktop Icon`
-            (name, label, icon_type, link_type, link_to, app, logo_url, standard, docstatus, idx, hidden, sidebar, modified, creation, modified_by, owner)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW(), %s, %s)
-        """, ("SLHRM", "SLHRM", "App", "External", "SLHRM", "slhrm",
+            (name, label, icon_type, icon, link_type, link_to, app, logo_url, standard, docstatus, idx, hidden, sidebar, modified, creation, modified_by, owner)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW(), %s, %s)
+        """, ("SLHRM", "SLHRM", "App", "hexagon", "Page", "slhrm-dashboard", "slhrm",
               "/assets/slhrm/icons/desktop_icons/solid/slhrm.svg",
               1, 0, 1, 0, 1, "Administrator", "Administrator"))
         print("Created Desktop Icon: SLHRM")
     else:
         frappe.db.sql("""
             UPDATE `tabDesktop Icon`
-            SET icon_type='App', logo_url='/assets/slhrm/icons/desktop_icons/solid/slhrm.svg', app='slhrm'
+            SET icon_type='App', icon='hexagon', link_type='Page', link_to='slhrm-dashboard',
+                logo_url='/assets/slhrm/icons/desktop_icons/solid/slhrm.svg',
+                app='slhrm', standard=1
             WHERE name='SLHRM'
         """)
         print("Updated Desktop Icon: SLHRM")
@@ -193,6 +199,16 @@ def _fix_sidebar_child_items():
     print("Fixed sidebar child items: child=1 on all Link items")
 
 
+def _fix_sidebar_show_arrow():
+    """Set show_arrow=0 on Section Break items — show_arrow overwrites the collapsible drop icon."""
+    frappe.db.sql("""
+        UPDATE `tabWorkspace Sidebar Item`
+        SET show_arrow = 0
+        WHERE parent = 'SLHRM' AND type = 'Section Break'
+    """)
+    print("Fixed sidebar: show_arrow=0 on all Section Break items")
+
+
 def _remove_home_items():
     """Remove Home link from sidebar and any stale auto-generated entries."""
     frappe.db.sql("""
@@ -220,13 +236,13 @@ def _build_sidebar_items():
     items = []
     idx = 0
 
-    def _section(label, icon):
+    def _section(label, icon, keep_closed=0):
         nonlocal idx
         idx += 1
         items.append({
             "type": "Section Break", "label": label, "icon": icon,
-            "indent": 0, "collapsible": 1, "keep_closed": 0, "child": 0, "idx": idx,
-            "show_arrow": 1,
+            "indent": 0, "collapsible": 1, "keep_closed": keep_closed, "child": 0, "idx": idx,
+            "show_arrow": 0,
         })
 
     def _link(label, link_to, icon="", link_type="DocType"):
@@ -335,7 +351,7 @@ def _create_workspace():
 
 
 def _set_workspace_content():
-    """Re-set workspace content via SQL â€” bench migrate overwrites it."""
+    """Re-set workspace content via SQL — bench migrate overwrites it."""
     content = _get_workspace_content()
     frappe.db.sql(
         "UPDATE `tabWorkspace` SET content = %s WHERE name = 'SLHRM'",
@@ -344,18 +360,40 @@ def _set_workspace_content():
     print("Set workspace content via SQL")
 
 
+def _set_workspace_links():
+    """Insert workspace links via SQL — ws.insert() doesn't persist child table rows."""
+    frappe.db.sql("DELETE FROM `tabWorkspace Link` WHERE parent = 'SLHRM'")
+    idx = 0
+    for entry in _get_workspace_links():
+        idx += 1
+        link_type = entry.get("type")
+        if link_type == "Card Break":
+            frappe.db.sql("""
+                INSERT INTO `tabWorkspace Link`
+                (name, parent, parenttype, parentfield, type, label, icon, idx, docstatus)
+                VALUES (UUID(), 'SLHRM', 'Workspace', 'links', 'Card Break', %s, %s, %s, 0)
+            """, (entry["label"], entry.get("icon", ""), idx))
+        elif link_type == "Link":
+            frappe.db.sql("""
+                INSERT INTO `tabWorkspace Link`
+                (name, parent, parenttype, parentfield, type, label, link_to, link_type, onboard, idx, docstatus)
+                VALUES (UUID(), 'SLHRM', 'Workspace', 'links', 'Link', %s, %s, %s, %s, %s, 0)
+            """, (entry["label"], entry["link_to"], entry.get("link_type", "DocType"), entry.get("onboard", 0), idx))
+    print("Set workspace links via SQL")
+
+
 def _get_workspace_content():
     """Return workspace content blocks: shortcuts + headers + card blocks."""
     return [
         # â”€â”€ Shortcuts â”€â”€
-        {"id": "sc_dashboard", "type": "shortcut", "label": "Attendance Dashboard", "format": "{}", "link_to": "slhrm-dashboard", "doc_view": "Page", "icon": "chart-bar", "color": "#3b82f6"},
-        {"id": "sc_marker", "type": "shortcut", "label": "New Attendance Marker", "format": "{}", "link_to": "Attendance Marker", "doc_view": "Form", "icon": "square-check", "color": "#3b82f6"},
-        {"id": "sc_punch", "type": "shortcut", "label": "Biometric Punch Log", "format": "{}", "link_to": "Biometric Punch Log", "doc_view": "List", "icon": "file-text", "color": "#22c55e"},
-        {"id": "sc_emp", "type": "shortcut", "label": "Employees", "format": "{}", "link_to": "Employee", "doc_view": "List", "icon": "user", "color": "#8b5cf6"},
-        {"id": "sc_leave", "type": "shortcut", "label": "Leave Applications", "format": "{}", "link_to": "Leave Application", "doc_view": "List", "icon": "book-open", "color": "#f59e0b"},
-        {"id": "sc_salary", "type": "shortcut", "label": "Salary Slips", "format": "{}", "link_to": "Salary Slip", "doc_view": "List", "icon": "file-text", "color": "#ef4444"},
-        {"id": "sc_expense", "type": "shortcut", "label": "Expense Claims", "format": "{}", "link_to": "Expense Claim", "doc_view": "List", "icon": "file-text", "color": "#ec4899"},
-        {"id": "sc_settings", "type": "shortcut", "label": "Settings", "format": "{}", "link_to": "SLHRM Settings", "doc_view": "Form", "icon": "settings", "color": "#6b7280"},
+        {"id": "sc_dashboard", "type": "shortcut", "label": "Attendance Dashboard", "link_to": "slhrm-dashboard", "doc_view": "Page", "icon": "chart-bar", "color": "#3b82f6"},
+        {"id": "sc_marker", "type": "shortcut", "label": "New Attendance Marker", "link_to": "Attendance Marker", "doc_view": "Form", "icon": "square-check", "color": "#3b82f6"},
+        {"id": "sc_punch", "type": "shortcut", "label": "Biometric Punch Log", "link_to": "Biometric Punch Log", "doc_view": "List", "icon": "file-text", "color": "#22c55e"},
+        {"id": "sc_emp", "type": "shortcut", "label": "Employees", "link_to": "Employee", "doc_view": "List", "icon": "user", "color": "#8b5cf6"},
+        {"id": "sc_leave", "type": "shortcut", "label": "Leave Applications", "link_to": "Leave Application", "doc_view": "List", "icon": "book-open", "color": "#f59e0b"},
+        {"id": "sc_salary", "type": "shortcut", "label": "Salary Slips", "link_to": "Salary Slip", "doc_view": "List", "icon": "file-text", "color": "#ef4444"},
+        {"id": "sc_expense", "type": "shortcut", "label": "Expense Claims", "link_to": "Expense Claim", "doc_view": "List", "icon": "file-text", "color": "#ec4899"},
+        {"id": "sc_settings", "type": "shortcut", "label": "Settings", "link_to": "SLHRM Settings", "doc_view": "Form", "icon": "settings", "color": "#6b7280"},
 
         # â”€â”€ Time & Attendance â”€â”€
         {"id": "h_tna", "type": "header", "data": {"text": "Time & Attendance", "col": 12}},

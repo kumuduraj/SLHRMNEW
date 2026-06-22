@@ -15,6 +15,7 @@ def execute():
     _create_workspace()
     _create_workspace_sidebar()
     _fix_sidebar_child_items()
+    _fix_sidebar_show_arrow()
     _remove_home_items()
     frappe.db.commit()
     print("SLHRM install complete.")
@@ -27,6 +28,7 @@ def after_migrate():
     _create_module_def()
     _create_page()
     _create_desktop_icon()
+    _fix_sidebar_show_arrow()
     _remove_home_items()
     _rebuild_workspace_sidebar()
     _set_workspace_content()
@@ -123,16 +125,18 @@ def _create_desktop_icon():
     if not frappe.db.exists("Desktop Icon", "SLHRM"):
         frappe.db.sql("""
             INSERT IGNORE INTO `tabDesktop Icon`
-            (name, label, icon_type, link_type, link_to, app, logo_url, standard, docstatus, idx, hidden, sidebar, modified, creation, modified_by, owner)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW(), %s, %s)
-        """, ("SLHRM", "SLHRM", "App", "External", "SLHRM", "slhrm",
+            (name, label, icon_type, icon, link_type, link_to, app, logo_url, standard, docstatus, idx, hidden, sidebar, modified, creation, modified_by, owner, `link`)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW(), %s, %s, %s)
+        """, ("SLHRM", "SLHRM", "App", "hexagon", "External", "SLHRM", "slhrm",
               "/assets/slhrm/icons/desktop_icons/solid/slhrm.svg",
-              1, 0, 1, 0, 1, "Administrator", "Administrator"))
+              1, 0, 1, 0, 1, "Administrator", "Administrator", "/app/slhrm"))
         print("Created Desktop Icon: SLHRM")
     else:
         frappe.db.sql("""
             UPDATE `tabDesktop Icon`
-            SET icon_type='App', logo_url='/assets/slhrm/icons/desktop_icons/solid/slhrm.svg', app='slhrm'
+            SET icon_type='App', icon='hexagon',
+                logo_url='/assets/slhrm/icons/desktop_icons/solid/slhrm.svg',
+                app='slhrm', standard=1, `link`='/app/slhrm'
             WHERE name='SLHRM'
         """)
         print("Updated Desktop Icon: SLHRM")
@@ -193,6 +197,16 @@ def _fix_sidebar_child_items():
     print("Fixed sidebar child items: child=1 on all Link items")
 
 
+def _fix_sidebar_show_arrow():
+    """Set show_arrow=0 on Section Break items — show_arrow overwrites the collapsible drop icon."""
+    frappe.db.sql("""
+        UPDATE `tabWorkspace Sidebar Item`
+        SET show_arrow = 0
+        WHERE parent = 'SLHRM' AND type = 'Section Break'
+    """)
+    print("Fixed sidebar: show_arrow=0 on all Section Break items")
+
+
 def _remove_home_items():
     """Remove Home link from sidebar and any stale auto-generated entries."""
     frappe.db.sql("""
@@ -220,13 +234,13 @@ def _build_sidebar_items():
     items = []
     idx = 0
 
-    def _section(label, icon):
+    def _section(label, icon, keep_closed=0):
         nonlocal idx
         idx += 1
         items.append({
             "type": "Section Break", "label": label, "icon": icon,
-            "indent": 0, "collapsible": 1, "keep_closed": 0, "child": 0, "idx": idx,
-            "show_arrow": 1,
+            "indent": 0, "collapsible": 1, "keep_closed": keep_closed, "child": 0, "idx": idx,
+            "show_arrow": 0,
         })
 
     def _link(label, link_to, icon="", link_type="DocType"):
@@ -345,51 +359,46 @@ def _set_workspace_content():
 
 
 def _get_workspace_content():
-    """Return workspace content blocks: shortcuts + headers + card blocks."""
+    """Return workspace content blocks: headers + card blocks only.
+    Shortcuts go in the shortcuts child table, NOT in content JSON.
+    Frappe v16 content shortcut blocks use {"data": {"shortcut_name": "Label"}} format
+    and require matching entries in the shortcuts child table. We skip shortcuts in
+    content to avoid 'DocType Shortcut not found' errors.
+    """
     return [
-        # â”€â”€ Shortcuts â”€â”€
-        {"id": "sc_dashboard", "type": "shortcut", "label": "Attendance Dashboard", "format": "{}", "link_to": "slhrm-dashboard", "doc_view": "Page", "icon": "chart-bar", "color": "#3b82f6"},
-        {"id": "sc_marker", "type": "shortcut", "label": "New Attendance Marker", "format": "{}", "link_to": "Attendance Marker", "doc_view": "Form", "icon": "square-check", "color": "#3b82f6"},
-        {"id": "sc_punch", "type": "shortcut", "label": "Biometric Punch Log", "format": "{}", "link_to": "Biometric Punch Log", "doc_view": "List", "icon": "file-text", "color": "#22c55e"},
-        {"id": "sc_emp", "type": "shortcut", "label": "Employees", "format": "{}", "link_to": "Employee", "doc_view": "List", "icon": "user", "color": "#8b5cf6"},
-        {"id": "sc_leave", "type": "shortcut", "label": "Leave Applications", "format": "{}", "link_to": "Leave Application", "doc_view": "List", "icon": "book-open", "color": "#f59e0b"},
-        {"id": "sc_salary", "type": "shortcut", "label": "Salary Slips", "format": "{}", "link_to": "Salary Slip", "doc_view": "List", "icon": "file-text", "color": "#ef4444"},
-        {"id": "sc_expense", "type": "shortcut", "label": "Expense Claims", "format": "{}", "link_to": "Expense Claim", "doc_view": "List", "icon": "file-text", "color": "#ec4899"},
-        {"id": "sc_settings", "type": "shortcut", "label": "Settings", "format": "{}", "link_to": "SLHRM Settings", "doc_view": "Form", "icon": "settings", "color": "#6b7280"},
-
-        # â”€â”€ Time & Attendance â”€â”€
+        # â"€â"€ Time & Attendance â"€â"€
         {"id": "h_tna", "type": "header", "data": {"text": "Time & Attendance", "col": 12}},
         {"id": "card_tna", "type": "card", "data": {"card_name": "Time & Attendance", "col": 4}},
 
-        # â”€â”€ Employee â”€â”€
+        # â"€â"€ Employee â"€â"€
         {"id": "h_emp", "type": "header", "data": {"text": "Employee", "col": 12}},
         {"id": "card_emp", "type": "card", "data": {"card_name": "Employee", "col": 4}},
 
-        # â”€â”€ Recruitment â”€â”€
+        # â"€â"€ Recruitment â"€â"€
         {"id": "h_rec", "type": "header", "data": {"text": "Recruitment", "col": 12}},
         {"id": "card_rec", "type": "card", "data": {"card_name": "Recruitment", "col": 4}},
 
-        # â”€â”€ Leaves â”€â”€
+        # â"€â"€ Leaves â"€â"€
         {"id": "h_leave", "type": "header", "data": {"text": "Leaves", "col": 12}},
         {"id": "card_leave", "type": "card", "data": {"card_name": "Leaves", "col": 4}},
 
-        # â”€â”€ Payroll â”€â”€
+        # â"€â"€ Payroll â"€â"€
         {"id": "h_pay", "type": "header", "data": {"text": "Payroll", "col": 12}},
         {"id": "card_pay", "type": "card", "data": {"card_name": "Payroll", "col": 4}},
 
-        # â”€â”€ Expense & Travel â”€â”€
+        # â"€â"€ Expense & Travel â"€â"€
         {"id": "h_exp", "type": "header", "data": {"text": "Expense & Travel", "col": 12}},
         {"id": "card_exp", "type": "card", "data": {"card_name": "Expense & Travel", "col": 4}},
 
-        # â”€â”€ Performance â”€â”€
+        # â"€â"€ Performance â"€â"€
         {"id": "h_perf", "type": "header", "data": {"text": "Performance", "col": 12}},
         {"id": "card_perf", "type": "card", "data": {"card_name": "Performance", "col": 4}},
 
-        # â”€â”€ Training â”€â”€
+        # â"€â"€ Training â"€â"€
         {"id": "h_train", "type": "header", "data": {"text": "Training", "col": 12}},
         {"id": "card_train", "type": "card", "data": {"card_name": "Training", "col": 4}},
 
-        # â”€â”€ Settings â”€â”€
+        # â"€â"€ Settings â"€â"€
         {"id": "h_set", "type": "header", "data": {"text": "Settings", "col": 12}},
         {"id": "card_set", "type": "card", "data": {"card_name": "Settings", "col": 4}},
     ]

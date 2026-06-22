@@ -6,17 +6,17 @@
  "header_icon": "hexagon",
  "idx": 0,
  "items": [
-  {
-   "child": 0,
-   "collapsible": 1,
-   "icon": "chart-bar",
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Dashboard",
-   "link_type": "Page",
-   "show_arrow": 1,
-   "type": "Section Break"
-  },
+   {
+    "child": 0,
+    "collapsible": 1,
+    "icon": "chart-bar",
+    "indent": 0,
+    "keep_closed": 0,
+    "label": "Dashboard",
+    "link_type": "Page",
+    "show_arrow": 0,
+    "type": "Section Break"
+   },
   {
    "child": 1,
    "collapsible": 0,
@@ -29,17 +29,17 @@
    "show_arrow": 0,
    "type": "Link"
   },
-  {
-   "child": 0,
-   "collapsible": 1,
-   "icon": "clock",
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "Time & Attendance",
-   "link_type": "DocType",
-   "show_arrow": 1,
-   "type": "Section Break"
-  },
+   {
+    "child": 0,
+    "collapsible": 1,
+    "icon": "clock",
+    "indent": 0,
+    "keep_closed": 0,
+    "label": "Time & Attendance",
+    "link_type": "DocType",
+    "show_arrow": 0,
+    "type": "Section Break"
+   },
   {
    "child": 1,
    "collapsible": 1,
@@ -120,7 +120,7 @@
    "keep_closed": 0,
     "label": "Employee",
     "link_type": "DocType",
-    "show_arrow": 1,
+    "show_arrow": 0,
     "type": "Section Break"
   },
   {
@@ -191,7 +191,7 @@
    "keep_closed": 0,
     "label": "Recruitment",
     "link_type": "DocType",
-    "show_arrow": 1,
+    "show_arrow": 0,
     "type": "Section Break"
   },
   {
@@ -238,7 +238,7 @@
    "keep_closed": 0,
     "label": "Leaves",
     "link_type": "DocType",
-    "show_arrow": 1,
+    "show_arrow": 0,
     "type": "Section Break"
   },
   {
@@ -285,7 +285,7 @@
    "keep_closed": 0,
     "label": "Payroll",
     "link_type": "DocType",
-    "show_arrow": 1,
+    "show_arrow": 0,
     "type": "Section Break"
   },
   {
@@ -332,7 +332,7 @@
    "keep_closed": 0,
     "label": "Expense & Travel",
     "link_type": "DocType",
-    "show_arrow": 1,
+    "show_arrow": 0,
     "type": "Section Break"
   },
   {
@@ -367,7 +367,7 @@
    "keep_closed": 0,
     "label": "Performance",
     "link_type": "DocType",
-    "show_arrow": 1,
+    "show_arrow": 0,
     "type": "Section Break"
   },
   {
@@ -402,7 +402,7 @@
    "keep_closed": 0,
     "label": "Training",
     "link_type": "DocType",
-    "show_arrow": 1,
+    "show_arrow": 0,
     "type": "Section Break"
   },
   {
@@ -437,7 +437,7 @@
    "keep_closed": 0,
     "label": "Settings",
     "link_type": "DocType",
-    "show_arrow": 1,
+    "show_arrow": 0,
     "type": "Section Break"
   },
   {
