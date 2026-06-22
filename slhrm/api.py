@@ -21,9 +21,19 @@ def serve_pwa():
     with open(pwa_path, "r") as f:
         content = f.read()
 
-    rendered = content.replace("{{ boot }}", "{}")
-    rendered = rendered.replace("{{ csrf_token }}", "")
-    rendered = rendered.replace("{{ site_name }}", getattr(frappe.local, "site", ""))
+    csrf_token = ""
+    try:
+        csrf_token = frappe.sessions.get_csrf_token()
+    except Exception:
+        pass
+
+    site_name = getattr(frappe.local, "site", "")
+
+    boot = {"sitename": site_name}
+
+    rendered = content.replace("{{ boot }}", json.dumps(boot))
+    rendered = rendered.replace("{{ csrf_token }}", csrf_token)
+    rendered = rendered.replace("{{ site_name }}", site_name)
 
     frappe.local.response.filename = "index.html"
     frappe.local.response.filecontent = rendered.encode("utf-8")
