@@ -41,13 +41,13 @@ def after_migrate():
 
 
 def _sync_pwa_assets():
-    """Copy PWA build output to assets/slhrm/frontend/ so nginx can serve it.
+    """Copy PWA build output to sites/slhrm_pwa/ so nginx can serve it.
 
     Architecture:
-    - Frontend nginx serves /assets from sites/ root, but sites/assets is a symlink to bench/assets/
-    - So /assets/slhrm/frontend/assets/X.js maps to bench/assets/slhrm/frontend/assets/X.js
-    - serve_pwa() reads apps/slhrm/public/frontend/index.html (absolute paths /slhrm/assets/...)
-    - For /slhrm/* requests, nginx proxies to serve_pwa which serves HTML and assets
+    - sites/ is a shared Docker volume between frontend and backend containers
+    - sites/assets is a symlink to bench/assets/ (different volume, NOT shared properly)
+    - So we write to sites/slhrm_pwa/ which IS on the shared volume
+    - Frontend nginx serves /slhrm/assets/ from sites/slhrm_pwa/assets/
     """
     import shutil
     import pathlib
@@ -60,13 +60,13 @@ def _sync_pwa_assets():
         print(f"PWA sync: source not found at {src}")
         return
 
-    # Copy to bench/assets/ (sites/assets is a symlink there)
-    assets_dest = bench_root / "assets" / "slhrm" / "frontend"
-    if assets_dest.exists():
-        shutil.rmtree(assets_dest)
+    # Write to sites/slhrm_pwa/ (on shared Docker volume)
+    sites_pwa = bench_root / "sites" / "slhrm_pwa"
+    if sites_pwa.exists():
+        shutil.rmtree(sites_pwa)
 
-    shutil.copytree(src, assets_dest)
-    print(f"PWA sync: copied {src} -> {assets_dest}")
+    shutil.copytree(src, sites_pwa)
+    print(f"PWA sync: copied {src} -> {sites_pwa}")
 
 
 # â”€â”€â”€ Module Path Fix â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
