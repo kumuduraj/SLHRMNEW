@@ -59,8 +59,11 @@ def _sync_pwa_assets():
         return
 
     # Use sites/ root (not site-specific) so frontend nginx can serve
-    bench_path = pathlib.Path(frappe.get_bench_path())
-    sites_assets = bench_path / "sites" / "assets" / "slhrm" / "frontend"
+    # get_site_path() returns e.g. /home/frappe/frappe-bench/sites/desk01.evonet.lk
+    # We need /home/frappe/frappe-bench/sites/ (two levels up)
+    site_path = pathlib.Path(frappe.get_site_path())
+    sites_root = site_path.parent
+    sites_assets = sites_root / "assets" / "slhrm" / "frontend"
     if sites_assets.exists():
         shutil.rmtree(sites_assets)
 
