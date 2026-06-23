@@ -52,9 +52,9 @@ def _sync_pwa_assets():
     import pathlib
 
     # This file is at apps/slhrm/slhrm/install.py
-    # bench root is 3 levels up: apps/slhrm/slhrm/install.py -> bench root
+    # bench root is 4 levels up: apps/slhrm/slhrm/install.py -> bench root
     this_file = pathlib.Path(__file__).resolve()
-    bench_root = this_file.parent.parent.parent
+    bench_root = this_file.parent.parent.parent.parent
     src = bench_root / "apps" / "slhrm" / "public" / "frontend"
 
     if not src.exists() or not (src / "index.html").exists():
