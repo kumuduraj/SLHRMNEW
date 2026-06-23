@@ -94,6 +94,27 @@
             "fieldname": "pwa_logo",
             "fieldtype": "Attach Image",
             "label": "PWA Logo"
+        },
+        {
+            "fieldname": "section_break_payroll",
+            "fieldtype": "Section Break",
+            "label": "Payroll"
+        },
+        {
+            "fieldname": "default_ot_rate",
+            "fieldtype": "Currency",
+            "label": "Default OT Rate (per hour)",
+            "description": "Default overtime rate per hour. Can be overridden per employee in the Payroll Worksheet."
+        },
+        {
+            "fieldname": "column_break_pay1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "auto_create_payroll_on_submit",
+            "fieldtype": "Check",
+            "label": "Auto Create Payroll Entry on Worksheet Submit",
+            "default": "0"
         }
     ],
     "permissions": [

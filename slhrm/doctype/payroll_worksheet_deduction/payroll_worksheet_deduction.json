@@ -1,0 +1,60 @@
+{
+    "name": "Payroll Worksheet Deduction",
+    "module": "SLHRM",
+    "doctype": "DocType",
+    "document_type": "Document",
+    "issingle": 0,
+    "istable": 1,
+    "is_submittable": 0,
+    "track_changes": 0,
+    "editable_grid": 1,
+    "fields": [
+        {
+            "fieldname": "employee",
+            "fieldtype": "Link",
+            "label": "Employee",
+            "options": "Employee",
+            "reqd": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "employee_name",
+            "fieldtype": "Data",
+            "label": "Employee Name",
+            "read_only": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "salary_component",
+            "fieldtype": "Link",
+            "label": "Component",
+            "options": "Salary Component",
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "column_break_1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "amount",
+            "fieldtype": "Currency",
+            "label": "Amount",
+            "reqd": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "source_type",
+            "fieldtype": "Select",
+            "label": "Source",
+            "options": "Additional Salary\nLoan Repayment",
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "reference_name",
+            "fieldtype": "Dynamic Link",
+            "label": "Reference",
+            "options": "source_type"
+        }
+    ],
+    "permissions": []
+}

@@ -1,0 +1,232 @@
+{
+    "name": "Payroll Worksheet",
+    "module": "SLHRM",
+    "doctype": "DocType",
+    "document_type": "Document",
+    "issingle": 0,
+    "istable": 0,
+    "is_submittable": 1,
+    "track_changes": 1,
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "title_field": "title",
+    "search_fields": "branch,payroll_month,payroll_year",
+    "fields": [
+        {
+            "fieldname": "title",
+            "fieldtype": "Data",
+            "label": "Title",
+            "hidden": 1
+        },
+        {
+            "fieldname": "company",
+            "fieldtype": "Link",
+            "label": "Company",
+            "options": "Company",
+            "reqd": 1
+        },
+        {
+            "fieldname": "branch",
+            "fieldtype": "Link",
+            "label": "Branch",
+            "options": "Branch",
+            "reqd": 1,
+            "in_list_view": 1,
+            "search_index": 1
+        },
+        {
+            "fieldname": "column_break_1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "payroll_year",
+            "fieldtype": "Int",
+            "label": "Year",
+            "reqd": 1,
+            "in_list_view": 1,
+            "search_index": 1
+        },
+        {
+            "fieldname": "payroll_month",
+            "fieldtype": "Select",
+            "label": "Month",
+            "options": "01\n02\n03\n04\n05\n06\n07\n08\n09\n10\n11\n12",
+            "reqd": 1,
+            "in_list_view": 1,
+            "search_index": 1
+        },
+        {
+            "fieldname": "month_name",
+            "fieldtype": "Data",
+            "label": "Month Name",
+            "read_only": 1,
+            "hidden": 1
+        },
+        {
+            "fieldname": "section_break_dates",
+            "fieldtype": "Section Break",
+            "label": "Period"
+        },
+        {
+            "fieldname": "start_date",
+            "fieldtype": "Date",
+            "label": "Start Date",
+            "read_only": 1
+        },
+        {
+            "fieldname": "end_date",
+            "fieldtype": "Date",
+            "label": "End Date",
+            "read_only": 1
+        },
+        {
+            "fieldname": "column_break_d1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "posting_date",
+            "fieldtype": "Date",
+            "label": "Posting Date",
+            "reqd": 1
+        },
+        {
+            "fieldname": "currency",
+            "fieldtype": "Link",
+            "label": "Currency",
+            "options": "Currency",
+            "read_only": 1
+        },
+        {
+            "fieldname": "section_break_emp",
+            "fieldtype": "Section Break",
+            "label": "Employee Details"
+        },
+        {
+            "fieldname": "employees",
+            "fieldtype": "Table",
+            "label": "Employees",
+            "options": "Payroll Worksheet Employee"
+        },
+        {
+            "fieldname": "section_break_earn",
+            "fieldtype": "Section Break",
+            "label": "Additional Earnings",
+            "collapsible": 1
+        },
+        {
+            "fieldname": "earnings",
+            "fieldtype": "Table",
+            "label": "Earnings",
+            "options": "Payroll Worksheet Earning"
+        },
+        {
+            "fieldname": "section_break_ded",
+            "fieldtype": "Section Break",
+            "label": "Additional Deductions",
+            "collapsible": 1
+        },
+        {
+            "fieldname": "deductions",
+            "fieldtype": "Table",
+            "label": "Deductions",
+            "options": "Payroll Worksheet Deduction"
+        },
+        {
+            "fieldname": "section_break_summary",
+            "fieldtype": "Section Break",
+            "label": "Summary"
+        },
+        {
+            "fieldname": "total_employees",
+            "fieldtype": "Int",
+            "label": "Total Employees",
+            "read_only": 1
+        },
+        {
+            "fieldname": "total_ot_amount",
+            "fieldtype": "Currency",
+            "label": "Total OT",
+            "read_only": 1
+        },
+        {
+            "fieldname": "column_break_s1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "total_gross_pay",
+            "fieldtype": "Currency",
+            "label": "Total Gross",
+            "read_only": 1
+        },
+        {
+            "fieldname": "total_deductions",
+            "fieldtype": "Currency",
+            "label": "Total Deductions",
+            "read_only": 1
+        },
+        {
+            "fieldname": "column_break_s2",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "total_net_pay",
+            "fieldtype": "Currency",
+            "label": "Total Net Pay",
+            "read_only": 1
+        },
+        {
+            "fieldname": "section_break_ref",
+            "fieldtype": "Section Break",
+            "label": "References",
+            "collapsible": 1
+        },
+        {
+            "fieldname": "payroll_entry",
+            "fieldtype": "Link",
+            "label": "Payroll Entry",
+            "options": "Payroll Entry",
+            "read_only": 1
+        },
+        {
+            "fieldname": "auto_create_payroll",
+            "fieldtype": "Check",
+            "label": "Auto Create Payroll on Submit",
+            "default": "0"
+        },
+        {
+            "fieldname": "amended_from",
+            "fieldtype": "Link",
+            "label": "Amended From",
+            "options": "Payroll Worksheet",
+            "read_only": 1,
+            "no_copy": 1
+        }
+    ],
+    "permissions": [
+        {
+            "role": "System Manager",
+            "read": 1,
+            "write": 1,
+            "create": 1,
+            "submit": 1,
+            "cancel": 1,
+            "amend": 1,
+            "delete": 1
+        },
+        {
+            "role": "HR Manager",
+            "read": 1,
+            "write": 1,
+            "create": 1,
+            "submit": 1,
+            "cancel": 1,
+            "amend": 1
+        },
+        {
+            "role": "HR User",
+            "read": 1,
+            "write": 1,
+            "create": 1
+        }
+    ]
+}

@@ -569,3 +569,328 @@ def get_team_checkins(employee, date):
         })
 
     return result
+
+
+# ═══════════════════════════════════════════════════════════════
+# PAYROLL WORKSHEET DATA LOADER
+# ═══════════════════════════════════════════════════════════════
+
+@frappe.whitelist()
+def load_payroll_data(branch, company, payroll_month, payroll_year):
+    """
+    Main data-loading endpoint for the Payroll Worksheet form.
+    Same pattern as load_attendance_data() for the Attendance Marker.
+
+    Returns:
+        employees: list of dicts with salary, attendance, OT data per employee
+        earnings:  list of Additional Salary (Earning) records for the period
+        deductions: list of Additional Salary (Deduction) + Loan records
+        summary: totals dict
+        warnings: list of warning strings
+    """
+    from frappe.utils import getdate, get_first_day, get_last_day, flt, cint
+
+    if not branch or not company or not payroll_month or not payroll_year:
+        frappe.throw(_("Branch, Company, Month and Year are required."))
+
+    year = cint(payroll_year)
+    month = cint(payroll_month)
+    start_date = get_first_day(f"{year}-{month:02d}-01")
+    end_date = get_last_day(f"{year}-{month:02d}-01")
+
+    # ── 1. Active employees in branch ──
+    employees_raw = frappe.db.get_all(
+        "Employee",
+        filters={
+            "company": company,
+            "branch": branch,
+            "status": "Active",
+        },
+        fields=["name", "employee_name", "designation"],
+        order_by="employee_name asc",
+    )
+
+    if not employees_raw:
+        return {
+            "employees": [],
+            "earnings": [],
+            "deductions": [],
+            "summary": {},
+            "warnings": ["No active employees found in this branch."],
+        }
+
+    emp_names = [e.name for e in employees_raw]
+    warnings = []
+
+    # ── 2. Salary Structure Assignments (batch — latest per employee) ──
+    ssa_map = {}
+    ssas = frappe.db.sql(
+        """
+        SELECT ssa.employee, ssa.base, ssa.salary_structure
+        FROM `tabSalary Structure Assignment` ssa
+        INNER JOIN (
+            SELECT employee, MAX(from_date) as max_date
+            FROM `tabSalary Structure Assignment`
+            WHERE employee IN %(employees)s
+                AND from_date <= %(end_date)s
+                AND docstatus = 1
+            GROUP BY employee
+        ) latest ON ssa.employee = latest.employee AND ssa.from_date = latest.max_date
+        WHERE ssa.docstatus = 1
+        """,
+        {"employees": emp_names, "end_date": end_date},
+        as_dict=True,
+    )
+    for row in ssas:
+        ssa_map[row.employee] = {
+            "base": flt(row.base),
+            "salary_structure": row.salary_structure,
+        }
+
+    no_ssa = [e.employee_name for e in employees_raw if e.name not in ssa_map]
+    if no_ssa:
+        warnings.append(
+            f"{len(no_ssa)} employee(s) have no Salary Structure Assignment: "
+            + ", ".join(no_ssa[:5])
+            + ("..." if len(no_ssa) > 5 else "")
+        )
+
+    # ── 3. Attendance summary (batch) ──
+    att_map = {}
+    att_records = frappe.db.sql(
+        """
+        SELECT employee, status, COUNT(*) as cnt
+        FROM `tabAttendance`
+        WHERE employee IN %(employees)s
+            AND attendance_date BETWEEN %(start)s AND %(end)s
+            AND docstatus = 1
+        GROUP BY employee, status
+        """,
+        {"employees": emp_names, "start": start_date, "end": end_date},
+        as_dict=True,
+    )
+    for row in att_records:
+        if row.employee not in att_map:
+            att_map[row.employee] = {"present": 0, "leave": 0}
+        if row.status == "Present":
+            att_map[row.employee]["present"] += row.cnt
+        elif row.status == "Half Day":
+            att_map[row.employee]["present"] += row.cnt * 0.5
+            att_map[row.employee]["leave"] += row.cnt * 0.5
+        elif row.status == "On Leave":
+            att_map[row.employee]["leave"] += row.cnt
+        elif row.status == "Work From Home":
+            att_map[row.employee]["present"] += row.cnt
+
+    # ── 4. OT hours from Attendance Marker Detail (batch, submitted only) ──
+    ot_map = {}
+    ot_records = frappe.db.sql(
+        """
+        SELECT amd.employee, SUM(amd.overtime_hours) as total_ot
+        FROM `tabAttendance Marker Detail` amd
+        INNER JOIN `tabAttendance Marker` am ON am.name = amd.parent
+        WHERE amd.employee IN %(employees)s
+            AND am.date BETWEEN %(start)s AND %(end)s
+            AND am.docstatus = 1
+        GROUP BY amd.employee
+        """,
+        {"employees": emp_names, "start": start_date, "end": end_date},
+        as_dict=True,
+    )
+    for row in ot_records:
+        ot_map[row.employee] = flt(row.total_ot)
+
+    # ── 5. Additional Salary records (batch) ──
+    addl_records = frappe.db.sql(
+        """
+        SELECT
+            ads.name,
+            ads.employee,
+            ads.employee_name,
+            ads.salary_component,
+            ads.amount,
+            ads.type,
+            sc.type as component_type
+        FROM `tabAdditional Salary` ads
+        LEFT JOIN `tabSalary Component` sc ON sc.name = ads.salary_component
+        WHERE ads.employee IN %(employees)s
+            AND ads.docstatus = 1
+            AND (
+                (ads.payroll_date BETWEEN %(start)s AND %(end)s)
+                OR (
+                    ads.from_date IS NOT NULL
+                    AND ads.to_date IS NOT NULL
+                    AND ads.from_date <= %(end)s
+                    AND ads.to_date >= %(start)s
+                )
+            )
+        """,
+        {"employees": emp_names, "start": start_date, "end": end_date},
+        as_dict=True,
+    )
+
+    addl_earn_map = {}
+    addl_ded_map = {}
+    earnings_list = []
+    deductions_list = []
+
+    for row in addl_records:
+        is_earning = (row.type == "Earning") if row.type else (row.component_type == "Earning")
+        entry = {
+            "employee": row.employee,
+            "employee_name": row.employee_name,
+            "salary_component": row.salary_component,
+            "amount": flt(row.amount),
+            "additional_salary": row.name,
+        }
+
+        if is_earning:
+            earnings_list.append(entry)
+            addl_earn_map[row.employee] = flt(addl_earn_map.get(row.employee, 0)) + flt(row.amount)
+        else:
+            entry["source_type"] = "Additional Salary"
+            entry["reference_name"] = row.name
+            deductions_list.append(entry)
+            addl_ded_map[row.employee] = flt(addl_ded_map.get(row.employee, 0)) + flt(row.amount)
+
+    # ── 6. Loan Repayments (batch, graceful fallback) ──
+    loan_map = {}
+    try:
+        if frappe.db.table_exists("tabLoan"):
+            loan_records = frappe.db.sql(
+                """
+                SELECT
+                    l.applicant as employee,
+                    SUM(rs.total_payment) as total_due
+                FROM `tabRepayment Schedule` rs
+                INNER JOIN `tabLoan` l ON l.name = rs.parent
+                WHERE l.applicant_type = 'Employee'
+                    AND l.applicant IN %(employees)s
+                    AND l.docstatus = 1
+                    AND l.status IN ('Disbursed', 'Partially Paid')
+                    AND rs.payment_date BETWEEN %(start)s AND %(end)s
+                    AND rs.is_accrued = 0
+                GROUP BY l.applicant
+                """,
+                {"employees": emp_names, "start": start_date, "end": end_date},
+                as_dict=True,
+            )
+            for row in loan_records:
+                loan_map[row.employee] = flt(row.total_due)
+                deductions_list.append({
+                    "employee": row.employee,
+                    "employee_name": "",
+                    "salary_component": "",
+                    "amount": flt(row.total_due),
+                    "source_type": "Loan Repayment",
+                    "reference_name": "",
+                })
+    except Exception:
+        pass
+
+    # ── 7. Working days ──
+    total_days = (getdate(end_date) - getdate(start_date)).days + 1
+    holiday_list = frappe.db.get_value("Company", company, "default_holiday_list")
+    if holiday_list:
+        holidays = frappe.db.count(
+            "Holiday",
+            filters={
+                "parent": holiday_list,
+                "holiday_date": ["between", [start_date, end_date]],
+            },
+        )
+        total_working_days = total_days - holidays
+    else:
+        import datetime as _dt
+        sd = getdate(start_date)
+        sundays = sum(
+            1 for d in range(total_days)
+            if (sd + _dt.timedelta(days=d)).weekday() == 6
+        )
+        total_working_days = total_days - sundays
+
+    # ── 8. Default OT rate ──
+    default_ot_rate = flt(
+        frappe.db.get_single_value("SLHRM Settings", "default_ot_rate") or 0
+    )
+
+    # ── 9. Build employee result list ──
+    employees_result = []
+    sum_ot = 0
+    sum_gross = 0
+    sum_ded = 0
+    sum_net = 0
+
+    for emp in employees_raw:
+        ssa = ssa_map.get(emp.name, {})
+        att = att_map.get(emp.name, {"present": 0, "leave": 0})
+        ot_hours = flt(ot_map.get(emp.name, 0))
+        addl_earn = flt(addl_earn_map.get(emp.name, 0))
+        addl_ded = flt(addl_ded_map.get(emp.name, 0))
+        loan_amt = flt(loan_map.get(emp.name, 0))
+        base = flt(ssa.get("base", 0))
+
+        present = flt(att["present"])
+        leave = flt(att["leave"])
+        absent = max(0, flt(total_working_days) - present - leave)
+
+        ot_rate = default_ot_rate
+        ot_amount = flt(ot_hours) * flt(ot_rate)
+
+        total_earning = base + ot_amount + addl_earn
+        total_deduction = addl_ded + loan_amt
+        net_pay = total_earning - total_deduction
+
+        sum_ot += ot_amount
+        sum_gross += total_earning
+        sum_ded += total_deduction
+        sum_net += net_pay
+
+        employees_result.append({
+            "employee": emp.name,
+            "employee_name": emp.employee_name,
+            "designation": emp.designation or "",
+            "salary_structure": ssa.get("salary_structure", ""),
+            "base": base,
+            "total_working_days": total_working_days,
+            "present_days": present,
+            "absent_days": absent,
+            "leave_days": leave,
+            "ot_hours": ot_hours,
+            "ot_rate": ot_rate,
+            "ot_amount": ot_amount,
+            "additional_earning_total": addl_earn,
+            "additional_deduction_total": addl_ded,
+            "loan_deduction": loan_amt,
+            "total_earning": total_earning,
+            "total_deduction": total_deduction,
+            "net_pay": net_pay,
+        })
+
+    emp_name_map = {e.name: e.employee_name for e in employees_raw}
+    for d in deductions_list:
+        if not d.get("employee_name"):
+            d["employee_name"] = emp_name_map.get(d["employee"], "")
+
+    no_att = [e.employee_name for e in employees_raw if e.name not in att_map]
+    if no_att:
+        warnings.append(
+            f"{len(no_att)} employee(s) have no attendance records for this period: "
+            + ", ".join(no_att[:5])
+            + ("..." if len(no_att) > 5 else "")
+        )
+
+    return {
+        "employees": employees_result,
+        "earnings": earnings_list,
+        "deductions": deductions_list,
+        "summary": {
+            "total_employees": len(employees_result),
+            "total_ot_amount": sum_ot,
+            "total_gross_pay": sum_gross,
+            "total_deductions": sum_ded,
+            "total_net_pay": sum_net,
+            "total_working_days": total_working_days,
+        },
+        "warnings": warnings,
+    }

@@ -1,0 +1,178 @@
+{
+    "name": "Payroll Worksheet Employee",
+    "module": "SLHRM",
+    "doctype": "DocType",
+    "document_type": "Document",
+    "issingle": 0,
+    "istable": 1,
+    "is_submittable": 0,
+    "track_changes": 0,
+    "editable_grid": 1,
+    "fields": [
+        {
+            "fieldname": "employee",
+            "fieldtype": "Link",
+            "label": "Employee",
+            "options": "Employee",
+            "reqd": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "employee_name",
+            "fieldtype": "Data",
+            "label": "Employee Name",
+            "read_only": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "designation",
+            "fieldtype": "Data",
+            "label": "Designation",
+            "read_only": 1
+        },
+        {
+            "fieldname": "column_break_e1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "salary_structure",
+            "fieldtype": "Link",
+            "label": "Salary Structure",
+            "options": "Salary Structure",
+            "read_only": 1
+        },
+        {
+            "fieldname": "base",
+            "fieldtype": "Currency",
+            "label": "Base Salary",
+            "read_only": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "section_break_att",
+            "fieldtype": "Section Break",
+            "label": "Attendance"
+        },
+        {
+            "fieldname": "total_working_days",
+            "fieldtype": "Float",
+            "label": "Working Days",
+            "read_only": 1
+        },
+        {
+            "fieldname": "present_days",
+            "fieldtype": "Float",
+            "label": "Present Days",
+            "read_only": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "column_break_a1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "absent_days",
+            "fieldtype": "Float",
+            "label": "Absent Days",
+            "read_only": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "leave_days",
+            "fieldtype": "Float",
+            "label": "Leave Days",
+            "read_only": 1
+        },
+        {
+            "fieldname": "section_break_ot",
+            "fieldtype": "Section Break",
+            "label": "Overtime"
+        },
+        {
+            "fieldname": "ot_hours",
+            "fieldtype": "Float",
+            "label": "OT Hours",
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "ot_rate",
+            "fieldtype": "Currency",
+            "label": "OT Rate (per hr)"
+        },
+        {
+            "fieldname": "column_break_o1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "ot_amount",
+            "fieldtype": "Currency",
+            "label": "OT Amount",
+            "read_only": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "section_break_pay",
+            "fieldtype": "Section Break",
+            "label": "Pay Summary"
+        },
+        {
+            "fieldname": "total_earning",
+            "fieldtype": "Currency",
+            "label": "Total Earnings",
+            "read_only": 1
+        },
+        {
+            "fieldname": "total_deduction",
+            "fieldtype": "Currency",
+            "label": "Total Deductions",
+            "read_only": 1
+        },
+        {
+            "fieldname": "column_break_p1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "net_pay",
+            "fieldtype": "Currency",
+            "label": "Net Pay",
+            "read_only": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "section_break_ref",
+            "fieldtype": "Section Break",
+            "label": "Details",
+            "collapsible": 1
+        },
+        {
+            "fieldname": "additional_earning_total",
+            "fieldtype": "Currency",
+            "label": "Add. Earnings",
+            "read_only": 1
+        },
+        {
+            "fieldname": "additional_deduction_total",
+            "fieldtype": "Currency",
+            "label": "Add. Deductions",
+            "read_only": 1
+        },
+        {
+            "fieldname": "column_break_r1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "loan_deduction",
+            "fieldtype": "Currency",
+            "label": "Loan Repayment",
+            "read_only": 1
+        },
+        {
+            "fieldname": "salary_slip",
+            "fieldtype": "Link",
+            "label": "Salary Slip",
+            "options": "Salary Slip",
+            "read_only": 1
+        }
+    ],
+    "permissions": []
+}
