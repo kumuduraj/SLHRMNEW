@@ -288,9 +288,12 @@ def _build_sidebar_items():
 
     # â”€â”€ Payroll â”€â”€
     _section("Payroll", "banknote")
+    _link("Payroll Worksheet", "Payroll Worksheet", "file-text")
     _link("Salary Slip", "Salary Slip", "file-text")
     _link("Payroll Entry", "Payroll Entry", "square-check")
     _link("Salary Structure", "Salary Structure", "settings")
+    _link("Salary Structure Assignment", "Salary Structure Assignment", "settings")
+    _link("Additional Salary", "Additional Salary", "file-text")
 
     # â”€â”€ Expense & Travel â”€â”€
     _section("Expense & Travel", "receipt")
@@ -467,9 +470,12 @@ def _get_workspace_links():
 
         # Payroll
         {"type": "Card Break", "label": "Payroll", "icon": "banknote"},
-        {"type": "Link", "label": "Salary Slip", "link_to": "Salary Slip", "link_type": "DocType", "onboard": 1},
+        {"type": "Link", "label": "Payroll Worksheet", "link_to": "Payroll Worksheet", "link_type": "DocType", "onboard": 1},
+        {"type": "Link", "label": "Salary Slip", "link_to": "Salary Slip", "link_type": "DocType", "onboard": 0},
         {"type": "Link", "label": "Payroll Entry", "link_to": "Payroll Entry", "link_type": "DocType", "onboard": 0},
         {"type": "Link", "label": "Salary Structure", "link_to": "Salary Structure", "link_type": "DocType", "onboard": 0},
+        {"type": "Link", "label": "Salary Structure Assignment", "link_to": "Salary Structure Assignment", "link_type": "DocType", "onboard": 0},
+        {"type": "Link", "label": "Additional Salary", "link_to": "Additional Salary", "link_type": "DocType", "onboard": 0},
 
         # Expense & Travel
         {"type": "Card Break", "label": "Expense & Travel", "icon": "receipt"},
