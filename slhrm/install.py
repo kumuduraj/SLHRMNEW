@@ -50,26 +50,18 @@ def _sync_pwa_assets():
     """
     import shutil
     import pathlib
-    import os
 
-    apps_path = pathlib.Path(frappe.get_app_path("slhrm")).parent
-    src = apps_path / "public" / "frontend"
+    # This file is at apps/slhrm/slhrm/install.py
+    # bench root is 3 levels up: apps/slhrm/slhrm/install.py -> bench root
+    this_file = pathlib.Path(__file__).resolve()
+    bench_root = this_file.parent.parent.parent
+    src = bench_root / "apps" / "slhrm" / "public" / "frontend"
 
     if not src.exists() or not (src / "index.html").exists():
         print(f"PWA sync: source not found at {src}")
         return
 
-    # get_site_path() may return relative, so use get_app_path to derive bench root
-    # get_app_path returns e.g. /home/frappe/frappe-bench/apps/slhrm
-    # bench root = 2 levels up from apps/<app>
-    app_dir = pathlib.Path(frappe.get_app_path("slhrm"))
-    bench_root = app_dir.parent.parent
     sites_assets = bench_root / "sites" / "assets" / "slhrm" / "frontend"
-    if sites_assets.exists():
-        shutil.rmtree(sites_assets)
-
-    shutil.copytree(src, sites_assets)
-    print(f"PWA sync: copied {src} -> {sites_assets}")
     if sites_assets.exists():
         shutil.rmtree(sites_assets)
 
