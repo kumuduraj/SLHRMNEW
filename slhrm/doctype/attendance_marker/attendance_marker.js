@@ -18,7 +18,7 @@ frappe.ui.form.on('Attendance Marker', {
         auto_load_data(frm);
     },
 
-    department(frm) {
+    branch(frm) {
         auto_load_data(frm);
     }
 });
@@ -73,10 +73,10 @@ frappe.ui.form.on('Attendance Marker Detail', {
     }
 });
 
-// ── Auto-load employees + punches when date & department are set ──
+// ── Auto-load employees + punches when date & branch are set ──
 
 function auto_load_data(frm) {
-    if (!frm.doc.date || !frm.doc.department) return;
+    if (!frm.doc.date || !frm.doc.branch) return;
     if (frm._loading) return;
     frm._loading = true;
 
@@ -84,7 +84,7 @@ function auto_load_data(frm) {
         method: 'slhrm.api.load_attendance_data',
         args: {
             date: frm.doc.date,
-            department: frm.doc.department,
+            branch: frm.doc.branch,
             device_id: frm.doc.device_id || ''
         },
         callback: function(r) {

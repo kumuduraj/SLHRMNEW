@@ -29,16 +29,16 @@ class AttendanceMarker(Document):
     # ── Validation ──────────────────────────────────────────────
 
     def _check_no_duplicate_marker(self):
-        """Prevent two submitted markers for the same department + company + date.
+        """Prevent two submitted markers for the same branch + company + date.
         
         Allows multiple markers if they cover different employee subsets (e.g., 
-        late arrivals). The uniqueness constraint is on department + company + date.
+        late arrivals). The uniqueness constraint is on branch + company + date.
         """
         existing = frappe.db.exists(
             "Attendance Marker",
             {
                 "date": self.date,
-                "department": self.department,
+                "branch": self.branch,
                 "company": self.company,
                 "docstatus": 1,
                 "name": ["!=", self.name],
@@ -49,7 +49,7 @@ class AttendanceMarker(Document):
                 _(
                     "A submitted Attendance Marker already exists for "
                     "{0} on {1} (Company: {2}). Cancel that one first or use a different company."
-                ).format(self.department, self.date, self.company)
+                ).format(self.branch, self.date, self.company)
             )
 
     def _validate_details_not_empty(self):

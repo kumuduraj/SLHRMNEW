@@ -29,6 +29,14 @@
             "in_list_view": 1
         },
         {
+            "fieldname": "employee_number",
+            "fieldtype": "Data",
+            "label": "Employee Number",
+            "read_only": 1,
+            "in_list_view": 1,
+            "description": "Employee number from biometric device (matches Employee Number on Employee master)"
+        },
+        {
             "fieldname": "column_break_1",
             "fieldtype": "Column Break"
         },

@@ -144,6 +144,7 @@ def device_punch(device_id, employee_id, punch_time, punch_type="IN"):
 
     employee_id can be either:
     - ERPNext Employee ID (field: employee)
+    - Employee Number (field: employee_number)
     - Biometric Device ID (field: biometric_device_id custom field)
     """
     _validate_device_api_key()
@@ -151,18 +152,25 @@ def device_punch(device_id, employee_id, punch_time, punch_type="IN"):
     if not device_id or not employee_id or not punch_time:
         frappe.throw(_("device_id, employee_id, and punch_time are required."))
 
-    # Try lookup by ERPNext Employee ID first, then fallback to biometric_device_id
+    # Try lookup by ERPNext Employee ID first, then employee_number, then biometric_device_id
     employee = frappe.db.get_value(
         "Employee",
         {"employee": employee_id, "status": "Active"},
-        ["name", "employee_name"],
+        ["name", "employee_name", "employee_number"],
         as_dict=True,
     )
     if not employee:
         employee = frappe.db.get_value(
             "Employee",
+            {"employee_number": employee_id, "status": "Active"},
+            ["name", "employee_name", "employee_number"],
+            as_dict=True,
+        )
+    if not employee:
+        employee = frappe.db.get_value(
+            "Employee",
             {"biometric_device_id": employee_id, "status": "Active"},
-            ["name", "employee_name"],
+            ["name", "employee_name", "employee_number"],
             as_dict=True,
         )
     if not employee:
@@ -177,6 +185,7 @@ def device_punch(device_id, employee_id, punch_time, punch_type="IN"):
             "doctype": "Biometric Punch Log",
             "employee": employee.name,
             "employee_name": employee.employee_name,
+            "employee_number": employee.employee_number or employee_id,
             "source_device": device_id,
             "punch_time": punch_time,
             "punch_type": punch_type,
@@ -221,18 +230,25 @@ def device_punch_bulk(device_id, punches, strict=False):
 
     for p in punches:
         try:
-            # Try lookup by ERPNext Employee ID first, then fallback to biometric_device_id
+            # Try lookup by ERPNext Employee ID first, then employee_number, then biometric_device_id
             employee = frappe.db.get_value(
                 "Employee",
                 {"employee": p.get("employee_id"), "status": "Active"},
-                ["name", "employee_name"],
+                ["name", "employee_name", "employee_number"],
                 as_dict=True,
             )
             if not employee:
                 employee = frappe.db.get_value(
                     "Employee",
+                    {"employee_number": p.get("employee_id"), "status": "Active"},
+                    ["name", "employee_name", "employee_number"],
+                    as_dict=True,
+                )
+            if not employee:
+                employee = frappe.db.get_value(
+                    "Employee",
                     {"biometric_device_id": p.get("employee_id"), "status": "Active"},
-                    ["name", "employee_name"],
+                    ["name", "employee_name", "employee_number"],
                     as_dict=True,
                 )
             if not employee:
@@ -252,6 +268,7 @@ def device_punch_bulk(device_id, punches, strict=False):
                     "doctype": "Biometric Punch Log",
                     "employee": employee.name,
                     "employee_name": employee.employee_name,
+                    "employee_number": employee.employee_number or p.get("employee_id"),
                     "source_device": device_id,
                     "punch_time": p.get("punch_time"),
                     "punch_type": p.get("punch_type", "IN"),
@@ -301,17 +318,17 @@ def get_shift_details(shift_name):
 
 
 @frappe.whitelist()
-def load_attendance_data(date, department, device_id=""):
+def load_attendance_data(date, branch, device_id=""):
     """
     Main data-loading endpoint for the Attendance Marker form.
 
     Returns:
-        employees: list of active employees in the department (excluding already-marked)
+        employees: list of active employees in the branch (excluding already-marked)
         punch_logs: list of punch logs for the date
         matched: dict keyed by employee name with calculated hours/OT
     """
-    if not date or not department:
-        frappe.throw(_("Date and Department are required."))
+    if not date or not branch:
+        frappe.throw(_("Date and Branch are required."))
 
     date_str = str(date)
 
@@ -328,10 +345,10 @@ def load_attendance_data(date, department, device_id=""):
     )
     marked_employees = {row[0] for row in marked_employees_list}
 
-    # ── Active employees in this department ──
+    # ── Active employees in this branch ──
     employees = frappe.get_all(
         "Employee",
-        filters={"status": "Active", "department": department},
+        filters={"status": "Active", "branch": branch},
         fields=[
             "name",
             "employee_name",
@@ -355,7 +372,7 @@ def load_attendance_data(date, department, device_id=""):
     if device_id:
         punch_filters["source_device"] = device_id
 
-    # Filter by employees in this department
+    # Filter by employees in this branch
     emp_names = [e.name for e in employees]
     if emp_names:
         punch_filters["employee"] = ["in", emp_names]
