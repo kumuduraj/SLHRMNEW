@@ -6,7 +6,7 @@
 	"scripts": {
 		"dev": "vite",
 		"serve": "vite preview",
-		"build": "vite build --base=/assets/slhrm/frontend/",
+		"build": "vite build --base=./",
 		"ionic:build": "npm run build",
 		"ionic:serve": "vite dev --host"
 	},
