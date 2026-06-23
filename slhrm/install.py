@@ -41,18 +41,17 @@ def after_migrate():
 
 
 def _sync_pwa_assets():
-    """Copy PWA build output to sites/assets/slhrm/frontend/ so nginx can serve it.
+    """Copy PWA build output to assets/slhrm/frontend/ so nginx can serve it.
 
     Architecture:
-    - serve_pwa() reads apps/slhrm/public/frontend/index.html (absolute paths /assets/slhrm/frontend/...)
-    - Frontend nginx serves /assets from sites/ root
-    - So assets must be at sites/assets/slhrm/frontend/assets/
+    - Frontend nginx serves /assets from sites/ root, but sites/assets is a symlink to bench/assets/
+    - So /assets/slhrm/frontend/assets/X.js maps to bench/assets/slhrm/frontend/assets/X.js
+    - serve_pwa() reads apps/slhrm/public/frontend/index.html (absolute paths /slhrm/assets/...)
+    - For /slhrm/* requests, nginx proxies to serve_pwa which serves HTML and assets
     """
     import shutil
     import pathlib
 
-    # This file is at apps/slhrm/slhrm/install.py
-    # bench root is 4 levels up: apps/slhrm/slhrm/install.py -> bench root
     this_file = pathlib.Path(__file__).resolve()
     bench_root = this_file.parent.parent.parent.parent
     src = bench_root / "apps" / "slhrm" / "public" / "frontend"
@@ -61,12 +60,13 @@ def _sync_pwa_assets():
         print(f"PWA sync: source not found at {src}")
         return
 
-    sites_assets = bench_root / "sites" / "assets" / "slhrm" / "frontend"
-    if sites_assets.exists():
-        shutil.rmtree(sites_assets)
+    # Copy to bench/assets/ (sites/assets is a symlink there)
+    assets_dest = bench_root / "assets" / "slhrm" / "frontend"
+    if assets_dest.exists():
+        shutil.rmtree(assets_dest)
 
-    shutil.copytree(src, sites_assets)
-    print(f"PWA sync: copied {src} -> {sites_assets}")
+    shutil.copytree(src, assets_dest)
+    print(f"PWA sync: copied {src} -> {assets_dest}")
 
 
 # â”€â”€â”€ Module Path Fix â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

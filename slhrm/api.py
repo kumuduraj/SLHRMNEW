@@ -13,57 +13,33 @@ import json
 
 @frappe.whitelist(allow_guest=True)
 def serve_pwa():
-    """Serve the SLHRM PWA — index.html for routes, static assets for files.
+    """Serve the SLHRM PWA index.html."""
+    pwa_path = "/home/frappe/frappe-bench/apps/slhrm/public/frontend/index.html"
+    if not os.path.exists(pwa_path):
+        frappe.throw("PWA not found")
 
-    Nginx proxies /slhrm/* to /api/method/slhrm.api.serve_pwa/*
-    So we detect asset requests by file extension in the path.
-    """
-    frontend_dir = "/home/frappe/frappe-bench/apps/slhrm/public/frontend"
+    with open(pwa_path, "r") as f:
+        content = f.read()
 
-    request_path = getattr(frappe.request, "path", "") if frappe.request else ""
+    csrf_token = ""
+    try:
+        csrf_token = frappe.sessions.get_csrf_token()
+    except Exception:
+        pass
 
-    # Asset extensions to serve directly
-    asset_extensions = (
-        ".js", ".mjs", ".css", ".json", ".svg", ".png", ".ico",
-        ".webmanifest", ".map", ".woff", ".woff2", ".ttf",
-    )
+    site_name = getattr(frappe.local, "site", "")
 
-    # Check if this is an asset request by file extension
-    for ext in asset_extensions:
-        if request_path.endswith(ext):
-            # Extract relative path: strip everything up to and including the last
-            # occurrence of the asset path (e.g. /api/method/slhrm.api.serve_pwa/assets/X.js -> assets/X.js)
-            marker = "/assets/"
-            idx = request_path.find(marker)
-            if idx != -1:
-                asset_rel = request_path[idx + 1:]  # "assets/..."
-                asset_path = os.path.join(frontend_dir, asset_rel)
-                if os.path.isfile(asset_path):
-                    content_types = {
-                        ".js": "application/javascript",
-                        ".mjs": "application/javascript",
-                        ".css": "text/css",
-                        ".json": "application/json",
-                        ".svg": "image/svg+xml",
-                        ".png": "image/png",
-                        ".ico": "image/x-icon",
-                        ".webmanifest": "application/manifest+json",
-                        ".map": "application/json",
-                        ".woff": "font/woff",
-                        ".woff2": "font/woff2",
-                        ".ttf": "font/ttf",
-                    }
-                    ct = content_types.get(ext, "application/octet-stream")
-                    with open(asset_path, "rb") as f:
-                        content = f.read()
-                    frappe.local.response.filecontent = content
-                    frappe.local.response.type = "download"
-                    frappe.local.response.content_type = ct
-                    frappe.local.response.display_content_as = "inline"
-                    return
+    boot = {"sitename": site_name}
 
-    # Default: serve index.html (SPA)
-    pwa_path = os.path.join(frontend_dir, "index.html")
+    rendered = content.replace("{{ boot }}", json.dumps(boot))
+    rendered = rendered.replace("{{ csrf_token }}", csrf_token)
+    rendered = rendered.replace("{{ site_name }}", site_name)
+
+    frappe.local.response.filename = "index.html"
+    frappe.local.response.filecontent = rendered.encode("utf-8")
+    frappe.local.response.type = "download"
+    frappe.local.response.content_type = "text/html; charset=utf-8"
+    frappe.local.response.display_content_as = "inline"
     if not os.path.exists(pwa_path):
         frappe.throw("PWA not found")
 
