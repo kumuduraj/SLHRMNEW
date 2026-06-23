@@ -3,16 +3,17 @@
 		<ion-content :fullscreen="true">
 			<div class="flex flex-col h-full w-full">
 				<div class="w-full h-full bg-white sm:w-96 flex flex-col">
-					<header
-						class="flex flex-row bg-white shadow-sm py-4 px-3 items-center sticky top-0 z-[1000]"
+				<header
+					class="flex flex-row bg-white shadow-sm py-4 px-3 items-center sticky top-0 z-[1000]"
+				>
+					<Button
+						v-if="!session.mustChangePassword"
+						variant="ghost"
+						class="!pl-0 hover:bg-white"
+						@click="router.back()"
 					>
-						<Button
-							variant="ghost"
-							class="!pl-0 hover:bg-white"
-							@click="router.back()"
-						>
-							<FeatherIcon name="chevron-left" class="h-5 w-5" />
-						</Button>
+						<FeatherIcon name="chevron-left" class="h-5 w-5" />
+					</Button>
 						<h2 class="text-xl font-semibold text-gray-900">{{ __("Change Password") }}</h2>
 					</header>
 
@@ -64,9 +65,10 @@
 <script setup>
 import { IonPage, IonContent } from "@ionic/vue"
 import { useRouter } from "vue-router"
-import { FeatherIcon, toast, createResource, Input, ErrorMessage, Button } from "frappe-ui"
+import { FeatherIcon, toast, createResource, Input, ErrorMessage, Button, call } from "frappe-ui"
 
 import { inject, ref } from "vue"
+import { session } from "@/data/session"
 
 const __ = inject("$translate")
 const router = useRouter()
@@ -80,6 +82,13 @@ const updatePasswordResource = createResource({
 	url: "frappe.core.doctype.user.user.update_password",
 	method: "POST",
 	onSuccess() {
+		// Clear the must-change-password flag if it was set
+		if (session.mustChangePassword) {
+			call("slhrm.api.clear_must_change_password").then(() => {
+				session.mustChangePassword = false
+			})
+		}
+
 		toast({
 			title: __("Success"),
 			text: __("Your password has been updated."),
@@ -88,7 +97,13 @@ const updatePasswordResource = createResource({
 			iconClasses: "text-green-500",
 		})
 		resetForm()
-		router.back()
+
+		// If first login, go to Home (not back — there's nothing to go back to)
+		if (session.mustChangePassword) {
+			router.replace({ path: "/" })
+		} else {
+			router.back()
+		}
 	},
 	onError(error) {
 		changePasswordError.value = error.messages?.[0] || __("Failed to update password")

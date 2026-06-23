@@ -30,5 +30,19 @@
     "insert_after": "biometric_device_id",
     "read_only": 1,
     "name": "Employee-biometric_device_name"
+  },
+  {
+    "doctype": "Custom Field",
+    "dt": "User",
+    "module": "SLHRM",
+    "fieldname": "slhrm_must_change_password",
+    "fieldtype": "Check",
+    "label": "SLHRM: Must Change Password",
+    "insert_after": "last_password_reset_date",
+    "default": "0",
+    "read_only": 1,
+    "hidden": 1,
+    "description": "Set to 1 when User is auto-created from Employee. Cleared after first password change in SLHRM PWA.",
+    "name": "User-slhrm_must_change_password"
   }
 ]

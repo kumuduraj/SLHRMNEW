@@ -126,17 +126,26 @@ router.beforeEach(async (to, _, next) => {
 		}
 	}
 
-	if (isLoggedIn && to.name !== "InvalidEmployee") {
-		await employeeResource.promise
-		// user should be an employee to access the app
-		// since all views are employee specific
-		if (
-			!employeeResource?.data ||
-			employeeResource?.data?.user_id !== userResource.data.name
-		) {
-			next({ name: "InvalidEmployee" })
-		} else if (["Login", "ForgotPassword"].includes(to.name)) {
-			next({ name: "Home" })
+	if (isLoggedIn) {
+		// Force password change — only allow ChangePassword route
+		if (session.mustChangePassword && to.name !== "ChangePassword") {
+			return next({ name: "ChangePassword" })
+		}
+
+		if (to.name !== "InvalidEmployee") {
+			await employeeResource.promise
+			// user should be an employee to access the app
+			// since all views are employee specific
+			if (
+				!employeeResource?.data ||
+				employeeResource?.data?.user_id !== userResource.data.name
+			) {
+				next({ name: "InvalidEmployee" })
+			} else if (["Login", "ForgotPassword"].includes(to.name)) {
+				next({ name: "Home" })
+			} else {
+				next()
+			}
 		} else {
 			next()
 		}

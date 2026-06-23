@@ -28,6 +28,13 @@ fixtures = [
     },
 ]
 
+# Auto-create User when Employee is created
+doc_events = {
+    "Employee": {
+        "after_insert": "slhrm.api.create_employee_user"
+    }
+}
+
 # Desk registration — modern Frappe v16 approach
 add_to_apps_screen = [
     {

@@ -19,7 +19,20 @@ function handleLogin(response) {
 		employeeResource.reload()
 
 		session.user = sessionUser()
-		router.replace({ path: "/" })
+
+		// Check if first login — must change password
+		call("slhrm.api.check_must_change_password").then((r) => {
+			if (r.message) {
+				session.mustChangePassword = true
+				router.replace({ path: "/change-password" })
+			} else {
+				session.mustChangePassword = false
+				router.replace({ path: "/" })
+			}
+		}).catch(() => {
+			session.mustChangePassword = false
+			router.replace({ path: "/" })
+		})
 	}
 }
 
@@ -41,10 +54,12 @@ export const session = reactive({
 			employeeResource.reset()
 
 			session.user = sessionUser()
+			session.mustChangePassword = false
 			router.replace({ name: "Login" })
 			window.location.reload()
 		},
 	}),
 	user: sessionUser(),
 	isLoggedIn: computed(() => !!session.user),
+	mustChangePassword: false,
 })

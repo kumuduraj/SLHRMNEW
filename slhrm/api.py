@@ -911,3 +911,119 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
         },
         "warnings": warnings,
     }
+
+
+# ═══════════════════════════════════════════════════════════════
+# AUTO-CREATE USER FROM EMPLOYEE
+# ═══════════════════════════════════════════════════════════════
+
+
+def create_employee_user(doc, method=None):
+    """
+    Auto-create a Frappe User when an Employee is created.
+    Called via doc_events -> Employee -> after_insert.
+
+    - Skips if employee already has user_id
+    - Skips if no company_email or personal_email
+    - Creates User with default password "Abc@12345"
+    - Assigns "Employee" role only
+    - Sets slhrm_must_change_password = 1 (forces password change on first PWA login)
+    - Links user_id on Employee
+    """
+    if doc.user_id:
+        return
+
+    email = doc.company_email or doc.personal_email
+    if not email:
+        frappe.log_error(
+            title="SLHRM: No email for User creation",
+            message=f"Employee {doc.name} ({doc.employee_name}) has no company_email "
+                    f"or personal_email. User account was NOT created.",
+        )
+        frappe.msgprint(
+            _("No email found for {0}. User account was not created. "
+              "Set Company Email or Personal Email and save again to create login.").format(
+                doc.employee_name
+            ),
+            indicator="orange",
+            alert=True,
+        )
+        return
+
+    if frappe.db.exists("User", email):
+        doc.db_set("user_id", email)
+        frappe.msgprint(
+            _("User {0} already exists. Linked to employee.").format(email),
+            indicator="blue",
+            alert=True,
+        )
+        return
+
+    try:
+        user = frappe.new_doc("User")
+        user.email = email
+        user.first_name = doc.first_name or doc.employee_name
+        user.last_name = doc.last_name or ""
+        user.enabled = 1
+        user.user_type = "System User"
+        user.new_password = "Abc@12345"
+        user.send_welcome_email = 0
+
+        user.append("roles", {"role": "Employee"})
+
+        user.flags.ignore_permissions = True
+        user.flags.no_welcome_mail = True
+        user.insert()
+
+        frappe.db.set_value("User", user.name, "slhrm_must_change_password", 1)
+
+        doc.db_set("user_id", user.name)
+
+        frappe.msgprint(
+            _("User {0} created for {1}. Default password: Abc@12345").format(
+                email, doc.employee_name
+            ),
+            indicator="green",
+            alert=True,
+        )
+
+    except Exception as e:
+        frappe.log_error(
+            title="SLHRM: User creation failed",
+            message=f"Failed to create User for Employee {doc.name} ({email}): {str(e)}",
+        )
+        frappe.msgprint(
+            _("Failed to create User for {0}: {1}").format(doc.employee_name, str(e)),
+            indicator="red",
+            alert=True,
+        )
+
+
+@frappe.whitelist()
+def check_must_change_password():
+    """
+    Check if current user must change password on first login.
+    Called by PWA after successful login.
+    """
+    if frappe.session.user in ("Administrator", "Guest"):
+        return False
+
+    must_change = frappe.db.get_value(
+        "User", frappe.session.user, "slhrm_must_change_password"
+    )
+    return bool(must_change)
+
+
+@frappe.whitelist()
+def clear_must_change_password():
+    """
+    Clear the must-change-password flag after successful password change.
+    Called by PWA ChangePassword view after update_password succeeds.
+    """
+    if frappe.session.user in ("Administrator", "Guest"):
+        return
+
+    frappe.db.set_value(
+        "User", frappe.session.user, "slhrm_must_change_password", 0
+    )
+    frappe.db.commit()
