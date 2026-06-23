@@ -62,7 +62,7 @@ const registerServiceWorker = async () => {
 	window.frappePushNotification = new FrappePushNotification("slhrm")
 
 	if ("serviceWorker" in navigator) {
-		let serviceWorkerURL = "/assets/slhrm/frontend/sw.js"
+		let serviceWorkerURL = "/slhrm/sw.js"
 		let config = ""
 
 		try {
