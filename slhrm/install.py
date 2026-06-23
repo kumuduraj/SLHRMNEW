@@ -41,32 +41,30 @@ def after_migrate():
 
 
 def _sync_pwa_assets():
-    """Copy PWA build output from apps/slhrm/public/frontend/ to sites/www/slhrm/."""
+    """Copy PWA build output to sites/assets/slhrm/frontend/ so nginx can serve it.
+
+    Architecture:
+    - serve_pwa() reads apps/slhrm/public/frontend/index.html (absolute paths /assets/slhrm/frontend/...)
+    - Frontend nginx serves /assets from sites/ root
+    - So assets must be at sites/assets/slhrm/frontend/assets/
+    """
     import shutil
     import pathlib
 
     apps_path = pathlib.Path(frappe.get_app_path("slhrm")).parent
     src = apps_path / "public" / "frontend"
-    sites_path = pathlib.Path(frappe.get_site_path())
-    dest = sites_path / "www" / "slhrm"
 
     if not src.exists() or not (src / "index.html").exists():
         print(f"PWA sync: source not found at {src}")
         return
 
-    if dest.exists():
-        shutil.rmtree(dest)
+    # Copy to shared sites volume so frontend nginx can serve
+    sites_assets = pathlib.Path(frappe.get_site_path()) / "assets" / "slhrm" / "frontend"
+    if sites_assets.exists():
+        shutil.rmtree(sites_assets)
 
-    shutil.copytree(src, dest)
-
-    # Fix index.html: replace absolute /assets/slhrm/frontend/ paths with relative ./
-    index_html = dest / "index.html"
-    if index_html.exists():
-        text = index_html.read_text()
-        text = text.replace("/assets/slhrm/frontend/", "")
-        index_html.write_text(text)
-
-    print(f"PWA sync: copied {src} -> {dest}")
+    shutil.copytree(src, sites_assets)
+    print(f"PWA sync: copied {src} -> {sites_assets}")
 
 
 # â”€â”€â”€ Module Path Fix â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
