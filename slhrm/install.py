@@ -35,8 +35,38 @@ def after_migrate():
     _set_workspace_content()
     _set_workspace_links()
     _set_workspace_redirect()
+    _sync_pwa_assets()
     frappe.db.commit()
     print("after_migrate: Sidebar rebuilt, Home removed, content + redirect set")
+
+
+def _sync_pwa_assets():
+    """Copy PWA build output from apps/slhrm/public/frontend/ to sites/www/slhrm/."""
+    import shutil
+    import pathlib
+
+    apps_path = pathlib.Path(frappe.get_app_path("slhrm")).parent
+    src = apps_path / "public" / "frontend"
+    sites_path = pathlib.Path(frappe.get_site_path())
+    dest = sites_path / "www" / "slhrm"
+
+    if not src.exists() or not (src / "index.html").exists():
+        print(f"PWA sync: source not found at {src}")
+        return
+
+    if dest.exists():
+        shutil.rmtree(dest)
+
+    shutil.copytree(src, dest)
+
+    # Fix index.html: replace absolute /assets/slhrm/frontend/ paths with relative ./
+    index_html = dest / "index.html"
+    if index_html.exists():
+        text = index_html.read_text()
+        text = text.replace("/assets/slhrm/frontend/", "")
+        index_html.write_text(text)
+
+    print(f"PWA sync: copied {src} -> {dest}")
 
 
 # â”€â”€â”€ Module Path Fix â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
