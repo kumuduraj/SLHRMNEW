@@ -13,46 +13,54 @@ import json
 
 @frappe.whitelist(allow_guest=True)
 def serve_pwa():
-    """Serve the SLHRM PWA — index.html for routes, static assets for files."""
+    """Serve the SLHRM PWA — index.html for routes, static assets for files.
+
+    Nginx proxies /slhrm/* to /api/method/slhrm.api.serve_pwa/*
+    So we detect asset requests by file extension in the path.
+    """
     frontend_dir = "/home/frappe/frappe-bench/apps/slhrm/public/frontend"
 
-    # Check if this is an asset request (nginx proxies /slhrm/* to us)
     request_path = getattr(frappe.request, "path", "") if frappe.request else ""
 
-    # Strip /slhrm/ prefix to get relative path within frontend/
-    asset_rel = None
-    if request_path.startswith("/slhrm/"):
-        asset_rel = request_path[len("/slhrm/"):]
-    elif request_path.startswith("/slhrm"):
-        asset_rel = ""
+    # Asset extensions to serve directly
+    asset_extensions = (
+        ".js", ".mjs", ".css", ".json", ".svg", ".png", ".ico",
+        ".webmanifest", ".map", ".woff", ".woff2", ".ttf",
+    )
 
-    # If it's an asset file request, serve the file directly
-    if asset_rel and asset_rel != "" and not asset_rel.endswith("/"):
-        asset_path = os.path.join(frontend_dir, asset_rel)
-        if os.path.isfile(asset_path):
-            ext = os.path.splitext(asset_path)[1].lower()
-            content_types = {
-                ".js": "application/javascript",
-                ".mjs": "application/javascript",
-                ".css": "text/css",
-                ".json": "application/json",
-                ".svg": "image/svg+xml",
-                ".png": "image/png",
-                ".ico": "image/x-icon",
-                ".webmanifest": "application/manifest+json",
-                ".map": "application/json",
-                ".woff": "font/woff",
-                ".woff2": "font/woff2",
-                ".ttf": "font/ttf",
-            }
-            ct = content_types.get(ext, "application/octet-stream")
-            with open(asset_path, "rb") as f:
-                content = f.read()
-            frappe.local.response.filecontent = content
-            frappe.local.response.type = "download"
-            frappe.local.response.content_type = ct
-            frappe.local.response.display_content_as = "inline"
-            return
+    # Check if this is an asset request by file extension
+    for ext in asset_extensions:
+        if request_path.endswith(ext):
+            # Extract relative path: strip everything up to and including the last
+            # occurrence of the asset path (e.g. /api/method/slhrm.api.serve_pwa/assets/X.js -> assets/X.js)
+            marker = "/assets/"
+            idx = request_path.find(marker)
+            if idx != -1:
+                asset_rel = request_path[idx + 1:]  # "assets/..."
+                asset_path = os.path.join(frontend_dir, asset_rel)
+                if os.path.isfile(asset_path):
+                    content_types = {
+                        ".js": "application/javascript",
+                        ".mjs": "application/javascript",
+                        ".css": "text/css",
+                        ".json": "application/json",
+                        ".svg": "image/svg+xml",
+                        ".png": "image/png",
+                        ".ico": "image/x-icon",
+                        ".webmanifest": "application/manifest+json",
+                        ".map": "application/json",
+                        ".woff": "font/woff",
+                        ".woff2": "font/woff2",
+                        ".ttf": "font/ttf",
+                    }
+                    ct = content_types.get(ext, "application/octet-stream")
+                    with open(asset_path, "rb") as f:
+                        content = f.read()
+                    frappe.local.response.filecontent = content
+                    frappe.local.response.type = "download"
+                    frappe.local.response.content_type = ct
+                    frappe.local.response.display_content_as = "inline"
+                    return
 
     # Default: serve index.html (SPA)
     pwa_path = os.path.join(frontend_dir, "index.html")
