@@ -58,8 +58,9 @@ def _sync_pwa_assets():
         print(f"PWA sync: source not found at {src}")
         return
 
-    # Copy to shared sites volume so frontend nginx can serve
-    sites_assets = pathlib.Path(frappe.get_site_path()) / "assets" / "slhrm" / "frontend"
+    # Use sites/ root (not site-specific) so frontend nginx can serve
+    bench_path = pathlib.Path(frappe.get_bench_path())
+    sites_assets = bench_path / "sites" / "assets" / "slhrm" / "frontend"
     if sites_assets.exists():
         shutil.rmtree(sites_assets)
 
