@@ -13,8 +13,49 @@ import json
 
 @frappe.whitelist(allow_guest=True)
 def serve_pwa():
-    """Serve the SLHRM PWA index.html."""
-    pwa_path = "/home/frappe/frappe-bench/apps/slhrm/public/frontend/index.html"
+    """Serve the SLHRM PWA — index.html for routes, static assets for files."""
+    frontend_dir = "/home/frappe/frappe-bench/apps/slhrm/public/frontend"
+
+    # Check if this is an asset request (nginx proxies /slhrm/* to us)
+    request_path = getattr(frappe.request, "path", "") if frappe.request else ""
+
+    # Strip /slhrm/ prefix to get relative path within frontend/
+    asset_rel = None
+    if request_path.startswith("/slhrm/"):
+        asset_rel = request_path[len("/slhrm/"):]
+    elif request_path.startswith("/slhrm"):
+        asset_rel = ""
+
+    # If it's an asset file request, serve the file directly
+    if asset_rel and asset_rel != "" and not asset_rel.endswith("/"):
+        asset_path = os.path.join(frontend_dir, asset_rel)
+        if os.path.isfile(asset_path):
+            ext = os.path.splitext(asset_path)[1].lower()
+            content_types = {
+                ".js": "application/javascript",
+                ".mjs": "application/javascript",
+                ".css": "text/css",
+                ".json": "application/json",
+                ".svg": "image/svg+xml",
+                ".png": "image/png",
+                ".ico": "image/x-icon",
+                ".webmanifest": "application/manifest+json",
+                ".map": "application/json",
+                ".woff": "font/woff",
+                ".woff2": "font/woff2",
+                ".ttf": "font/ttf",
+            }
+            ct = content_types.get(ext, "application/octet-stream")
+            with open(asset_path, "rb") as f:
+                content = f.read()
+            frappe.local.response.filecontent = content
+            frappe.local.response.type = "download"
+            frappe.local.response.content_type = ct
+            frappe.local.response.display_content_as = "inline"
+            return
+
+    # Default: serve index.html (SPA)
+    pwa_path = os.path.join(frontend_dir, "index.html")
     if not os.path.exists(pwa_path):
         frappe.throw("PWA not found")
 
