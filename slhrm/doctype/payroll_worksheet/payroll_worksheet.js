@@ -9,10 +9,6 @@ frappe.ui.form.on('Payroll Worksheet', {
         if (!frm.doc.payroll_year) {
             frm.set_value('payroll_year', new Date().getFullYear());
         }
-
-        frm.set_query('branch', function() {
-            return { filters: { company: frm.doc.company } };
-        });
     },
 
     refresh(frm) {
@@ -51,9 +47,6 @@ frappe.ui.form.on('Payroll Worksheet', {
     },
 
     company(frm) {
-        frm.set_query('branch', function() {
-            return { filters: { company: frm.doc.company } };
-        });
         if (frm.doc.company) {
             frappe.db.get_value('Company', frm.doc.company, 'default_currency', r => {
                 if (r && r.default_currency) {
