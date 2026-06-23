@@ -50,6 +50,7 @@ def _sync_pwa_assets():
     """
     import shutil
     import pathlib
+    import os
 
     apps_path = pathlib.Path(frappe.get_app_path("slhrm")).parent
     src = apps_path / "public" / "frontend"
@@ -58,12 +59,17 @@ def _sync_pwa_assets():
         print(f"PWA sync: source not found at {src}")
         return
 
-    # Use sites/ root (not site-specific) so frontend nginx can serve
-    # get_site_path() returns e.g. /home/frappe/frappe-bench/sites/desk01.evonet.lk
-    # We need /home/frappe/frappe-bench/sites/ (two levels up)
-    site_path = pathlib.Path(frappe.get_site_path())
-    sites_root = site_path.parent
-    sites_assets = sites_root / "assets" / "slhrm" / "frontend"
+    # get_site_path() may return relative, so use get_app_path to derive bench root
+    # get_app_path returns e.g. /home/frappe/frappe-bench/apps/slhrm
+    # bench root = 2 levels up from apps/<app>
+    app_dir = pathlib.Path(frappe.get_app_path("slhrm"))
+    bench_root = app_dir.parent.parent
+    sites_assets = bench_root / "sites" / "assets" / "slhrm" / "frontend"
+    if sites_assets.exists():
+        shutil.rmtree(sites_assets)
+
+    shutil.copytree(src, sites_assets)
+    print(f"PWA sync: copied {src} -> {sites_assets}")
     if sites_assets.exists():
         shutil.rmtree(sites_assets)
 
