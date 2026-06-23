@@ -88,3 +88,22 @@ $(document).ready(function () {
     });
     observer.observe(document.body, { childList: true, subtree: true });
 });
+
+// 5. Add employee_number to Employee list view
+frappe.listview_settings["Employee"] = {
+    onload: function (listview) {
+        if (listview && listview.columns) {
+            var hasEmpNum = listview.columns.some(function (c) {
+                return c.fieldname === "employee_number";
+            });
+            if (!hasEmpNum) {
+                listview.columns.splice(1, 0, {
+                    fieldname: "employee_number",
+                    fieldtype: "Data",
+                    label: __("Employee Number"),
+                    width: 120,
+                });
+            }
+        }
+    },
+};
