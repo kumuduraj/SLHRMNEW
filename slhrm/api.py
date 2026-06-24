@@ -843,6 +843,9 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
             "VA": flt(ssa.get("custom_vehicle_allowance", 0)),
             "basic": flt(ssa.get("custom_basic_salary", 0)),
             "base": flt(ssa.get("base", 0)),
+            "CUSTOM_BASIC_SALARY": flt(ssa.get("custom_basic_salary", 0)),
+            "CUSTOM_BASE_ALLOWANCE": flt(ssa.get("custom_base_allowance", 0)),
+            "CUSTOM_VEHICLE_ALLOWANCE": flt(ssa.get("custom_vehicle_allowance", 0)),
         }
         for comp in ss_components[ss_name]:
             comp_name = comp.salary_component
