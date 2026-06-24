@@ -49,6 +49,24 @@
             "in_list_view": 1
         },
         {
+            "fieldname": "custom_basic_salary",
+            "fieldtype": "Currency",
+            "label": "Basic Salary",
+            "read_only": 1
+        },
+        {
+            "fieldname": "custom_base_allowance",
+            "fieldtype": "Currency",
+            "label": "Base Allowance",
+            "read_only": 1
+        },
+        {
+            "fieldname": "custom_vehicle_allowance",
+            "fieldtype": "Currency",
+            "label": "Vehicle Allowance",
+            "read_only": 1
+        },
+        {
             "fieldname": "section_break_att",
             "fieldtype": "Section Break",
             "label": "Attendance"

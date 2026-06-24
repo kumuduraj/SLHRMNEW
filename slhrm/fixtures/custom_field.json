@@ -44,5 +44,38 @@
     "hidden": 1,
     "description": "Set to 1 when User is auto-created from Employee. Cleared after first password change in SLHRM PWA.",
     "name": "User-slhrm_must_change_password"
+  },
+  {
+    "doctype": "Custom Field",
+    "dt": "Salary Structure Assignment",
+    "module": "SLHRM",
+    "fieldname": "custom_basic_salary",
+    "fieldtype": "Currency",
+    "label": "Basic Salary",
+    "insert_after": "base",
+    "description": "Basic Salary amount for this employee",
+    "name": "Salary Structure Assignment-custom_basic_salary"
+  },
+  {
+    "doctype": "Custom Field",
+    "dt": "Salary Structure Assignment",
+    "module": "SLHRM",
+    "fieldname": "custom_base_allowance",
+    "fieldtype": "Currency",
+    "label": "Base Allowance",
+    "insert_after": "custom_basic_salary",
+    "description": "Base Allowance amount for this employee",
+    "name": "Salary Structure Assignment-custom_base_allowance"
+  },
+  {
+    "doctype": "Custom Field",
+    "dt": "Salary Structure Assignment",
+    "module": "SLHRM",
+    "fieldname": "custom_vehicle_allowance",
+    "fieldtype": "Currency",
+    "label": "Vehicle Allowance",
+    "insert_after": "custom_base_allowance",
+    "description": "Vehicle Allowance amount for this employee",
+    "name": "Salary Structure Assignment-custom_vehicle_allowance"
   }
 ]

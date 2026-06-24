@@ -668,7 +668,8 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
     ssa_map = {}
     ssas = frappe.db.sql(
         """
-        SELECT ssa.employee, ssa.base, ssa.salary_structure
+        SELECT ssa.employee, ssa.base, ssa.salary_structure,
+               ssa.custom_basic_salary, ssa.custom_base_allowance, ssa.custom_vehicle_allowance
         FROM `tabSalary Structure Assignment` ssa
         INNER JOIN (
             SELECT employee, MAX(from_date) as max_date
@@ -687,6 +688,9 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
         ssa_map[row.employee] = {
             "base": flt(row.base),
             "salary_structure": row.salary_structure,
+            "custom_basic_salary": flt(row.custom_basic_salary),
+            "custom_base_allowance": flt(row.custom_base_allowance),
+            "custom_vehicle_allowance": flt(row.custom_vehicle_allowance),
         }
 
     no_ssa = [e.employee_name for e in employees_raw if e.name not in ssa_map]
@@ -833,7 +837,13 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
             continue
 
         # Build variable context using actual abbreviations from Salary Component
-        comp_vals = {"BS": base, "basic": base, "base": base}
+        comp_vals = {
+            "BS": flt(ssa.get("custom_basic_salary", 0)),
+            "BA": flt(ssa.get("custom_base_allowance", 0)),
+            "VA": flt(ssa.get("custom_vehicle_allowance", 0)),
+            "basic": flt(ssa.get("custom_basic_salary", 0)),
+            "base": flt(ssa.get("base", 0)),
+        }
         for comp in ss_components[ss_name]:
             comp_name = comp.salary_component
             abbr = ss_abbr_map.get(comp_name, comp_name.upper()[:10])
@@ -976,6 +986,9 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
             "designation": emp.designation or "",
             "salary_structure": ssa.get("salary_structure", ""),
             "base": base,
+            "custom_basic_salary": flt(ssa.get("custom_basic_salary", 0)),
+            "custom_base_allowance": flt(ssa.get("custom_base_allowance", 0)),
+            "custom_vehicle_allowance": flt(ssa.get("custom_vehicle_allowance", 0)),
             "total_working_days": total_working_days,
             "present_days": present,
             "absent_days": absent,
