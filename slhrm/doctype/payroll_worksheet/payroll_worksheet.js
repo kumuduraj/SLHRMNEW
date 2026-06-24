@@ -327,13 +327,13 @@ function render_payroll_table(frm) {
     html += '<th rowspan="2" style="min-width:100px; background:#1b5e20; text-align:right; font-weight:bold;">Net Pay</th>';
     html += '</tr>';
 
-    // Header Row 2: component abbreviations
+    // Header Row 2: full component names
     html += '<tr style="background:#283593; color:white;">';
     earnings.forEach(function(c) {
-        html += '<th style="min-width:90px; background:#2e7d32; text-align:center; font-size:11px;">' + c.abbr + '</th>';
+        html += '<th style="min-width:120px; background:#2e7d32; text-align:center; font-size:11px;">' + c.name + '</th>';
     });
     deductions.forEach(function(c) {
-        html += '<th style="min-width:90px; background:#c62828; text-align:center; font-size:11px;">' + c.abbr + '</th>';
+        html += '<th style="min-width:120px; background:#c62828; text-align:center; font-size:11px;">' + c.name + '</th>';
     });
     html += '</tr>';
     html += '</thead>';
