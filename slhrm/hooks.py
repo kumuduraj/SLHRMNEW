@@ -26,6 +26,10 @@ fixtures = [
         "dt": "Workspace",
         "filters": [["app", "=", "slhrm"]],
     },
+    {
+        "dt": "Property Setter",
+        "filters": [["module", "=", "SLHRM"]],
+    },
 ]
 
 # Auto-create User when Employee is created

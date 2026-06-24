@@ -33,18 +33,6 @@
   },
   {
     "doctype": "Custom Field",
-    "dt": "Employee",
-    "module": "SLHRM",
-    "fieldname": "employee_number",
-    "fieldtype": "Data",
-    "label": "Employee Number",
-    "insert_after": "biometric_device_name",
-    "description": "Unique employee number used for biometric device mapping and payroll",
-    "unique": 1,
-    "name": "Employee-employee_number"
-  },
-  {
-    "doctype": "Custom Field",
     "dt": "User",
     "module": "SLHRM",
     "fieldname": "slhrm_must_change_password",

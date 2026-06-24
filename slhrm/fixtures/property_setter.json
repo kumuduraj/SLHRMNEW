@@ -1,0 +1,32 @@
+[
+  {
+    "doctype": "Property Setter",
+    "module": "SLHRM",
+    "doc_type": "Employee",
+    "field_name": "employee_number",
+    "property": "hidden",
+    "value": "0",
+    "property_type": "Check",
+    "name": "Employee-employee_number-hidden"
+  },
+  {
+    "doctype": "Property Setter",
+    "module": "SLHRM",
+    "doc_type": "Employee",
+    "field_name": "employee_number",
+    "property": "reqd",
+    "value": "0",
+    "property_type": "Check",
+    "name": "Employee-employee_number-required"
+  },
+  {
+    "doctype": "Property Setter",
+    "module": "SLHRM",
+    "doc_type": "Employee",
+    "field_name": "employee_number",
+    "property": "description",
+    "value": "Unique employee number used for biometric device mapping and payroll",
+    "property_type": "Text",
+    "name": "Employee-employee_number-desc"
+  }
+]
