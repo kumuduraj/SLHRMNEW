@@ -46,7 +46,7 @@
             "fieldname": "source_type",
             "fieldtype": "Select",
             "label": "Source",
-            "options": "Additional Salary\nLoan Repayment",
+            "options": "Salary Structure\nAdditional Salary\nLoan Repayment",
             "in_list_view": 1
         },
         {

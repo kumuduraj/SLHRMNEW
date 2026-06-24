@@ -139,7 +139,8 @@ function auto_load_payroll(frm) {
                     employee_name: e.employee_name,
                     salary_component: e.salary_component,
                     amount: e.amount,
-                    additional_salary: e.additional_salary
+                    additional_salary: e.additional_salary || '',
+                    source_type: e.source_type || 'Salary Structure'
                 });
             });
 

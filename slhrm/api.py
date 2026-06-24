@@ -776,6 +776,81 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
     earnings_list = []
     deductions_list = []
 
+    # ── 5a. Salary Structure components (calculated from formulas) ──
+    unique_ss = list(set(
+        ssa_map[e]["salary_structure"] for e in ssa_map if ssa_map[e].get("salary_structure")
+    ))
+    ss_components = {}
+    if unique_ss:
+        ss_details = frappe.db.sql(
+            """
+            SELECT parent, parentfield, salary_component, amount, formula, idx
+            FROM `tabSalary Detail`
+            WHERE parent IN %(structures)s
+            ORDER BY parent, parentfield, idx
+            """,
+            {"structures": unique_ss},
+            as_dict=True,
+        )
+        for d in ss_details:
+            ss_components.setdefault(d.parent, []).append(d)
+
+    def _eval_formula(formula, base_vals):
+        """Simple formula evaluator for salary components.
+        Supports: BS, BA, VA, basic, etc. as variable names + basic math."""
+        if not formula:
+            return 0
+        import re as _re
+        expr = formula.strip()
+        # Map common variable names to values
+        var_map = {k.upper(): v for k, v in base_vals.items()}
+        # Replace variable names (case-insensitive) with values
+        def _replace_var(m):
+            name = m.group(0).upper()
+            return str(var_map.get(name, 0))
+        expr = _re.sub(r'[A-Za-z_]+', _replace_var, expr)
+        try:
+            return flt(eval(expr, {"__builtins__": {}}, {}))
+        except Exception:
+            return 0
+
+    for emp in employees_raw:
+        ssa = ssa_map.get(emp.name, {})
+        ss_name = ssa.get("salary_structure")
+        base = flt(ssa.get("base", 0))
+        if not ss_name or ss_name not in ss_components:
+            continue
+
+        # Build variable context: BS = base, other components calculated in order
+        comp_vals = {"BS": base, "basic": base, "base": base}
+        for comp in ss_components[ss_name]:
+            comp_name = comp.salary_component
+            abbr = comp_name.upper().replace(" ", "_")[:10]
+            if comp.formula:
+                amt = _eval_formula(comp.formula, comp_vals)
+            else:
+                amt = flt(comp.amount)
+            comp_vals[abbr] = amt
+            comp_vals[comp_name.upper()] = amt
+            comp_vals[comp_name] = amt
+
+            is_earning = comp.parentfield == "earnings"
+            entry = {
+                "employee": emp.name,
+                "employee_name": emp.employee_name,
+                "salary_component": comp_name,
+                "amount": amt,
+                "source_type": "Salary Structure",
+                "reference_name": "",
+            }
+            if is_earning:
+                earnings_list.append(entry)
+                addl_earn_map[emp.name] = flt(addl_earn_map.get(emp.name, 0)) + amt
+            else:
+                deductions_list.append(entry)
+                addl_ded_map[emp.name] = flt(addl_ded_map.get(emp.name, 0)) + amt
+
+    # ── 5b. Additional Salary records (batch) ──
     for row in addl_records:
         is_earning = (row.type == "Earning") if row.type else (row.component_type == "Earning")
         entry = {
@@ -830,15 +905,17 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
     except Exception:
         pass
 
-    # ── 7. Working days ──
-    total_days = (getdate(end_date) - getdate(start_date)).days + 1
+    # ── 7. Working days (cap at today for current month) ──
+    from frappe.utils import today as _today
+    effective_end = min(getdate(end_date), getdate(_today()))
+    total_days = (effective_end - getdate(start_date)).days + 1
     holiday_list = frappe.db.get_value("Company", company, "default_holiday_list")
     if holiday_list:
         holidays = frappe.db.count(
             "Holiday",
             filters={
                 "parent": holiday_list,
-                "holiday_date": ["between", [start_date, end_date]],
+                "holiday_date": ["between", [start_date, effective_end]],
             },
         )
         total_working_days = total_days - holidays

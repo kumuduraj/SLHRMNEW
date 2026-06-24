@@ -49,6 +49,12 @@
             "label": "Ref",
             "options": "Additional Salary",
             "read_only": 1
+        },
+        {
+            "fieldname": "source_type",
+            "fieldtype": "Data",
+            "label": "Source",
+            "read_only": 1
         }
     ],
     "permissions": []
