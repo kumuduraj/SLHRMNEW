@@ -132,6 +132,17 @@
             "options": "Payroll Worksheet Deduction"
         },
         {
+            "fieldname": "section_break_comp",
+            "fieldtype": "Section Break",
+            "label": "Salary Components",
+            "collapsible": 1
+        },
+        {
+            "fieldname": "salary_component_html",
+            "fieldtype": "HTML",
+            "label": "Salary Components"
+        },
+        {
             "fieldname": "section_break_summary",
             "fieldtype": "Section Break",
             "label": "Summary"

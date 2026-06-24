@@ -1004,10 +1004,50 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
             + ("..." if len(no_att) > 5 else "")
         )
 
+    # ── 10. Build salary component columns data ──
+    all_components = []
+    comp_set = set()
+    for emp in employees_raw:
+        ssa = ssa_map.get(emp.name, {})
+        ss_name = ssa.get("salary_structure")
+        if ss_name and ss_name in ss_components:
+            for comp in ss_components[ss_name]:
+                if comp.salary_component not in comp_set:
+                    comp_set.add(comp.salary_component)
+                    all_components.append({
+                        "name": comp.salary_component,
+                        "type": comp.parentfield,
+                        "abbr": ss_abbr_map.get(comp.salary_component, comp.salary_component.upper()[:10]),
+                    })
+
+    # Build per-employee component amounts
+    comp_amounts = {}
+    for emp in employees_raw:
+        ssa = ssa_map.get(emp.name, {})
+        ss_name = ssa.get("salary_structure")
+        base = flt(ssa.get("base", 0))
+        emp_comps = {}
+        if ss_name and ss_name in ss_components:
+            comp_vals = {"BS": base, "basic": base, "base": base}
+            for comp in ss_components[ss_name]:
+                comp_name = comp.salary_component
+                abbr = ss_abbr_map.get(comp_name, comp_name.upper()[:10])
+                if comp.formula:
+                    amt = _eval_formula(comp.formula, comp_vals)
+                else:
+                    amt = flt(comp.amount)
+                comp_vals[abbr] = amt
+                comp_vals[comp_name.upper()] = amt
+                comp_vals[comp_name] = amt
+                emp_comps[comp_name] = amt
+        comp_amounts[emp.name] = emp_comps
+
     return {
         "employees": employees_result,
         "earnings": earnings_list,
         "deductions": deductions_list,
+        "salary_components": all_components,
+        "component_amounts": comp_amounts,
         "summary": {
             "total_employees": len(employees_result),
             "total_ot_amount": sum_ot,
