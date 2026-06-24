@@ -53,6 +53,7 @@
     "fieldtype": "Currency",
     "label": "Basic Salary",
     "insert_after": "base",
+    "allow_on_submit": 1,
     "description": "Basic Salary amount for this employee",
     "name": "Salary Structure Assignment-custom_basic_salary"
   },
@@ -64,6 +65,7 @@
     "fieldtype": "Currency",
     "label": "Base Allowance",
     "insert_after": "custom_basic_salary",
+    "allow_on_submit": 1,
     "description": "Base Allowance amount for this employee",
     "name": "Salary Structure Assignment-custom_base_allowance"
   },
@@ -75,6 +77,7 @@
     "fieldtype": "Currency",
     "label": "Vehicle Allowance",
     "insert_after": "custom_base_allowance",
+    "allow_on_submit": 1,
     "description": "Vehicle Allowance amount for this employee",
     "name": "Salary Structure Assignment-custom_vehicle_allowance"
   }
