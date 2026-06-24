@@ -13,9 +13,9 @@ MONTH_NAMES = {
 
 class PayrollWorksheet(Document):
     def autoname(self):
-        branch_abbr = frappe.db.get_value("Branch", self.branch, "abbr") or "BR"
+        branch_name = (self.branch or "BR").replace(" ", "")[:6].upper()
         self.name = frappe.model.naming.make_autoname(
-            f"PWS-{self.payroll_year}-{self.payroll_month}-{branch_abbr}-.####"
+            f"PWS-{self.payroll_year}-{self.payroll_month}-{branch_name}-.####"
         )
 
     def validate(self):
