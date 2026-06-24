@@ -931,13 +931,7 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
         )
         total_working_days = total_days - holidays
     else:
-        import datetime as _dt
-        sd = getdate(start_date)
-        sundays = sum(
-            1 for d in range(total_days)
-            if (sd + _dt.timedelta(days=d)).weekday() == 6
-        )
-        total_working_days = total_days - sundays
+        total_working_days = total_days
 
     # ── 8. Default OT rate ──
     default_ot_rate = flt(
