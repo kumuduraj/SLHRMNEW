@@ -1044,7 +1044,16 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
         base = flt(ssa.get("base", 0))
         emp_comps = {}
         if ss_name and ss_name in ss_components:
-            comp_vals = {"BS": base, "basic": base, "base": base}
+            comp_vals = {
+                "BS": flt(ssa.get("custom_basic_salary", 0)),
+                "BA": flt(ssa.get("custom_base_allowance", 0)),
+                "VA": flt(ssa.get("custom_vehicle_allowance", 0)),
+                "basic": flt(ssa.get("custom_basic_salary", 0)),
+                "base": flt(ssa.get("base", 0)),
+                "CUSTOM_BASIC_SALARY": flt(ssa.get("custom_basic_salary", 0)),
+                "CUSTOM_BASE_ALLOWANCE": flt(ssa.get("custom_base_allowance", 0)),
+                "CUSTOM_VEHICLE_ALLOWANCE": flt(ssa.get("custom_vehicle_allowance", 0)),
+            }
             for comp in ss_components[ss_name]:
                 comp_name = comp.salary_component
                 abbr = ss_abbr_map.get(comp_name, comp_name.upper()[:10])
