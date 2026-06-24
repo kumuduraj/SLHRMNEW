@@ -16,8 +16,7 @@ frappe.ui.form.on('Payroll Worksheet', {
             frm.set_df_property('company', 'read_only', 1);
         }
 
-        update_summary(frm);
-        render_component_table(frm);
+        render_payroll_table(frm);
 
         if (frm.doc.docstatus === 1 && !frm.doc.payroll_entry) {
             frm.add_custom_button(
@@ -70,17 +69,6 @@ frappe.ui.form.on('Payroll Worksheet', {
     payroll_year(frm) {
         set_dates(frm);
         auto_load_payroll(frm);
-    }
-});
-
-
-frappe.ui.form.on('Payroll Worksheet Employee', {
-    ot_hours(frm, cdt, cdn) {
-        recalc_row(frm, cdt, cdn);
-    },
-
-    ot_rate(frm, cdt, cdn) {
-        recalc_row(frm, cdt, cdn);
     }
 });
 
@@ -163,8 +151,7 @@ function auto_load_payroll(frm) {
 
             frm._salary_components = data.salary_components || [];
             frm._component_amounts = data.component_amounts || {};
-            console.log('SLHRM salary_components:', frm._salary_components);
-            console.log('SLHRM component_amounts:', frm._component_amounts);
+            frm._edit_cache = {};
 
             var s = data.summary || {};
             frm.set_value('total_employees', s.total_employees || 0);
@@ -173,7 +160,7 @@ function auto_load_payroll(frm) {
             frm.set_value('total_deductions', s.total_deductions || 0);
             frm.set_value('total_net_pay', s.total_net_pay || 0);
 
-            render_component_table(frm);
+            render_payroll_table(frm);
 
             var with_ssa = data.employees.filter(e => e.salary_structure).length;
             var without_ssa = data.employees.length - with_ssa;
@@ -216,84 +203,142 @@ function set_dates(frm) {
     frm.set_value('month_name', names[month] || '');
 }
 
-function recalc_row(frm, cdt, cdn) {
-    var row = locals[cdt][cdn];
-    row.ot_amount = flt(row.ot_hours) * flt(row.ot_rate);
-    row.total_earning = flt(row.base) + flt(row.ot_amount) + flt(row.additional_earning_total);
-    row.total_deduction = flt(row.additional_deduction_total) + flt(row.loan_deduction);
-    row.net_pay = flt(row.total_earning) - flt(row.total_deduction);
-    frm.refresh_field('employees');
-    update_summary(frm);
-}
 
-function update_summary(frm) {
-    if (!frm.doc.employees || !frm.doc.employees.length) {
-        frm.set_value('total_employees', 0);
-        frm.set_value('total_ot_amount', 0);
-        frm.set_value('total_gross_pay', 0);
-        frm.set_value('total_deductions', 0);
-        frm.set_value('total_net_pay', 0);
-        return;
+function get_val(frm, emp_id, comp_name) {
+    var key = emp_id + '|' + comp_name;
+    if (frm._edit_cache && frm._edit_cache[key] !== undefined) {
+        return frm._edit_cache[key];
     }
-    var ot = 0, gross = 0, ded = 0, net = 0;
-    frm.doc.employees.forEach(function(row) {
-        ot += flt(row.ot_amount);
-        gross += flt(row.total_earning);
-        ded += flt(row.total_deduction);
-        net += flt(row.net_pay);
-    });
-    frm.set_value('total_employees', frm.doc.employees.length);
-    frm.set_value('total_ot_amount', ot);
-    frm.set_value('total_gross_pay', gross);
-    frm.set_value('total_deductions', ded);
-    frm.set_value('total_net_pay', net);
+    var amounts = frm._component_amounts || {};
+    var emp_amounts = amounts[emp_id] || {};
+    return emp_amounts[comp_name] || 0;
 }
 
 
-function render_component_table(frm) {
+function set_val(frm, emp_id, comp_name, value) {
+    if (!frm._edit_cache) frm._edit_cache = {};
+    var key = emp_id + '|' + comp_name;
+    frm._edit_cache[key] = flt(value);
+}
+
+
+function sync_child_tables(frm) {
+    if (!frm._edit_cache) return;
+
     var components = frm._salary_components || [];
-    var amounts = frm._component_amounts || {};
+    var earnings = components.filter(function(c) { return c.type === 'earnings'; });
+    var deductions = components.filter(function(c) { return c.type === 'deductions'; });
     var employees = frm.doc.employees || [];
 
+    frm.clear_table('earnings');
+    employees.forEach(function(emp) {
+        earnings.forEach(function(c) {
+            var amt = get_val(frm, emp.employee, c.name);
+            if (amt !== 0) {
+                frm.add_child('earnings', {
+                    employee: emp.employee,
+                    employee_name: emp.employee_name,
+                    salary_component: c.name,
+                    amount: amt,
+                    source_type: 'Salary Structure'
+                });
+            }
+        });
+    });
+
+    frm.clear_table('deductions');
+    employees.forEach(function(emp) {
+        deductions.forEach(function(c) {
+            var amt = get_val(frm, emp.employee, c.name);
+            if (amt !== 0) {
+                frm.add_child('deductions', {
+                    employee: emp.employee,
+                    employee_name: emp.employee_name,
+                    salary_component: c.name,
+                    amount: amt,
+                    source_type: 'Salary Structure'
+                });
+            }
+        });
+    });
+
+    frm.refresh_field('earnings');
+    frm.refresh_field('deductions');
+}
+
+
+function recalc_totals(frm) {
+    var components = frm._salary_components || [];
+    var employees = frm.doc.employees || [];
+    var earnings = components.filter(function(c) { return c.type === 'earnings'; });
+    var deductions = components.filter(function(c) { return c.type === 'deductions'; });
+
+    var grand_earn = 0, grand_ded = 0, grand_ot = 0;
+
+    employees.forEach(function(emp) {
+        var row_earn = 0, row_ded = 0;
+        earnings.forEach(function(c) { row_earn += get_val(frm, emp.employee, c.name); });
+        deductions.forEach(function(c) { row_ded += get_val(frm, emp.employee, c.name); });
+        grand_earn += row_earn;
+        grand_ded += row_ded;
+        grand_ot += flt(emp.ot_amount || 0);
+    });
+
+    frm.set_value('total_ot_amount', grand_ot);
+    frm.set_value('total_gross_pay', grand_earn);
+    frm.set_value('total_deductions', grand_ded);
+    frm.set_value('total_net_pay', grand_earn - grand_ded);
+}
+
+
+function render_payroll_table(frm) {
+    var components = frm._salary_components || [];
+    var employees = frm.doc.employees || [];
+    var currency = frm.doc.currency || 'LKR';
+
     var wrapper = frm.fields_dict.salary_component_html;
+    if (!wrapper) return;
+
     if (!components.length || !employees.length) {
-        if (wrapper) wrapper.$wrapper.html('<p class="text-muted" style="padding:10px;">No salary components found. Ensure Salary Structure Assignments have base amounts set.</p>');
+        wrapper.$wrapper.html('<p class="text-muted" style="padding:10px;">Select Branch, Month and Year to load payroll data.</p>');
         return;
     }
 
     var earnings = components.filter(function(c) { return c.type === 'earnings'; });
     var deductions = components.filter(function(c) { return c.type === 'deductions'; });
 
-    var html = '<div style="overflow-x:auto; margin-top: 10px;">';
-    html += '<table class="table table-bordered table-sm" style="font-size: 12px;">';
+    var html = '<div style="overflow-x:auto; margin: 5px 0;">';
+    html += '<table class="table table-bordered table-sm" id="payroll-single-table" style="font-size: 12px; border-collapse:collapse;">';
 
-    // Header row
-    html += '<thead><tr style="background: #f0f4f7;">';
-    html += '<th style="min-width:40px; position:sticky; left:0; background:#f0f4f7; z-index:1;">#</th>';
-    html += '<th style="min-width:150px; position:sticky; left:40px; background:#f0f4f7; z-index:1;">Employee</th>';
-    html += '<th style="min-width:60px;">Working Days</th>';
-    html += '<th style="min-width:60px;">Present</th>';
-    html += '<th style="min-width:60px;">Absent</th>';
-    html += '<th style="min-width:60px;">Leave</th>';
-    html += '<th style="min-width:50px;">OT Hrs</th>';
+    // ── Header Row 1: group headers ──
+    html += '<thead>';
+    html += '<tr style="background:#1a237e; color:white;">';
+    html += '<th rowspan="2" style="min-width:40px; position:sticky; left:0; background:#1a237e; z-index:2; text-align:center;">#</th>';
+    html += '<th rowspan="2" style="min-width:150px; position:sticky; left:40px; background:#1a237e; z-index:2;">Employee</th>';
+    html += '<th rowspan="2" style="min-width:50px; text-align:center;">Days</th>';
+    html += '<th rowspan="2" style="min-width:50px; text-align:center;">Present</th>';
+    html += '<th rowspan="2" style="min-width:50px; text-align:center;">Absent</th>';
+    html += '<th rowspan="2" style="min-width:45px; text-align:center;">Leave</th>';
+    html += '<th rowspan="2" style="min-width:45px; text-align:center;">OT Hrs</th>';
+    html += '<th colspan="' + earnings.length + '" style="background:#1b5e20; text-align:center;">EARNINGS</th>';
+    html += '<th colspan="' + deductions.length + '" style="background:#b71c1c; text-align:center;">DEDUCTIONS</th>';
+    html += '<th rowspan="2" style="min-width:90px; background:#0d47a1; text-align:right;">Total Earn</th>';
+    html += '<th rowspan="2" style="min-width:90px; background:#0d47a1; text-align:right;">Total Ded</th>';
+    html += '<th rowspan="2" style="min-width:100px; background:#1b5e20; text-align:right; font-weight:bold;">Net Pay</th>';
+    html += '</tr>';
 
-    // Earning columns (green header)
+    // Header Row 2: component abbreviations
+    html += '<tr style="background:#283593; color:white;">';
     earnings.forEach(function(c) {
-        html += '<th style="min-width:100px; background:#d4edda; color:#155724; text-align:right;">' + c.abbr + '<br><small>' + c.name + '</small></th>';
+        html += '<th style="min-width:90px; background:#2e7d32; text-align:center; font-size:11px;">' + c.abbr + '</th>';
     });
-
-    // Deduction columns (red header)
     deductions.forEach(function(c) {
-        html += '<th style="min-width:100px; background:#f8d7da; color:#721c24; text-align:right;">' + c.abbr + '<br><small>' + c.name + '</small></th>';
+        html += '<th style="min-width:90px; background:#c62828; text-align:center; font-size:11px;">' + c.abbr + '</th>';
     });
+    html += '</tr>';
+    html += '</thead>';
 
-    // Summary columns
-    html += '<th style="min-width:100px; background:#cce5ff; text-align:right;">Total Earn</th>';
-    html += '<th style="min-width:100px; background:#f8d7da; text-align:right;">Total Ded</th>';
-    html += '<th style="min-width:100px; background:#d4edda; font-weight:bold; text-align:right;">Net Pay</th>';
-    html += '</tr></thead>';
-
-    // Body rows
+    // ── Body ──
     html += '<tbody>';
     var totals_earn = {};
     var totals_ded = {};
@@ -303,32 +348,38 @@ function render_component_table(frm) {
     deductions.forEach(function(c) { totals_ded[c.name] = 0; });
 
     employees.forEach(function(emp, idx) {
-        var emp_amounts = amounts[emp.employee] || {};
         var row_earn = 0, row_ded = 0;
+        var bg = idx % 2 === 0 ? '#ffffff' : '#f5f5f5';
 
-        html += '<tr>';
-        html += '<td style="position:sticky; left:0; background:white; z-index:1;">' + (idx + 1) + '</td>';
-        html += '<td style="position:sticky; left:40px; background:white; z-index:1;"><strong>' + (emp.employee_name || emp.employee) + '</strong></td>';
+        html += '<tr data-emp="' + emp.employee + '" style="background:' + bg + ';">';
+        html += '<td style="position:sticky; left:0; background:' + bg + '; z-index:1; text-align:center;">' + (idx + 1) + '</td>';
+        html += '<td style="position:sticky; left:40px; background:' + bg + '; z-index:1;"><strong>' + (emp.employee_name || emp.employee) + '</strong></td>';
         html += '<td class="text-center">' + (emp.total_working_days || 0) + '</td>';
         html += '<td class="text-center">' + (emp.present_days || 0) + '</td>';
         html += '<td class="text-center">' + (emp.absent_days || 0) + '</td>';
         html += '<td class="text-center">' + (emp.leave_days || 0) + '</td>';
         html += '<td class="text-center">' + (emp.ot_hours || 0) + '</td>';
 
-        // Earning amounts
+        // Earning amounts (editable)
         earnings.forEach(function(c) {
-            var amt = flt(emp_amounts[c.name] || 0);
+            var amt = get_val(frm, emp.employee, c.name);
             row_earn += amt;
             totals_earn[c.name] += amt;
-            html += '<td class="text-right">' + format_currency(amt, frm.doc.currency) + '</td>';
+            html += '<td style="text-align:right; padding:2px;">';
+            html += '<input type="number" class="comp-input" data-emp="' + emp.employee + '" data-comp="' + c.name + '" ';
+            html += 'value="' + flt(amt, 2) + '" style="width:100%; text-align:right; border:1px solid #c8e6c9; border-radius:3px; padding:4px 6px; font-size:12px; background:#f1f8e9;">';
+            html += '</td>';
         });
 
-        // Deduction amounts
+        // Deduction amounts (editable)
         deductions.forEach(function(c) {
-            var amt = flt(emp_amounts[c.name] || 0);
+            var amt = get_val(frm, emp.employee, c.name);
             row_ded += amt;
             totals_ded[c.name] += amt;
-            html += '<td class="text-right">' + format_currency(amt, frm.doc.currency) + '</td>';
+            html += '<td style="text-align:right; padding:2px;">';
+            html += '<input type="number" class="comp-input" data-emp="' + emp.employee + '" data-comp="' + c.name + '" ';
+            html += 'value="' + flt(amt, 2) + '" style="width:100%; text-align:right; border:1px solid #ffcdd2; border-radius:3px; padding:4px 6px; font-size:12px; background:#fce4ec;">';
+            html += '</td>';
         });
 
         var net = row_earn - row_ded;
@@ -336,33 +387,84 @@ function render_component_table(frm) {
         grand_ded += row_ded;
         grand_net += net;
 
-        html += '<td class="text-right" style="background:#e8f4fd;">' + format_currency(row_earn, frm.doc.currency) + '</td>';
-        html += '<td class="text-right" style="background:#fde8e8;">' + format_currency(row_ded, frm.doc.currency) + '</td>';
-        html += '<td class="text-right" style="background:#d4edda; font-weight:bold;">' + format_currency(net, frm.doc.currency) + '</td>';
+        html += '<td class="text-right row-earn" style="background:#e3f2fd; font-weight:500;">' + format_currency(row_earn, currency) + '</td>';
+        html += '<td class="text-right row-ded" style="background:#ffebee; font-weight:500;">' + format_currency(row_ded, currency) + '</td>';
+        html += '<td class="text-right row-net" style="background:#c8e6c9; font-weight:bold;">' + format_currency(net, currency) + '</td>';
         html += '</tr>';
     });
 
     // Totals row
-    html += '<tr style="font-weight:bold; background:#f0f4f7;">';
-    html += '<td colspan="2" style="position:sticky; left:0; background:#f0f4f7; z-index:1;">TOTAL</td>';
-    html += '<td colspan="4"></td>';
-    html += '<td></td>';
-
+    html += '<tr style="font-weight:bold; background:#e8eaf6;">';
+    html += '<td colspan="2" style="position:sticky; left:0; background:#e8eaf6; z-index:1;">TOTAL</td>';
+    html += '<td colspan="5"></td>';
     earnings.forEach(function(c) {
-        html += '<td class="text-right">' + format_currency(totals_earn[c.name], frm.doc.currency) + '</td>';
+        html += '<td class="text-right col-total-earn" data-comp="' + c.name + '" style="background:#c8e6c9;">' + format_currency(totals_earn[c.name], currency) + '</td>';
     });
     deductions.forEach(function(c) {
-        html += '<td class="text-right">' + format_currency(totals_ded[c.name], frm.doc.currency) + '</td>';
+        html += '<td class="text-right col-total-ded" data-comp="' + c.name + '" style="background:#ffcdd2;">' + format_currency(totals_ded[c.name], currency) + '</td>';
     });
-    html += '<td class="text-right" style="background:#cce5ff;">' + format_currency(grand_earn, frm.doc.currency) + '</td>';
-    html += '<td class="text-right" style="background:#f8d7da;">' + format_currency(grand_ded, frm.doc.currency) + '</td>';
-    html += '<td class="text-right" style="background:#d4edda;">' + format_currency(grand_net, frm.doc.currency) + '</td>';
+    html += '<td class="text-right grand-earn" style="background:#90caf9;">' + format_currency(grand_earn, currency) + '</td>';
+    html += '<td class="text-right grand-ded" style="background:#ef9a9a;">' + format_currency(grand_ded, currency) + '</td>';
+    html += '<td class="text-right grand-net" style="background:#a5d6a7;">' + format_currency(grand_net, currency) + '</td>';
     html += '</tr>';
 
     html += '</tbody></table></div>';
 
-    var wrapper = frm.fields_dict.salary_component_html;
-    if (wrapper) {
-        wrapper.$wrapper.html(html);
-    }
+    wrapper.$wrapper.html(html);
+
+    // Bind input change events
+    wrapper.$wrapper.find('.comp-input').on('change', function() {
+        var emp_id = $(this).data('emp');
+        var comp_name = $(this).data('comp');
+        var new_val = flt($(this).val());
+
+        set_val(frm, emp_id, comp_name, new_val);
+
+        // Recalculate this row
+        var $row = $(this).closest('tr');
+        var row_earn = 0, row_ded = 0;
+        $row.find('.comp-input').each(function() {
+            var cn = $(this).data('comp');
+            var is_earning = earnings.some(function(c) { return c.name === cn; });
+            var v = flt($(this).val());
+            if (is_earning) row_earn += v;
+            else row_ded += v;
+        });
+        var net = row_earn - row_ded;
+        $row.find('.row-earn').text(format_currency(row_earn, currency));
+        $row.find('.row-ded').text(format_currency(row_ded, currency));
+        $row.find('.row-net').text(format_currency(net, currency));
+
+        // Recalculate column totals
+        earnings.forEach(function(c) {
+            var col_total = 0;
+            wrapper.$wrapper.find('.comp-input[data-comp="' + c.name + '"]').each(function() {
+                col_total += flt($(this).val());
+            });
+            wrapper.$wrapper.find('.col-total-earn[data-comp="' + c.name + '"]').text(format_currency(col_total, currency));
+        });
+        deductions.forEach(function(c) {
+            var col_total = 0;
+            wrapper.$wrapper.find('.comp-input[data-comp="' + c.name + '"]').each(function() {
+                col_total += flt($(this).val());
+            });
+            wrapper.$wrapper.find('.col-total-ded[data-comp="' + c.name + '"]').text(format_currency(col_total, currency));
+        });
+
+        // Recalculate grand totals
+        var grand_earn = 0, grand_ded = 0;
+        wrapper.$wrapper.find('.row-earn').each(function() { grand_earn += flt($(this).text().replace(/[^0-9.\-]/g, '')); });
+        wrapper.$wrapper.find('.row-ded').each(function() { grand_ded += flt($(this).text().replace(/[^0-9.\-]/g, '')); });
+        var grand_net = grand_earn - grand_ded;
+        wrapper.$wrapper.find('.grand-earn').text(format_currency(grand_earn, currency));
+        wrapper.$wrapper.find('.grand-ded').text(format_currency(grand_ded, currency));
+        wrapper.$wrapper.find('.grand-net').text(format_currency(grand_net, currency));
+
+        // Update doc summary fields
+        frm.set_value('total_gross_pay', grand_earn);
+        frm.set_value('total_deductions', grand_ded);
+        frm.set_value('total_net_pay', grand_net);
+
+        sync_child_tables(frm);
+    });
 }

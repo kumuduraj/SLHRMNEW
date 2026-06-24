@@ -97,50 +97,13 @@
             "read_only": 1
         },
         {
-            "fieldname": "section_break_emp",
-            "fieldtype": "Section Break",
-            "label": "Employee Details"
-        },
-        {
-            "fieldname": "employees",
-            "fieldtype": "Table",
-            "label": "Employees",
-            "options": "Payroll Worksheet Employee"
-        },
-        {
-            "fieldname": "section_break_earn",
-            "fieldtype": "Section Break",
-            "label": "Additional Earnings",
-            "collapsible": 1
-        },
-        {
-            "fieldname": "earnings",
-            "fieldtype": "Table",
-            "label": "Earnings",
-            "options": "Payroll Worksheet Earning"
-        },
-        {
-            "fieldname": "section_break_ded",
-            "fieldtype": "Section Break",
-            "label": "Additional Deductions",
-            "collapsible": 1
-        },
-        {
-            "fieldname": "deductions",
-            "fieldtype": "Table",
-            "label": "Deductions",
-            "options": "Payroll Worksheet Deduction"
-        },
-        {
             "fieldname": "section_break_comp",
             "fieldtype": "Section Break",
-            "label": "Salary Components",
-            "collapsible": 1
+            "label": "Payroll Worksheet"
         },
         {
             "fieldname": "salary_component_html",
-            "fieldtype": "HTML",
-            "label": "Salary Components"
+            "fieldtype": "HTML"
         },
         {
             "fieldname": "section_break_summary",
@@ -211,6 +174,45 @@
             "options": "Payroll Worksheet",
             "read_only": 1,
             "no_copy": 1
+        },
+        {
+            "fieldname": "section_break_emp",
+            "fieldtype": "Section Break",
+            "label": "Employee Details",
+            "hidden": 1
+        },
+        {
+            "fieldname": "employees",
+            "fieldtype": "Table",
+            "label": "Employees",
+            "options": "Payroll Worksheet Employee",
+            "hidden": 1
+        },
+        {
+            "fieldname": "section_break_earn",
+            "fieldtype": "Section Break",
+            "label": "Additional Earnings",
+            "hidden": 1
+        },
+        {
+            "fieldname": "earnings",
+            "fieldtype": "Table",
+            "label": "Earnings",
+            "options": "Payroll Worksheet Earning",
+            "hidden": 1
+        },
+        {
+            "fieldname": "section_break_ded",
+            "fieldtype": "Section Break",
+            "label": "Additional Deductions",
+            "hidden": 1
+        },
+        {
+            "fieldname": "deductions",
+            "fieldtype": "Table",
+            "label": "Deductions",
+            "options": "Payroll Worksheet Deduction",
+            "hidden": 1
         }
     ],
     "permissions": [

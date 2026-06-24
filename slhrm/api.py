@@ -1020,12 +1020,6 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
                         "abbr": ss_abbr_map.get(comp.salary_component, comp.salary_component.upper()[:10]),
                     })
 
-    frappe.logger().error(
-        f"SLHRM-PAYROLL-DBG: emp_raw={len(employees_raw)}, "
-        f"ssa_map={len(ssa_map)}, ss_comp_keys={list(ss_components.keys())}, "
-        f"unique_ss={unique_ss}, all_comp={len(all_components)}"
-    )
-
     # Build per-employee component amounts
     comp_amounts = {}
     for emp in employees_raw:
@@ -1047,15 +1041,6 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
                 comp_vals[comp_name] = amt
                 emp_comps[comp_name] = amt
         comp_amounts[emp.name] = emp_comps
-
-    frappe.logger().info(
-        f"SLHRM payroll debug: emp_count={len(employees_result)}, "
-        f"ssa_map_keys={list(ssa_map.keys())[:3]}, "
-        f"unique_ss={unique_ss}, "
-        f"ss_components_keys={list(ss_components.keys())}, "
-        f"all_components_count={len(all_components)}, "
-        f"comp_amounts_keys={list(comp_amounts.keys())[:3]}"
-    )
 
     return {
         "employees": employees_result,
