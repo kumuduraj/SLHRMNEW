@@ -781,6 +781,7 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
         ssa_map[e]["salary_structure"] for e in ssa_map if ssa_map[e].get("salary_structure")
     ))
     ss_components = {}
+    ss_abbr_map = {}
     if unique_ss:
         ss_details = frappe.db.sql(
             """
@@ -794,6 +795,16 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
         )
         for d in ss_details:
             ss_components.setdefault(d.parent, []).append(d)
+
+        # Fetch abbreviations for all salary components
+        all_comp_names = list(set(d.salary_component for comps in ss_components.values() for d in comps))
+        if all_comp_names:
+            comps_meta = frappe.get_all("Salary Component",
+                filters={"name": ["in", all_comp_names]},
+                fields=["name", "salary_component_abbr"]
+            )
+            for cm in comps_meta:
+                ss_abbr_map[cm.name] = cm.salary_component_abbr or cm.name.upper()[:10]
 
     def _eval_formula(formula, base_vals):
         """Simple formula evaluator for salary components.
@@ -821,11 +832,11 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
         if not ss_name or ss_name not in ss_components:
             continue
 
-        # Build variable context: BS = base, other components calculated in order
+        # Build variable context using actual abbreviations from Salary Component
         comp_vals = {"BS": base, "basic": base, "base": base}
         for comp in ss_components[ss_name]:
             comp_name = comp.salary_component
-            abbr = comp_name.upper().replace(" ", "_")[:10]
+            abbr = ss_abbr_map.get(comp_name, comp_name.upper()[:10])
             if comp.formula:
                 amt = _eval_formula(comp.formula, comp_vals)
             else:
