@@ -163,6 +163,8 @@ function auto_load_payroll(frm) {
 
             frm._salary_components = data.salary_components || [];
             frm._component_amounts = data.component_amounts || {};
+            console.log('SLHRM salary_components:', frm._salary_components);
+            console.log('SLHRM component_amounts:', frm._component_amounts);
 
             var s = data.summary || {};
             frm.set_value('total_employees', s.total_employees || 0);
@@ -253,10 +255,9 @@ function render_component_table(frm) {
     var amounts = frm._component_amounts || {};
     var employees = frm.doc.employees || [];
 
+    var wrapper = frm.fields_dict.salary_component_html;
     if (!components.length || !employees.length) {
-        frm.set_intro('salary_component_html', '');
-        var wrapper = frm.fields_dict.salary_component_html;
-        if (wrapper) wrapper.$wrapper.html('<p class="text-muted">Select Branch, Month and Year to load salary components.</p>');
+        if (wrapper) wrapper.$wrapper.html('<p class="text-muted" style="padding:10px;">No salary components found. Ensure Salary Structure Assignments have base amounts set.</p>');
         return;
     }
 
