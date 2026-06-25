@@ -25,101 +25,151 @@ function _load_components(frm) {
     });
 }
 
-function _recalc_totals(frm) {
-    if (!frm.doc.slhrm_components) return;
-
+function _recalc_in_dialog(dlg) {
+    const comps = dlg.get_values().components || [];
     let bs = 0, ba = 0, va = 0;
-
-    frm.doc.slhrm_components.forEach(row => {
-        if (row.amount && row.amount > 0) {
-            const abbr = (row.abbreviation || "").toUpperCase();
-            if (abbr === "BS") bs = flt(row.amount);
-            else if (abbr === "BA") ba = flt(row.amount);
-            else if (abbr === "VA") va = flt(row.amount);
-        }
+    comps.forEach(c => {
+        if (c.abbreviation === "BS") bs = flt(c.amount) || 0;
+        else if (c.abbreviation === "BA") ba = flt(c.amount) || 0;
+        else if (c.abbreviation === "VA") va = flt(c.amount) || 0;
     });
 
-    const comp_vals = { "BS": bs, "BA": ba, "VA": va, "base": bs, "basic": bs };
+    const comp_vals = { "BS": bs, "BA": ba, "VA": va };
 
-    frm.doc.slhrm_components.forEach(row => {
-        if (row.formula && row.formula.trim()) {
-            let expr = row.formula;
+    comps.forEach(c => {
+        if (c.formula && c.formula.trim() && !c.amount) {
+            let expr = c.formula;
             ["BS", "BA", "VA"].forEach(a => {
                 const re = new RegExp("\\b" + a + "\\b", "g");
                 expr = expr.replace(re, String(comp_vals[a] || 0));
             });
             try {
                 const result = Function('"use strict"; return (' + expr + ')')();
-                row.amount = isFinite(result) ? Math.round(result * 100) / 100 : 0;
+                c.amount = isFinite(result) ? Math.round(result * 100) / 100 : 0;
             } catch (e) {
-                row.amount = 0;
+                c.amount = 0;
             }
-            comp_vals[row.abbreviation] = flt(row.amount);
-            comp_vals[row.salary_component] = flt(row.amount);
         }
+        comp_vals[c.abbreviation] = flt(c.amount) || 0;
     });
 
-    frm.refresh_field("slhrm_components");
-
-    const base_val = bs || 0;
-    frm.set_value("base", base_val);
-
-    let total_earnings = 0;
-    let total_deductions = 0;
-    frm.doc.slhrm_components.forEach(row => {
-        const amt = flt(row.amount) || 0;
-        if (row.component_type === "Earning") total_earnings += amt;
-        else if (row.component_type === "Deduction") total_deductions += amt;
-    });
-
-    frm.set_value("ctc", total_earnings);
+    // Update the table in dialog
+    const table = dlg.fields_dict.components.grid;
+    table.refresh();
 }
 
-function _save_amounts(frm) {
-    const components = [];
-    frm.doc.slhrm_components.forEach(row => {
-        components.push({
-            salary_component: row.salary_component,
-            amount: flt(row.amount) || 0,
+function _open_edit_dialog(frm) {
+    const components = (frm.doc.slhrm_components || []).map(c => ({
+        salary_component: c.salary_component,
+        component_type: c.component_type,
+        abbreviation: c.abbreviation,
+        formula: c.formula,
+        amount: c.amount || 0,
+        editable: !c.formula || !c.formula.trim(),
+    }));
+
+    const fields = components.map((c, i) => ({
+        fieldname: "comp_" + i,
+        label: c.salary_component + " (" + c.abbreviation + ")" + (c.formula ? " [" + c.formula + "]" : ""),
+        fieldtype: "Currency",
+        default: c.amount,
+        read_only: !!c.formula,
+        description: c.formula ? __("Auto-calculated: ") + c.formula : "",
+    }));
+
+    // Add Base field
+    fields.unshift({
+        fieldname: "base_field",
+        label: __("Base (Basic Salary)"),
+        fieldtype: "Currency",
+        default: frm.doc.base || 0,
+    });
+
+    const d = new frappe.ui.Dialog({
+        title: __("Edit Salary Components - ") + frm.doc.name,
+        fields: fields,
+        primary_action_label: __("Save"),
+        primary_action(values) {
+            const components = [];
+            frm.doc.slhrm_components.forEach((c, i) => {
+                const key = "comp_" + i;
+                let amt = flt(values[key]) || 0;
+
+                // Re-evaluate formula if it has one
+                if (c.formula && c.formula.trim()) {
+                    let bs_val = flt(values.base_field) || 0;
+                    let ba_val = flt(values["comp_" + frm.doc.slhrm_components.findIndex(
+                        x => x.abbreviation === "BA")]) || 0;
+                    let va_val = flt(values["comp_" + frm.doc.slhrm_components.findIndex(
+                        x => x.abbreviation === "VA")]) || 0;
+
+                    let expr = c.formula;
+                    ["BS", "BA", "VA"].forEach(a => {
+                        const re = new RegExp("\\b" + a + "\\b", "g");
+                        const v = a === "BS" ? bs_val : a === "BA" ? ba_val : va_val;
+                        expr = expr.replace(re, String(v));
+                    });
+                    try {
+                        const result = Function('"use strict"; return (' + expr + ')')();
+                        amt = isFinite(result) ? Math.round(result * 100) / 100 : 0;
+                    } catch (e) { /* keep manual amount */ }
+                }
+
+                components.push({
+                    salary_component: c.salary_component,
+                    amount: amt,
+                });
+            });
+
+            frappe.call({
+                method: "slhrm.api.update_ssa_components",
+                args: { ssa_name: frm.doc.name, components: components },
+                freeze: true,
+                freeze_message: __("Saving amounts..."),
+                callback(r) {
+                    if (r.message) {
+                        frappe.show_alert({ message: __("Amounts saved"), indicator: "green" });
+                        frm.reload_doc();
+                    }
+                },
+            });
+            d.hide();
+        },
+    });
+
+    // Add Recalculate button
+    d.add_custom_button(__("Recalculate"), function () {
+        const vals = d.get_values();
+        let bs = flt(vals.base_field) || 0;
+        let ba = flt(vals["comp_" + frm.doc.slhrm_components.findIndex(x => x.abbreviation === "BA")]) || 0;
+        let va = flt(vals["comp_" + frm.doc.slhrm_components.findIndex(x => x.abbreviation === "VA")]) || 0;
+        const cv = { "BS": bs, "BA": ba, "VA": va };
+
+        frm.doc.slhrm_components.forEach((c, i) => {
+            if (c.formula && c.formula.trim()) {
+                let expr = c.formula;
+                ["BS", "BA", "VA"].forEach(a => {
+                    const re = new RegExp("\\b" + a + "\\b", "g");
+                    expr = expr.replace(re, String(cv[a] || 0));
+                });
+                try {
+                    const result = Function('"use strict"; return (' + expr + ')')();
+                    d.set_value("comp_" + i, isFinite(result) ? Math.round(result * 100) / 100 : 0);
+                } catch (e) {}
+            }
         });
     });
 
-    frappe.call({
-        method: "slhrm.api.update_ssa_components",
-        args: {
-            ssa_name: frm.doc.name,
-            components: components,
-        },
-        freeze: true,
-        freeze_message: __("Saving amounts..."),
-        callback(r) {
-            if (r.message) {
-                frappe.show_alert({
-                    message: __("Amounts saved successfully"),
-                    indicator: "green",
-                });
-                frm.reload_doc();
-            }
-        },
-    });
+    d.show();
 }
 
 frappe.ui.form.on("Salary Structure Assignment", {
     refresh(frm) {
         _load_components(frm);
-        setTimeout(() => _recalc_totals(frm), 500);
 
         if (frm.doc.docstatus === 1) {
-            frm.add_custom_button(__("Update Amounts"), function () {
-                _save_amounts(frm);
-            }, __("Actions"));
-
-            frm.add_custom_button(__("Recalculate"), function () {
-                _recalc_totals(frm);
-                frappe.show_alert({
-                    message: __("Totals recalculated. Click 'Update Amounts' to save."),
-                    indicator: "orange",
-                });
+            frm.add_custom_button(__("Edit Amounts"), function () {
+                _open_edit_dialog(frm);
             }, __("Actions"));
         }
     },
@@ -132,11 +182,5 @@ frappe.ui.form.on("Salary Structure Assignment", {
             return;
         }
         _load_components(frm);
-    },
-});
-
-frappe.ui.form.on("Salary Structure Assignment Component", {
-    amount(frm, cdt, cdn) {
-        _recalc_totals(frm);
     },
 });
