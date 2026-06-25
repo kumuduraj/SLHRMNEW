@@ -185,10 +185,13 @@ class BulkAdditionalSalary(Document):
 
 
 @frappe.whitelist()
-def get_employees(branch, company, default_amount=0):
+def get_employees(branch, company, default_amount=0, show_all=0):
     """
     Fetch active employees for the given branch and company.
     Returns list of dicts for populating the child table.
+
+    By default, only employees with an active Salary Structure Assignment
+    are returned (required by Additional Salary). Set show_all=1 to include all.
     """
     if not branch:
         frappe.throw(_("Please select a Branch first."))
@@ -211,9 +214,19 @@ def get_employees(branch, company, default_amount=0):
         )
 
     default_amt = flt(default_amount)
+    show_all = cint(show_all)
 
     result = []
     for emp in employees:
+        if not show_all:
+            # Only include employees with an active Salary Structure Assignment
+            has_ssa = frappe.db.exists(
+                "Salary Structure Assignment",
+                {"employee": emp.name, "docstatus": 1},
+            )
+            if not has_ssa:
+                continue
+
         result.append({
             "employee": emp.name,
             "employee_name": emp.employee_name,
@@ -222,5 +235,11 @@ def get_employees(branch, company, default_amount=0):
             "amount": default_amt,
             "status": "Pending",
         })
+
+    if not result:
+        frappe.throw(
+            _("No employees with active Salary Structure Assignment found in branch '{0}'.").format(branch),
+            title=_("No Employees Found"),
+        )
 
     return result

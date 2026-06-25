@@ -107,12 +107,13 @@ frappe.ui.form.on("Bulk Additional Salary Detail", {
 
 function slhrm_fetch_employees(frm) {
     frappe.call({
-        method: "slhrm.slhrm.doctype.bulk_additional_salary.bulk_additional_salary.get_employees",
-        args: {
-            branch: frm.doc.branch,
-            company: frm.doc.company,
-            default_amount: flt(frm.doc.default_amount) || 0,
-        },
+      method: "slhrm.slhrm.doctype.bulk_additional_salary.bulk_additional_salary.get_employees",
+      args: {
+        branch: frm.doc.branch,
+        company: frm.doc.company,
+        default_amount: frm.doc.default_amount || 0,
+        show_all: frm.doc.show_all_employees || 0,
+      },
         freeze: true,
         freeze_message: __("Loading employees..."),
         callback: function (r) {

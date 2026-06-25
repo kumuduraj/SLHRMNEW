@@ -35,10 +35,26 @@ def execute():
     else:
         print(f"Using existing Salary Component: {comp}")
     
-    # Get a branch with employees
+    # Get a branch with employees that have SSAs
     branch = frappe.db.get_value("Employee", {"status": "Active", "branch": ["is", "set"]}, "branch")
     if not branch:
         print("No branch with active employees found!")
+        return
+    
+    # Find a branch with employees that have SSAs (required for Additional Salary)
+    branches_with_ssa = frappe.db.sql("""
+        SELECT DISTINCT e.branch
+        FROM `tabEmployee` e
+        INNER JOIN `tabSalary Structure Assignment` ssa 
+            ON ssa.employee = e.name AND ssa.docstatus = 1
+        WHERE e.status = 'Active'
+    """, as_dict=True)
+    
+    if branches_with_ssa:
+        branch = branches_with_ssa[0].branch
+        print(f"Found branch with SSA employees: {branch}")
+    else:
+        print("No employees with SSAs found!")
         return
     
     company = frappe.db.get_value("Employee", {"branch": branch, "status": "Active"}, "company")

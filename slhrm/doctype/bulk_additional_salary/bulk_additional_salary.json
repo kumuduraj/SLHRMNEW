@@ -83,6 +83,13 @@
       "description": "If checked, cancel and recreate if Additional Salary already exists for same employee + component + period"
     },
     {
+      "fieldname": "show_all_employees",
+      "fieldtype": "Check",
+      "label": "Show All Employees",
+      "default": "0",
+      "description": "If checked, show all employees regardless of Salary Structure Assignment (default: only employees with active SSA)"
+    },
+    {
       "fieldname": "col_break_2",
       "fieldtype": "Column Break"
     },
