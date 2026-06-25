@@ -1,11 +1,12 @@
 """
 Test Bulk Additional Salary complete flow:
-1. Create a Bulk Additional Salary document
+1. Create a Bulk Additional Salary document (Earning)
 2. Get employees
 3. Set amounts
 4. Submit
 5. Verify Additional Salary records created
 6. Cancel and verify
+7. Test with Deduction component
 """
 import frappe
 
@@ -15,12 +16,11 @@ def execute():
     print("TEST: Bulk Additional Salary Complete Flow")
     print("=" * 60)
 
-    # Step 1: Create Bulk Additional Salary
-    print("\n--- Step 1: Creating Bulk Additional Salary ---")
+    # Step 1: Create Bulk Additional Salary (Earning type)
+    print("\n--- Step 1: Creating Bulk Additional Salary (Earning) ---")
     
-    # Check if salary component exists
-    comp = frappe.db.get_value("Salary Component", {"type": "Earning"}, "name")
-    if not comp:
+    earning_comp = frappe.db.get_value("Salary Component", {"type": "Earning"}, "name")
+    if not earning_comp:
         print("No Earning type Salary Component found. Creating one...")
         comp_doc = frappe.get_doc({
             "doctype": "Salary Component",
@@ -30,18 +30,12 @@ def execute():
         })
         comp_doc.insert()
         frappe.db.commit()
-        comp = comp_doc.name
-        print(f"Created Salary Component: {comp}")
+        earning_comp = comp_doc.name
+        print(f"Created Salary Component: {earning_comp}")
     else:
-        print(f"Using existing Salary Component: {comp}")
+        print(f"Using existing Earning Component: {earning_comp}")
     
     # Get a branch with employees that have SSAs
-    branch = frappe.db.get_value("Employee", {"status": "Active", "branch": ["is", "set"]}, "branch")
-    if not branch:
-        print("No branch with active employees found!")
-        return
-    
-    # Find a branch with employees that have SSAs (required for Additional Salary)
     branches_with_ssa = frappe.db.sql("""
         SELECT DISTINCT e.branch
         FROM `tabEmployee` e
@@ -50,13 +44,11 @@ def execute():
         WHERE e.status = 'Active'
     """, as_dict=True)
     
-    if branches_with_ssa:
-        branch = branches_with_ssa[0].branch
-        print(f"Found branch with SSA employees: {branch}")
-    else:
+    if not branches_with_ssa:
         print("No employees with SSAs found!")
         return
     
+    branch = branches_with_ssa[0].branch
     company = frappe.db.get_value("Employee", {"branch": branch, "status": "Active"}, "company")
     print(f"Using Branch: {branch}, Company: {company}")
     
@@ -65,7 +57,7 @@ def execute():
         "doctype": "Bulk Additional Salary",
         "branch": branch,
         "company": company,
-        "salary_component": comp,
+        "salary_component": earning_comp,
         "payroll_month": "June",
         "payroll_year": 2026,
         "default_amount": 5000,
@@ -93,40 +85,108 @@ def execute():
     doc.insert()
     frappe.db.commit()
     print(f"Created Bulk Additional Salary: {doc.name}")
-    print(f"Added {len(doc.employees)} employees to the document")
+    print(f"Component Type: {doc.component_type}")
+    print(f"Added {len(doc.employees)} employees")
     
-    # Step 3: Verify totals
-    print("\n--- Step 3: Verifying Totals ---")
+    # Verify totals
+    print("\n--- Verifying Totals ---")
     print(f"Total Employees: {doc.total_employees}")
     print(f"Total Amount: {doc.total_amount}")
     
-    # Step 4: Submit
-    print("\n--- Step 4: Submitting ---")
+    # Submit
+    print("\n--- Submitting (Earning) ---")
     doc.submit()
     frappe.db.commit()
     print(f"Submitted: {doc.name}")
     print(f"Additional Salaries Created: {doc.additional_salaries_created}")
     
-    # Step 5: Verify Additional Salary records
-    print("\n--- Step 5: Verifying Additional Salary Records ---")
-    
+    # Verify Additional Salary records
+    print("\n--- Verifying Additional Salary Records ---")
     for row in doc.employees:
         if row.additional_salary:
             add_sal = frappe.get_doc("Additional Salary", row.additional_salary)
-            print(f"  {row.employee}: {add_sal.name} | Amount: {add_sal.amount} | Status: {row.status}")
+            print(f"  {row.employee}: {add_sal.name} | Amount: {add_sal.amount} | Type: {add_sal.type} | Status: {row.status}")
         else:
             print(f"  {row.employee}: No Additional Salary created | Status: {row.status}")
     
-    # Step 6: Cancel
-    print("\n--- Step 6: Cancelling ---")
+    # Cancel
+    print("\n--- Cancelling ---")
     doc.cancel()
     frappe.db.commit()
     print(f"Cancelled: {doc.name}")
     
-    # Verify cancellation
-    for row in doc.employees:
-        print(f"  {row.employee}: Status: {row.status} | Additional Salary: {row.additional_salary}")
+    # =====================================================
+    # TEST 2: Deduction component
+    # =====================================================
+    print("\n" + "=" * 60)
+    print("TEST 2: Bulk Additional Salary (Deduction)")
+    print("=" * 60)
+    
+    deduction_comp = frappe.db.get_value("Salary Component", {"type": "Deduction"}, "name")
+    if not deduction_comp:
+        print("No Deduction type Salary Component found. Creating one...")
+        comp_doc = frappe.get_doc({
+            "doctype": "Salary Component",
+            "salary_component": "Test Deduction",
+            "type": "Deduction",
+            "salary_component_abbr": "TD",
+        })
+        comp_doc.insert()
+        frappe.db.commit()
+        deduction_comp = comp_doc.name
+        print(f"Created Salary Component: {deduction_comp}")
+    else:
+        print(f"Using existing Deduction Component: {deduction_comp}")
+    
+    # Create deduction document
+    doc2 = frappe.get_doc({
+        "doctype": "Bulk Additional Salary",
+        "branch": branch,
+        "company": company,
+        "salary_component": deduction_comp,
+        "payroll_month": "June",
+        "payroll_year": 2026,
+        "default_amount": 2000,
+    })
+    
+    # Add employees
+    for emp in employees[:3]:
+        doc2.append("employees", {
+            "employee": emp["employee"],
+            "employee_name": emp["employee_name"],
+            "designation": emp["designation"],
+            "department": emp["department"],
+            "amount": 2000,
+            "status": "Pending",
+        })
+    
+    doc2.insert()
+    frappe.db.commit()
+    print(f"Created Bulk Additional Salary: {doc2.name}")
+    print(f"Component Type: {doc2.component_type}")
+    
+    # Submit
+    print("\n--- Submitting (Deduction) ---")
+    doc2.submit()
+    frappe.db.commit()
+    print(f"Submitted: {doc2.name}")
+    print(f"Additional Salaries Created: {doc2.additional_salaries_created}")
+    
+    # Verify Additional Salary records
+    print("\n--- Verifying Additional Salary Records ---")
+    for row in doc2.employees:
+        if row.additional_salary:
+            add_sal = frappe.get_doc("Additional Salary", row.additional_salary)
+            print(f"  {row.employee}: {add_sal.name} | Amount: {add_sal.amount} | Type: {add_sal.type} | Status: {row.status}")
+        else:
+            print(f"  {row.employee}: No Additional Salary created | Status: {row.status}")
+    
+    # Cancel
+    print("\n--- Cancelling ---")
+    doc2.cancel()
+    frappe.db.commit()
+    print(f"Cancelled: {doc2.name}")
     
     print("\n" + "=" * 60)
-    print("TEST COMPLETE")
+    print("ALL TESTS COMPLETE")
     print("=" * 60)

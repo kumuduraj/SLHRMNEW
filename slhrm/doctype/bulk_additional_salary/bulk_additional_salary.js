@@ -59,22 +59,21 @@ frappe.ui.form.on("Bulk Additional Salary", {
 
     salary_component(frm) {
         if (frm.doc.salary_component) {
-            // Validate it's an Earning type
             frappe.db.get_value(
                 "Salary Component",
                 frm.doc.salary_component,
                 "type"
             ).then((r) => {
-                if (r && r.message && r.message.type !== "Earning") {
-                    frappe.msgprint(
-                        __("'{0}' is a {1} type component. Only Earning components are supported for bulk additional salary.",
-                            [frm.doc.salary_component, r.message.type]
-                        ),
-                        __("Warning")
-                    );
-                    frm.set_value("salary_component", "");
+                if (r && r.message) {
+                    frm.set_value("component_type", r.message.type);
+                    frappe.show_alert({
+                        message: __("Component type: {0}", [r.message.type]),
+                        indicator: r.message.type === "Earning" ? "green" : "orange",
+                    });
                 }
             });
+        } else {
+            frm.set_value("component_type", "");
         }
     },
 

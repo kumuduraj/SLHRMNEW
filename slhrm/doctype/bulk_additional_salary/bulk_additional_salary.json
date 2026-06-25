@@ -48,6 +48,13 @@
       "in_standard_filter": 1
     },
     {
+      "fieldname": "component_type",
+      "fieldtype": "Data",
+      "label": "Component Type",
+      "read_only": 1,
+      "description": "Auto-set based on selected Salary Component"
+    },
+    {
       "fieldname": "payroll_month",
       "fieldtype": "Select",
       "label": "Payroll Month",

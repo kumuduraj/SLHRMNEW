@@ -12,17 +12,18 @@ class BulkAdditionalSalary(Document):
         self.calculate_totals()
 
     def validate_salary_component(self):
-        """Ensure the selected salary component is an Earning type."""
+        """Get the type of the selected salary component."""
         comp_type = frappe.db.get_value(
             "Salary Component", self.salary_component, "type"
         )
-        if comp_type != "Earning":
+        if comp_type not in ("Earning", "Deduction"):
             frappe.throw(
-                _("Salary Component '{0}' is a {1}. Only Earning type components are allowed.").format(
+                _("Salary Component '{0}' has invalid type '{1}'. Must be Earning or Deduction.").format(
                     self.salary_component, comp_type
                 ),
                 title=_("Invalid Salary Component"),
             )
+        self.component_type = comp_type
 
     def validate_employees(self):
         """Basic validation on employee rows."""
@@ -91,7 +92,7 @@ class BulkAdditionalSalary(Document):
                 add_sal.amount = flt(row.amount)
                 add_sal.payroll_date = payroll_date
                 add_sal.company = self.company
-                add_sal.type = "Earning"
+                add_sal.type = self.component_type or "Earning"
                 add_sal.ref_doctype = self.doctype
                 add_sal.ref_docname = self.name
 
