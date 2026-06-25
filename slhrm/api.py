@@ -684,6 +684,28 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
     )
     ssa_names = [row.name for row in ssas] if ssas else []
 
+    # Filter: only employees with SSAs
+    employees_with_ssa = set(row.employee for row in ssas)
+    no_ssa_emps = [e for e in employees_raw if e.name not in employees_with_ssa]
+    employees_raw = [e for e in employees_raw if e.name in employees_with_ssa]
+    emp_names = [e.name for e in employees_raw]
+
+    if no_ssa_emps:
+        warnings.append(
+            f"{len(no_ssa_emps)} employee(s) have no Salary Structure Assignment: "
+            + ", ".join(e.employee_name for e in no_ssa_emps[:5])
+            + ("..." if len(no_ssa_emps) > 5 else "")
+        )
+
+    if not employees_raw:
+        return {
+            "employees": [],
+            "earnings": [],
+            "deductions": [],
+            "summary": {},
+            "warnings": warnings,
+        }
+
     # Fetch component amounts from Employee Salary Package (new approach)
     ssa_components_map = {}
     if emp_names:
@@ -722,14 +744,6 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
             "salary_structure": row.salary_structure,
             "components": comp_amounts,
         }
-
-    no_ssa = [e.employee_name for e in employees_raw if e.name not in ssa_map]
-    if no_ssa:
-        warnings.append(
-            f"{len(no_ssa)} employee(s) have no Salary Structure Assignment: "
-            + ", ".join(no_ssa[:5])
-            + ("..." if len(no_ssa) > 5 else "")
-        )
 
     # ── 3. Attendance summary (batch) ──
     att_map = {}
