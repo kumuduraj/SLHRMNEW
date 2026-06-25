@@ -36,6 +36,7 @@
         {"type": "Link", "label": "Leave Allocation", "link_to": "Leave Allocation", "link_type": "DocType", "onboard": 0},
         {"type": "Card Break", "label": "Payroll", "icon": "banknote"},
         {"type": "Link", "label": "Payroll Worksheet", "link_to": "Payroll Worksheet", "link_type": "DocType", "onboard": 1},
+        {"type": "Link", "label": "Employee Salary Package", "link_to": "Employee Salary Package", "link_type": "DocType", "onboard": 1},
         {"type": "Link", "label": "Salary Slip", "link_to": "Salary Slip", "link_type": "DocType", "onboard": 0},
         {"type": "Link", "label": "Payroll Entry", "link_to": "Payroll Entry", "link_type": "DocType", "onboard": 0},
         {"type": "Link", "label": "Salary Structure", "link_to": "Salary Structure", "link_type": "DocType", "onboard": 0},

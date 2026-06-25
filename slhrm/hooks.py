@@ -3,7 +3,7 @@ app_title = "SLHRM"
 app_publisher = "Evonet"
 app_description = "Biometric fingerprint attendance for ERPNext v16"
 app_version = "0.0.1"
-app_color = "#3b82f6"
+app_color = "#3b22f6"
 app_icon = "hexagon"
 app_email = "rajitha@evonet.lk"
 app_license = "mit"
@@ -11,13 +11,15 @@ app_license = "mit"
 # Assets — MUST be lists
 app_include_js = [
     "/assets/slhrm/js/slhrm.js",
-    "/assets/slhrm/js/salary_structure_assignment.js",
 ]
 app_include_css = ["/assets/slhrm/css/slhrm.css"]
 
 # Install
 after_install = "slhrm.install.execute"
-after_migrate = "slhrm.install.after_migrate"
+after_migrate = [
+    "slhrm.install.after_migrate",
+    "slhrm.custom_fields.setup_custom_fields",
+]
 
 # Fixtures
 fixtures = [
@@ -35,15 +37,13 @@ fixtures = [
     },
 ]
 
-# Auto-create User when Employee is created
-# Auto-sync Employee Salary Components when SSA is saved/submitted
+# Doc events
 doc_events = {
     "Employee": {
         "after_insert": "slhrm.api.create_employee_user"
     },
-    "Salary Structure Assignment": {
-        "on_update": "slhrm.api.sync_employee_salary_components_on_ssa",
-        "on_submit": "slhrm.api.sync_employee_salary_components_on_ssa",
+    "Salary Slip": {
+        "before_save": "slhrm.overrides.salary_slip.apply_salary_package"
     }
 }
 

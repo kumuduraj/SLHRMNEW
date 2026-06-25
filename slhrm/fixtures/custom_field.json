@@ -44,25 +44,5 @@
     "hidden": 1,
     "description": "Set to 1 when User is auto-created from Employee. Cleared after first password change in SLHRM PWA.",
     "name": "User-slhrm_must_change_password"
-  },
-  {
-    "doctype": "Custom Field",
-    "dt": "Salary Structure Assignment",
-    "module": "SLHRM",
-    "fieldname": "slhrm_salary_components_section",
-    "fieldtype": "Section Break",
-    "label": "Salary Components",
-    "insert_after": "leave_encashment_amount_per_day",
-    "name": "Salary Structure Assignment-slhrm_salary_components_section"
-  },
-  {
-    "doctype": "Custom Field",
-    "dt": "Salary Structure Assignment",
-    "module": "SLHRM",
-    "fieldname": "slhrm_components_html",
-    "fieldtype": "HTML",
-    "label": "Salary Components",
-    "insert_after": "slhrm_salary_components_section",
-    "name": "Salary Structure Assignment-slhrm_components_html"
   }
 ]

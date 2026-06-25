@@ -1,0 +1,235 @@
+{
+    "name": "Employee Salary Package",
+    "module": "SLHRM",
+    "doctype": "DocType",
+    "document_type": "Document",
+    "istable": 0,
+    "issingle": 0,
+    "is_submittable": 0,
+    "track_changes": 1,
+    "editable_grid": 0,
+    "quick_entry": 0,
+    "autoname": "field:employee",
+    "title_field": "employee_name",
+    "search_fields": "employee,employee_name,salary_structure",
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "fields": [
+        {
+            "fieldname": "employee",
+            "fieldtype": "Link",
+            "label": "Employee",
+            "options": "Employee",
+            "reqd": 1,
+            "unique": 1,
+            "in_list_view": 1,
+            "columns": 2
+        },
+        {
+            "fieldname": "employee_name",
+            "fieldtype": "Data",
+            "label": "Employee Name",
+            "fetch_from": "employee.employee_name",
+            "read_only": 1,
+            "in_list_view": 1,
+            "columns": 2
+        },
+        {
+            "fieldname": "department",
+            "fieldtype": "Link",
+            "label": "Department",
+            "options": "Department",
+            "fetch_from": "employee.department",
+            "read_only": 1,
+            "in_list_view": 0
+        },
+        {
+            "fieldname": "col_break_header",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "branch",
+            "fieldtype": "Link",
+            "label": "Branch",
+            "options": "Branch",
+            "fetch_from": "employee.branch",
+            "read_only": 1,
+            "in_list_view": 0
+        },
+        {
+            "fieldname": "designation",
+            "fieldtype": "Data",
+            "label": "Designation",
+            "fetch_from": "employee.designation",
+            "read_only": 1,
+            "in_list_view": 0
+        },
+        {
+            "fieldname": "company",
+            "fieldtype": "Link",
+            "label": "Company",
+            "options": "Company",
+            "fetch_from": "employee.company",
+            "reqd": 1,
+            "read_only": 1,
+            "in_list_view": 0
+        },
+        {
+            "fieldname": "sec_break_structure",
+            "fieldtype": "Section Break",
+            "label": "Salary Configuration"
+        },
+        {
+            "fieldname": "salary_structure",
+            "fieldtype": "Link",
+            "label": "Salary Structure",
+            "options": "Salary Structure",
+            "reqd": 1,
+            "in_list_view": 0
+        },
+        {
+            "fieldname": "effective_from",
+            "fieldtype": "Date",
+            "label": "Effective From",
+            "reqd": 1,
+            "in_list_view": 0
+        },
+        {
+            "fieldname": "col_break_structure",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "income_tax_slab",
+            "fieldtype": "Link",
+            "label": "Income Tax Slab",
+            "options": "Income Tax Slab",
+            "in_list_view": 0
+        },
+        {
+            "fieldname": "payroll_frequency",
+            "fieldtype": "Select",
+            "label": "Payroll Frequency",
+            "options": "\nMonthly\nBiweekly\nFortnightly\nWeekly",
+            "fetch_from": "salary_structure.payroll_frequency",
+            "read_only": 1,
+            "default": "Monthly",
+            "in_list_view": 0
+        },
+        {
+            "fieldname": "sec_break_components",
+            "fieldtype": "Section Break",
+            "label": "Salary Components"
+        },
+        {
+            "fieldname": "load_components",
+            "fieldtype": "Button",
+            "label": "Load Components",
+            "depends_on": "eval:doc.salary_structure"
+        },
+        {
+            "fieldname": "components",
+            "fieldtype": "Table",
+            "label": "Salary Components",
+            "options": "Employee Salary Package Detail",
+            "in_list_view": 0
+        },
+        {
+            "fieldname": "sec_break_summary",
+            "fieldtype": "Section Break",
+            "label": "Summary"
+        },
+        {
+            "fieldname": "total_earning",
+            "fieldtype": "Currency",
+            "label": "Total Earning",
+            "read_only": 1,
+            "in_list_view": 0
+        },
+        {
+            "fieldname": "col_break_summary",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "total_deduction",
+            "fieldtype": "Currency",
+            "label": "Total Deduction",
+            "read_only": 1,
+            "in_list_view": 0
+        },
+        {
+            "fieldname": "col_break_summary2",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "net_total",
+            "fieldtype": "Currency",
+            "label": "Net Total",
+            "read_only": 1,
+            "in_list_view": 0
+        },
+        {
+            "fieldname": "sec_break_ssa",
+            "fieldtype": "Section Break",
+            "label": "Salary Structure Assignment",
+            "collapsible": 1
+        },
+        {
+            "fieldname": "current_ssa",
+            "fieldtype": "Link",
+            "label": "Current SSA",
+            "options": "Salary Structure Assignment",
+            "read_only": 1,
+            "in_list_view": 0
+        },
+        {
+            "fieldname": "current_ssa_base",
+            "fieldtype": "Currency",
+            "label": "SSA Base",
+            "read_only": 1,
+            "in_list_view": 0
+        },
+        {
+            "fieldname": "col_break_ssa",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "ssa_status",
+            "fieldtype": "Data",
+            "label": "SSA Status",
+            "read_only": 1,
+            "in_list_view": 0
+        },
+        {
+            "fieldname": "slhrm_managed",
+            "fieldtype": "Check",
+            "label": "Managed by SLHRM",
+            "read_only": 1,
+            "hidden": 1,
+            "default": "1"
+        },
+        {
+            "fieldname": "sec_break_notes",
+            "fieldtype": "Section Break"
+        },
+        {
+            "fieldname": "notes",
+            "fieldtype": "Small Text",
+            "label": "Notes"
+        }
+    ],
+    "permissions": [
+        {
+            "role": "HR Manager",
+            "read": 1,
+            "write": 1,
+            "create": 1,
+            "delete": 1
+        },
+        {
+            "role": "HR User",
+            "read": 1,
+            "write": 1,
+            "create": 1
+        }
+    ]
+}
