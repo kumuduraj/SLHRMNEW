@@ -11,6 +11,7 @@ app_license = "mit"
 # Assets — MUST be lists
 app_include_js = [
     "/assets/slhrm/js/slhrm.js",
+    "/assets/slhrm/js/bulk_additional_salary.js",
 ]
 app_include_css = ["/assets/slhrm/css/slhrm.css"]
 

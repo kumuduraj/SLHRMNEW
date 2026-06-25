@@ -1,0 +1,80 @@
+{
+  "name": "Bulk Additional Salary Detail",
+  "module": "SLHRM",
+  "doctype": "DocType",
+  "istable": 1,
+  "editable_grid": 1,
+  "track_changes": 0,
+  "engine": "InnoDB",
+  "fields": [
+    {
+      "fieldname": "employee",
+      "fieldtype": "Link",
+      "label": "Employee",
+      "options": "Employee",
+      "in_list_view": 1,
+      "in_standard_filter": 1,
+      "reqd": 1
+    },
+    {
+      "fieldname": "employee_name",
+      "fieldtype": "Data",
+      "label": "Employee Name",
+      "fetch_from": "employee.employee_name",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "designation",
+      "fieldtype": "Data",
+      "label": "Designation",
+      "fetch_from": "employee.designation",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "department",
+      "fieldtype": "Link",
+      "label": "Department",
+      "options": "Department",
+      "fetch_from": "employee.department",
+      "read_only": 1
+    },
+    {
+      "fieldname": "col_break_detail",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "amount",
+      "fieldtype": "Currency",
+      "label": "Amount",
+      "in_list_view": 1,
+      "reqd": 1,
+      "default": "0"
+    },
+    {
+      "fieldname": "additional_salary",
+      "fieldtype": "Link",
+      "label": "Additional Salary",
+      "options": "Additional Salary",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "label": "Status",
+      "options": "Pending\nCreated\nSkipped\nError",
+      "default": "Pending",
+      "read_only": 1,
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "remarks",
+      "fieldtype": "Small Text",
+      "label": "Remarks",
+      "read_only": 1
+    }
+  ],
+  "permissions": []
+}

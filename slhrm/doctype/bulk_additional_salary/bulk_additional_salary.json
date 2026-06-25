@@ -1,0 +1,172 @@
+{
+  "name": "Bulk Additional Salary",
+  "module": "SLHRM",
+  "doctype": "DocType",
+  "is_submittable": 1,
+  "autoname": "naming_series:SLHRM-BAS-.YYYY.-.#####",
+  "track_changes": 1,
+  "engine": "InnoDB",
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "naming_rule": "By \"Naming Series\" field",
+  "fields": [
+    {
+      "fieldname": "naming_series",
+      "fieldtype": "Select",
+      "label": "Naming Series",
+      "options": "SLHRM-BAS-.YYYY.-.#####",
+      "default": "SLHRM-BAS-.YYYY.-.#####",
+      "reqd": 1,
+      "set_only_once": 1
+    },
+    {
+      "fieldname": "branch",
+      "fieldtype": "Link",
+      "label": "Branch",
+      "options": "Branch",
+      "reqd": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "company",
+      "fieldtype": "Link",
+      "label": "Company",
+      "options": "Company",
+      "reqd": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "col_break_1",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "salary_component",
+      "fieldtype": "Link",
+      "label": "Salary Component",
+      "options": "Salary Component",
+      "reqd": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "payroll_month",
+      "fieldtype": "Select",
+      "label": "Payroll Month",
+      "options": "\nJanuary\nFebruary\nMarch\nApril\nMay\nJune\nJuly\nAugust\nSeptember\nOctober\nNovember\nDecember",
+      "reqd": 1,
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "payroll_year",
+      "fieldtype": "Int",
+      "label": "Payroll Year",
+      "reqd": 1,
+      "default": "2026",
+      "in_standard_filter": 1
+    },
+    {
+      "fieldname": "sec_break_options",
+      "fieldtype": "Section Break",
+      "label": "Options"
+    },
+    {
+      "fieldname": "auto_submit_additional_salary",
+      "fieldtype": "Check",
+      "label": "Auto Submit Additional Salary",
+      "default": "0",
+      "description": "If checked, created Additional Salary records will be auto-submitted"
+    },
+    {
+      "fieldname": "overwrite_existing",
+      "fieldtype": "Check",
+      "label": "Overwrite Existing",
+      "default": "0",
+      "description": "If checked, cancel and recreate if Additional Salary already exists for same employee + component + period"
+    },
+    {
+      "fieldname": "col_break_2",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "default_amount",
+      "fieldtype": "Currency",
+      "label": "Default Amount",
+      "description": "Optional: pre-fill all rows with this amount when getting employees"
+    },
+    {
+      "fieldname": "sec_break_employees",
+      "fieldtype": "Section Break",
+      "label": "Employees"
+    },
+    {
+      "fieldname": "get_employees",
+      "fieldtype": "Button",
+      "label": "Get Employees",
+      "depends_on": "eval:!doc.docstatus"
+    },
+    {
+      "fieldname": "employees",
+      "fieldtype": "Table",
+      "label": "Employees",
+      "options": "Bulk Additional Salary Detail"
+    },
+    {
+      "fieldname": "sec_break_summary",
+      "fieldtype": "Section Break",
+      "label": "Summary"
+    },
+    {
+      "fieldname": "total_employees",
+      "fieldtype": "Int",
+      "label": "Total Employees",
+      "read_only": 1,
+      "description": "Count of rows with amount > 0"
+    },
+    {
+      "fieldname": "total_amount",
+      "fieldtype": "Currency",
+      "label": "Total Amount",
+      "read_only": 1,
+      "description": "Sum of all non-zero amounts"
+    },
+    {
+      "fieldname": "col_break_3",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "additional_salaries_created",
+      "fieldtype": "Int",
+      "label": "Records Created",
+      "read_only": 1,
+      "description": "Count of Additional Salary records created on submit"
+    },
+    {
+      "fieldname": "amended_from",
+      "fieldtype": "Link",
+      "label": "Amended From",
+      "options": "Bulk Additional Salary",
+      "read_only": 1,
+      "no_copy": 1,
+      "print_hide": 1
+    }
+  ],
+  "permissions": [
+    {
+      "role": "HR Manager",
+      "read": 1,
+      "write": 1,
+      "create": 1,
+      "submit": 1,
+      "cancel": 1,
+      "amend": 1
+    },
+    {
+      "role": "HR User",
+      "read": 1,
+      "write": 1,
+      "create": 1,
+      "submit": 0,
+      "cancel": 0,
+      "amend": 0
+    }
+  ]
+}
