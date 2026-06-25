@@ -668,7 +668,7 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
     ssa_map = {}
     ssas = frappe.db.sql(
         """
-        SELECT ssa.employee, ssa.base, ssa.salary_structure
+        SELECT ssa.name, ssa.employee, ssa.base, ssa.salary_structure
         FROM `tabSalary Structure Assignment` ssa
         INNER JOIN (
             SELECT employee, MAX(from_date) as max_date
