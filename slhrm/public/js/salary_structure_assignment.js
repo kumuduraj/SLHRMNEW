@@ -1,4 +1,4 @@
-// Salary Structure Assignment - editable salary components table
+// Salary Structure Assignment — link to editable Employee Salary Component
 frappe.provide("slhrm.ssa");
 
 function _load_components(frm) {
@@ -25,50 +25,18 @@ function _load_components(frm) {
     });
 }
 
-function _force_editable(frm) {
-    if (frm.doc.docstatus !== 1) return;
-    const field = frm.fields_dict.slhrm_components;
-    if (!field || !field.grid) return;
-
-    const grid = field.grid;
-    grid.editable = true;
-    grid.grid_editable = true;
-
-    // Remove disabled/readonly from all inputs in the grid
-    setTimeout(() => {
-        field.$wrapper.find("input, select, textarea").removeAttr("disabled readonly");
-        field.$wrapper.find(".grid-input").removeAttr("disabled readonly");
-        field.$wrapper.find(".btn-open").show();
-    }, 100);
-    setTimeout(() => {
-        field.$wrapper.find("input, select, textarea").removeAttr("disabled readonly");
-    }, 300);
-    setTimeout(() => {
-        field.$wrapper.find("input, select, textarea").removeAttr("disabled readonly");
-    }, 600);
-}
-
-function _save_amounts(frm) {
-    const components = [];
-    frm.doc.slhrm_components.forEach(row => {
-        components.push({
-            salary_component: row.salary_component,
-            component_type: row.component_type,
-            abbreviation: row.abbreviation,
-            formula: row.formula,
-            amount: flt(row.amount) || 0,
-        });
-    });
-
+function _sync_components(frm) {
     frappe.call({
-        method: "slhrm.api.update_ssa_components",
-        args: { ssa_name: frm.doc.name, components: components },
+        method: "slhrm.api.sync_employee_salary_components",
+        args: { ssa_name: frm.doc.name },
         freeze: true,
-        freeze_message: __("Saving amounts..."),
+        freeze_message: __("Syncing salary components..."),
         callback(r) {
             if (r.message) {
-                frappe.show_alert({ message: __("Amounts saved successfully"), indicator: "green" });
-                frm.reload_doc();
+                frappe.show_alert({
+                    message: __("Synced {1} components to Employee Salary Component", [r.message.created + r.message.updated]),
+                    indicator: "green"
+                });
             }
         },
     });
@@ -76,14 +44,50 @@ function _save_amounts(frm) {
 
 frappe.ui.form.on("Salary Structure Assignment", {
     refresh(frm) {
-        _load_components(frm);
-
         if (frm.doc.docstatus === 1) {
-            _force_editable(frm);
-
-            frm.add_custom_button(__("Save Amounts"), function () {
-                _save_amounts(frm);
+            // Show sync button
+            frm.add_custom_button(__("Sync Components"), function () {
+                _sync_components(frm);
             }, __("Actions"));
+
+            // Show link to editable Employee Salary Component
+            if (frm.doc.employee) {
+                frm.add_custom_button(__("Edit Amounts"), function () {
+                    frappe.set_route("List", "Employee Salary Component", {
+                        employee: frm.doc.employee,
+                    });
+                }, __("Actions"));
+
+                // Show read-only summary of current amounts
+                frappe.call({
+                    method: "slhrm.api.get_employee_salary_components",
+                    args: { employee: frm.doc.employee },
+                    callback(r) {
+                        if (r.message && r.message.length) {
+                            let html = '<table class="table table-bordered table-sm" style="margin-top:10px;">';
+                            html += '<tr style="background:#f5f5f5;"><th>Component</th><th>Type</th><th>Abbr</th><th style="text-align:right;">Amount</th></tr>';
+                            r.message.forEach(row => {
+                                const color = row.component_type === 'Earning' ? '#2196F3' : '#f44336';
+                                html += `<tr>
+                                    <td>${row.salary_component}</td>
+                                    <td><span style="color:${color};font-weight:600;">${row.component_type}</span></td>
+                                    <td>${row.abbreviation}</td>
+                                    <td style="text-align:right;font-weight:600;">${format_currency(row.amount)}</td>
+                                </tr>`;
+                            });
+                            html += '</table>';
+                            frm.fields_dict.slhrm_components_html.$wrapper.html(html);
+                        } else {
+                            frm.fields_dict.slhrm_components_html.$wrapper.html(
+                                '<p style="color:#999;margin-top:10px;">No salary components found. Click "Sync Components" to populate.</p>'
+                            );
+                        }
+                    },
+                });
+            }
+        } else {
+            // Draft: auto-populate child table
+            _load_components(frm);
         }
     },
     salary_structure(frm) {
@@ -93,11 +97,5 @@ frappe.ui.form.on("Salary Structure Assignment", {
             return;
         }
         _load_components(frm);
-    },
-});
-
-frappe.ui.form.on("Salary Structure Assignment Component", {
-    amount(frm, cdt, cdn) {
-        // Auto-recalculate when amount changes
     },
 });
