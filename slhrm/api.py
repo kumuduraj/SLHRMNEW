@@ -685,40 +685,36 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
     )
     ssa_names = [row.name for row in ssas] if ssas else []
 
-    # Fetch component amounts from Employee Salary Component (editable, no submit lock)
+    # Fetch component amounts from Employee Salary Package (new approach)
     ssa_components_map = {}
     if emp_names:
-        esc_rows = frappe.db.sql(
+        # Try Employee Salary Package first
+        esp_rows = frappe.db.sql(
             """
-            SELECT employee, salary_component, amount
-            FROM `tabEmployee Salary Component`
-            WHERE employee IN %(employees)s
+            SELECT esp.employee, espd.salary_component, espd.amount
+            FROM `tabEmployee Salary Package` esp
+            INNER JOIN `tabEmployee Salary Package Detail` espd ON espd.parent = esp.name
+            WHERE esp.employee IN %(employees)s AND espd.amount > 0
             """,
             {"employees": emp_names},
             as_dict=True,
         )
-        for row in esc_rows:
+        for row in esp_rows:
             ssa_components_map.setdefault(row.employee, {})[row.salary_component] = flt(row.amount)
 
-    # Fallback: also read from SSA child table if no Employee Salary Component records
-    if ssa_names:
-        esc_employees = set(ssa_components_map.keys())
-        remaining_emps = [row.employee for row in ssas if row.employee not in esc_employees]
-        if remaining_emps:
-            comp_rows = frappe.db.sql(
+        # Fallback: Employee Salary Component (legacy)
+        if not ssa_components_map:
+            esc_rows = frappe.db.sql(
                 """
-                SELECT parent, salary_component, amount
-                FROM `tabSalary Structure Assignment Component`
-                WHERE parent IN %(ssa_names)s
+                SELECT employee, salary_component, amount
+                FROM `tabEmployee Salary Component`
+                WHERE employee IN %(employees)s
                 """,
-                {"ssa_names": [row.name for row in ssas if row.employee in set(remaining_emps)]},
+                {"employees": emp_names},
                 as_dict=True,
             )
-            parent_to_emp = {row.name: row.employee for row in ssas}
-            for row in comp_rows:
-                emp = parent_to_emp.get(row.parent)
-                if emp:
-                    ssa_components_map.setdefault(emp, {})[row.salary_component] = flt(row.amount)
+            for row in esc_rows:
+                ssa_components_map.setdefault(row.employee, {})[row.salary_component] = flt(row.amount)
 
     for row in ssas:
         comp_amounts = ssa_components_map.get(row.employee, {})
