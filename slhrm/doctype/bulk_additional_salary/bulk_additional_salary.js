@@ -92,7 +92,29 @@ frappe.ui.form.on("Bulk Additional Salary", {
             );
         }
     },
+
+    is_recurring(frm) {
+        frm.toggle_reqd("start_date", frm.doc.is_recurring);
+        frm.toggle_reqd("end_date", frm.doc.is_recurring);
+    },
+
+    start_date(frm) {
+        slhrm_validate_recurring_dates(frm);
+    },
+
+    end_date(frm) {
+        slhrm_validate_recurring_dates(frm);
+    },
 });
+
+function slhrm_validate_recurring_dates(frm) {
+    if (frm.doc.is_recurring && frm.doc.start_date && frm.doc.end_date) {
+        if (frappe.datetime.get_diff(frm.doc.end_date, frm.doc.start_date) < 0) {
+            frappe.msgprint(__("End Date must be after Start Date."));
+            frm.set_value("end_date", "");
+        }
+    }
+}
 
 frappe.ui.form.on("Bulk Additional Salary Detail", {
     amount(frm, cdt, cdn) {

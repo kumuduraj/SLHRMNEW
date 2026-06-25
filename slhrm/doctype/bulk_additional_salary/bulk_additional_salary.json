@@ -90,6 +90,27 @@
       "description": "If checked, cancel and recreate if Additional Salary already exists for same employee + component + period"
     },
     {
+      "fieldname": "deduct_full_tax_on_selected_payroll_date",
+      "fieldtype": "Check",
+      "label": "Deduct Full Tax on Selected Payroll Date",
+      "default": "0",
+      "description": "If checked, full tax amount will be deducted on the selected payroll date"
+    },
+    {
+      "fieldname": "overwrite_salary_structure_amount",
+      "fieldtype": "Check",
+      "label": "Overwrite Salary Structure Amount",
+      "default": "0",
+      "description": "If checked, the amount will overwrite the salary structure component amount"
+    },
+    {
+      "fieldname": "is_recurring",
+      "fieldtype": "Check",
+      "label": "Is Recurring",
+      "default": "0",
+      "description": "If checked, Additional Salary will be recurring between start and end date"
+    },
+    {
       "fieldname": "show_all_employees",
       "fieldtype": "Check",
       "label": "Show All Employees",
@@ -105,6 +126,20 @@
       "fieldtype": "Currency",
       "label": "Default Amount",
       "description": "Optional: pre-fill all rows with this amount when getting employees"
+    },
+    {
+      "fieldname": "start_date",
+      "fieldtype": "Date",
+      "label": "Start Date",
+      "depends_on": "eval:doc.is_recurring",
+      "description": "Start date for recurring Additional Salary"
+    },
+    {
+      "fieldname": "end_date",
+      "fieldtype": "Date",
+      "label": "End Date",
+      "depends_on": "eval:doc.is_recurring",
+      "description": "End date for recurring Additional Salary"
     },
     {
       "fieldname": "sec_break_employees",

@@ -93,6 +93,12 @@ class BulkAdditionalSalary(Document):
                 add_sal.payroll_date = payroll_date
                 add_sal.company = self.company
                 add_sal.type = self.component_type or "Earning"
+                add_sal.deduct_full_tax_on_selected_payroll_date = self.deduct_full_tax_on_selected_payroll_date
+                add_sal.overwrite_salary_structure_amount = self.overwrite_salary_structure_amount
+                add_sal.is_recurring = self.is_recurring
+                if self.is_recurring:
+                    add_sal.start_date = self.start_date
+                    add_sal.end_date = self.end_date
                 add_sal.ref_doctype = self.doctype
                 add_sal.ref_docname = self.name
 
