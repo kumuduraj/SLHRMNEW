@@ -1,4 +1,4 @@
-// Salary Structure Assignment - auto-populate salary components & make editable after submit
+// Salary Structure Assignment - dynamic salary components, editable after submit
 frappe.provide("slhrm.ssa");
 
 function _load_components(frm) {
@@ -25,57 +25,62 @@ function _load_components(frm) {
     });
 }
 
-function _make_grid_editable(frm) {
+function _save_components(frm) {
+    const components = [];
+    frm.doc.slhrm_components.forEach(row => {
+        components.push({
+            salary_component: row.salary_component,
+            amount: flt(row.amount) || 0,
+        });
+    });
+
+    frappe.call({
+        method: "slhrm.api.update_ssa_components",
+        args: { ssa_name: frm.doc.name, components: components },
+        freeze: true,
+        freeze_message: __("Saving amounts..."),
+        callback(r) {
+            if (r.message) {
+                frappe.show_alert({ message: __("Amounts saved"), indicator: "green" });
+                frm.reload_doc();
+            }
+        },
+    });
+}
+
+function _force_grid_editable(frm) {
     if (frm.doc.docstatus !== 1) return;
-    if (!frm.fields_dict.slhrm_components) return;
+    const field = frm.fields_dict.slhrm_components;
+    if (!field || !field.grid) return;
 
-    const grid = frm.fields_dict.slhrm_components.grid;
-    if (!grid) return;
-
-    // Force grid editable
+    const grid = field.grid;
     grid.editable = true;
     grid.grid_editable = true;
 
-    // Enable all rows
-    if (grid.grid_rows) {
+    // Override Frappe's docstatus check that blocks editing
+    frm.enable_save = function () {};
+    frm.save = function () { _save_components(frm); };
+
+    // Make every row's Amount cell editable
+    setTimeout(() => {
         grid.grid_rows.forEach(row => {
-            if (row.grid_row) {
+            if (row && row.grid_row) {
                 row.grid_row.editable = true;
+                // Enable the input fields
+                const wrapper = row.grid_row.wrapper;
+                if (wrapper) {
+                    wrapper.find(".grid-input").removeAttr("disabled readonly");
+                    wrapper.find("input, select, textarea").removeAttr("disabled readonly");
+                    wrapper.find(".grid-row-check").removeAttr("disabled");
+                }
             }
         });
-    }
-
-    // Enable the Amount field in each row
-    frm.doc.slhrm_components.forEach((comp, idx) => {
-        const row_wrapper = grid.grid_rows[idx];
-        if (row_wrapper && row_wrapper.grid_row) {
-            row_wrapper.grid_row.editable = true;
-        }
-    });
+    }, 300);
 
     // Add Save button
-    frm.page.clear_indicator();
-    frm.add_custom_button(__("Save Changes"), function () {
-        const components = [];
-        frm.doc.slhrm_components.forEach(row => {
-            components.push({
-                salary_component: row.salary_component,
-                amount: flt(row.amount) || 0,
-            });
-        });
-
-        frappe.call({
-            method: "slhrm.api.update_ssa_components",
-            args: { ssa_name: frm.doc.name, components: components },
-            freeze: true,
-            freeze_message: __("Saving amounts..."),
-            callback(r) {
-                if (r.message) {
-                    frappe.show_alert({ message: __("Amounts saved successfully"), indicator: "green" });
-                    frm.reload_doc();
-                }
-            },
-        });
+    frm.clear_custom_buttons();
+    frm.add_custom_button(__("Save Amounts"), function () {
+        _save_components(frm);
     }, __("Actions"));
 }
 
@@ -84,10 +89,13 @@ frappe.ui.form.on("Salary Structure Assignment", {
         _load_components(frm);
 
         if (frm.doc.docstatus === 1) {
-            // Try to make grid editable after a short delay
-            setTimeout(() => _make_grid_editable(frm), 200);
-            setTimeout(() => _make_grid_editable(frm), 500);
-            setTimeout(() => _make_grid_editable(frm), 1000);
+            // Override the form's read-only state for child table editing
+            frm.read_only = false;
+            frm.allow_edit = true;
+
+            setTimeout(() => _force_grid_editable(frm), 200);
+            setTimeout(() => _force_grid_editable(frm), 500);
+            setTimeout(() => _force_grid_editable(frm), 1000);
         }
     },
     salary_structure(frm) {
