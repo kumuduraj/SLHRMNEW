@@ -72,7 +72,7 @@ function _recalc_totals(frm) {
         else if (row.component_type === "Deduction") total_deductions += amt;
     });
 
-    frm.set_value("total_cost_to_company", total_earnings);
+    frm.set_value("ctc", total_earnings);
 }
 
 function _save_amounts(frm) {
@@ -128,7 +128,7 @@ frappe.ui.form.on("Salary Structure Assignment", {
             frm.clear_table("slhrm_components");
             frm.refresh_field("slhrm_components");
             frm.set_value("base", 0);
-            frm.set_value("total_cost_to_company", 0);
+            frm.set_value("ctc", 0);
             return;
         }
         _load_components(frm);
