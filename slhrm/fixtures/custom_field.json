@@ -59,10 +59,12 @@
     "doctype": "Custom Field",
     "dt": "Salary Structure Assignment",
     "module": "SLHRM",
-    "fieldname": "slhrm_components_html",
-    "fieldtype": "HTML",
-    "label": "",
+    "fieldname": "slhrm_components",
+    "fieldtype": "Table",
+    "label": "Salary Components",
+    "options": "Salary Structure Assignment Component",
     "insert_after": "slhrm_salary_components_section",
-    "name": "Salary Structure Assignment-slhrm_components_html"
+    "allow_on_submit": 1,
+    "name": "Salary Structure Assignment-slhrm_components"
   }
 ]

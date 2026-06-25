@@ -1150,27 +1150,54 @@ def get_salary_structure_components(salary_structure):
 
 @frappe.whitelist()
 def update_ssa_components(ssa_name, components):
-    """Update salary component amounts on a submitted SSA (bypasses submit lock)."""
+    """Update salary component amounts on a submitted SSA and sync to Employee Salary Component."""
     if not frappe.has_permission("Salary Structure Assignment", "write"):
         frappe.throw(_("No permission to edit Salary Structure Assignment"))
 
     ssa = frappe.get_doc("Salary Structure Assignment", ssa_name)
-    if ssa.docstatus != 1:
-        frappe.throw(_("Can only update amounts on submitted documents"))
-
     comp_map = {c.get("salary_component"): flt(c.get("amount", 0)) for c in components}
 
-    updated = 0
-    for row in ssa.slhrm_components:
-        if row.salary_component in comp_map:
-            row.amount = comp_map[row.salary_component]
-            updated += 1
+    # Update SSA child table if docstatus=1
+    if ssa.docstatus == 1:
+        updated = 0
+        for row in ssa.slhrm_components:
+            if row.salary_component in comp_map:
+                row.amount = comp_map[row.salary_component]
+                updated += 1
 
-    frappe.db.set_value("Salary Structure Assignment", ssa_name, "base",
-        next((comp_map[k] for k in comp_map if k == "Basic Salary" or k == "BS"), 0))
+        frappe.db.set_value("Salary Structure Assignment", ssa_name, "base",
+            next((comp_map[k] for k in comp_map if k == "Basic Salary" or k == "BS"), 0))
+
+    # Sync to Employee Salary Component
+    employee = ssa.employee
+    if employee:
+        for sc_name, amt in comp_map.items():
+            existing = frappe.db.get_value("Employee Salary Component",
+                {"employee": employee, "salary_component": sc_name}, "name")
+            if existing:
+                frappe.db.set_value("Employee Salary Component", existing, "amount", amt)
+            else:
+                # Get component info from salary structure
+                comp_info = frappe.db.get_value("Salary Detail",
+                    {"parent": ssa.salary_structure, "salary_component": sc_name},
+                    ["component_type", "abbr", "formula", "amount"], as_dict=True) or {}
+                parentfield = "earnings" if (comp_info.component_type or "Earning") == "Earning" else "deductions"
+                doc = frappe.get_doc({
+                    "doctype": "Employee Salary Component",
+                    "employee": employee,
+                    "employee_name": frappe.db.get_value("Employee", employee, "employee_name"),
+                    "salary_component": sc_name,
+                    "component_type": comp_info.component_type or "Earning",
+                    "abbreviation": comp_info.abbr or "",
+                    "formula": comp_info.formula or "",
+                    "amount": amt,
+                    "salary_structure": ssa.salary_structure,
+                    "company": ssa.company,
+                })
+                doc.insert(ignore_permissions=True)
 
     frappe.db.commit()
-    return {"updated": updated, "name": ssa_name}
+    return {"updated": len(comp_map), "name": ssa_name}
 
 
 @frappe.whitelist()
