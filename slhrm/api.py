@@ -674,13 +674,12 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
             SELECT employee, MAX(from_date) as max_date
             FROM `tabSalary Structure Assignment`
             WHERE employee IN %(employees)s
-                AND from_date <= %(end_date)s
                 AND docstatus = 1
             GROUP BY employee
         ) latest ON ssa.employee = latest.employee AND ssa.from_date = latest.max_date
         WHERE ssa.docstatus = 1
         """,
-        {"employees": emp_names, "end_date": end_date},
+        {"employees": emp_names},
         as_dict=True,
     )
     ssa_names = [row.name for row in ssas] if ssas else []
