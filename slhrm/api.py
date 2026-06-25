@@ -1079,7 +1079,8 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
                 if comp.formula:
                     amt = _eval_formula(comp.formula, comp_vals)
                 else:
-                    amt = flt(comp.amount)
+                    # Use package amount if set, otherwise salary structure default
+                    amt = ssa_comps.get(comp_name, flt(comp.amount))
                 comp_vals[abbr] = amt
                 comp_vals[comp_name.upper()] = amt
                 comp_vals[comp_name] = amt
