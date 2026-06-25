@@ -1128,6 +1128,31 @@ def get_salary_structure_components(salary_structure):
     return result
 
 
+@frappe.whitelist()
+def update_ssa_components(ssa_name, components):
+    """Update salary component amounts on a submitted SSA (bypasses submit lock)."""
+    if not frappe.has_permission("Salary Structure Assignment", "write"):
+        frappe.throw(_("No permission to edit Salary Structure Assignment"))
+
+    ssa = frappe.get_doc("Salary Structure Assignment", ssa_name)
+    if ssa.docstatus != 1:
+        frappe.throw(_("Can only update amounts on submitted documents"))
+
+    comp_map = {c.get("salary_component"): flt(c.get("amount", 0)) for c in components}
+
+    updated = 0
+    for row in ssa.slhrm_components:
+        if row.salary_component in comp_map:
+            row.amount = comp_map[row.salary_component]
+            updated += 1
+
+    frappe.db.set_value("Salary Structure Assignment", ssa_name, "base",
+        next((comp_map[k] for k in comp_map if k == "Basic Salary" or k == "BS"), 0))
+
+    frappe.db.commit()
+    return {"updated": updated, "name": ssa_name}
+
+
 # ═══════════════════════════════════════════════════════════════
 # AUTO-CREATE USER FROM EMPLOYEE
 # ═══════════════════════════════════════════════════════════════
