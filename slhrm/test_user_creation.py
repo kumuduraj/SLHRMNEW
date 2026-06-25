@@ -64,7 +64,6 @@ def execute():
         print(f"\nUser Details:")
         print(f"  Name: {user.name}")
         print(f"  Email: {user.email}")
-        print(f"  Employee: {user.employee}")
         print(f"  Enabled: {user.enabled}")
         print(f"  Send Welcome Email: {user.send_welcome_email}")
         
