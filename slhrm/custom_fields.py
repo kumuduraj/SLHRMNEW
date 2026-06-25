@@ -3,6 +3,16 @@ from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
 
 def setup_custom_fields():
+    # Remove old SLHRM custom fields from SSA (replaced by Employee Salary Package)
+    old_fields = [
+        "Salary Structure Assignment-slhrm_salary_components_section",
+        "Salary Structure Assignment-slhrm_components",
+        "Salary Structure Assignment-slhrm_components_html",
+    ]
+    for field_name in old_fields:
+        if frappe.db.exists("Custom Field", field_name):
+            frappe.delete_doc("Custom Field", field_name, ignore_permissions=True)
+
     custom_fields = {
         "Salary Structure Assignment": [
             {
