@@ -1,0 +1,55 @@
+{
+    "name": "Salary Structure Assignment Component",
+    "module": "SLHRM",
+    "doctype": "DocType",
+    "document_type": "Document",
+    "issingle": 0,
+    "istable": 1,
+    "is_submittable": 0,
+    "track_changes": 0,
+    "editable_grid": 1,
+    "fields": [
+        {
+            "fieldname": "salary_component",
+            "fieldtype": "Link",
+            "label": "Salary Component",
+            "options": "Salary Component",
+            "reqd": 1,
+            "in_list_view": 1,
+            "columns": 3
+        },
+        {
+            "fieldname": "component_type",
+            "fieldtype": "Data",
+            "label": "Type",
+            "read_only": 1,
+            "in_list_view": 1,
+            "columns": 2
+        },
+        {
+            "fieldname": "abbreviation",
+            "fieldtype": "Data",
+            "label": "Abbr",
+            "read_only": 1,
+            "in_list_view": 1,
+            "columns": 1
+        },
+        {
+            "fieldname": "formula",
+            "fieldtype": "Small Text",
+            "label": "Formula",
+            "read_only": 1,
+            "in_list_view": 1,
+            "columns": 3
+        },
+        {
+            "fieldname": "amount",
+            "fieldtype": "Currency",
+            "label": "Amount",
+            "reqd": 0,
+            "in_list_view": 1,
+            "columns": 2
+        }
+    ],
+    "permissions": []
+}

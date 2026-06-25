@@ -49,36 +49,22 @@
     "doctype": "Custom Field",
     "dt": "Salary Structure Assignment",
     "module": "SLHRM",
-    "fieldname": "custom_basic_salary",
-    "fieldtype": "Currency",
-    "label": "Basic Salary",
-    "insert_after": "base",
-    "allow_on_submit": 1,
-    "description": "Basic Salary amount for this employee",
-    "name": "Salary Structure Assignment-custom_basic_salary"
+    "fieldname": "slhrm_salary_components_section",
+    "fieldtype": "Section Break",
+    "label": "Salary Components",
+    "insert_after": "leave_encashment_amount_per_day",
+    "name": "Salary Structure Assignment-slhrm_salary_components_section"
   },
   {
     "doctype": "Custom Field",
     "dt": "Salary Structure Assignment",
     "module": "SLHRM",
-    "fieldname": "custom_base_allowance",
-    "fieldtype": "Currency",
-    "label": "Base Allowance",
-    "insert_after": "custom_basic_salary",
+    "fieldname": "slhrm_components",
+    "fieldtype": "Table",
+    "label": "Salary Components",
+    "options": "Salary Structure Assignment Component",
+    "insert_after": "slhrm_salary_components_section",
     "allow_on_submit": 1,
-    "description": "Base Allowance amount for this employee",
-    "name": "Salary Structure Assignment-custom_base_allowance"
-  },
-  {
-    "doctype": "Custom Field",
-    "dt": "Salary Structure Assignment",
-    "module": "SLHRM",
-    "fieldname": "custom_vehicle_allowance",
-    "fieldtype": "Currency",
-    "label": "Vehicle Allowance",
-    "insert_after": "custom_base_allowance",
-    "allow_on_submit": 1,
-    "description": "Vehicle Allowance amount for this employee",
-    "name": "Salary Structure Assignment-custom_vehicle_allowance"
+    "name": "Salary Structure Assignment-slhrm_components"
   }
 ]

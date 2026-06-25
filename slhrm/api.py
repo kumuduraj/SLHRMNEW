@@ -668,8 +668,7 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
     ssa_map = {}
     ssas = frappe.db.sql(
         """
-        SELECT ssa.employee, ssa.base, ssa.salary_structure,
-               ssa.custom_basic_salary, ssa.custom_base_allowance, ssa.custom_vehicle_allowance
+        SELECT ssa.employee, ssa.base, ssa.salary_structure
         FROM `tabSalary Structure Assignment` ssa
         INNER JOIN (
             SELECT employee, MAX(from_date) as max_date
@@ -684,13 +683,29 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
         {"employees": emp_names, "end_date": end_date},
         as_dict=True,
     )
+    ssa_names = [row.name for row in ssas] if ssas else []
+
+    # Fetch component amounts from child table
+    ssa_components_map = {}
+    if ssa_names:
+        comp_rows = frappe.db.sql(
+            """
+            SELECT parent, salary_component, amount
+            FROM `tabSalary Structure Assignment Component`
+            WHERE parent IN %(ssa_names)s
+            """,
+            {"ssa_names": ssa_names},
+            as_dict=True,
+        )
+        for row in comp_rows:
+            ssa_components_map.setdefault(row.parent, {})[row.salary_component] = flt(row.amount)
+
     for row in ssas:
+        comp_amounts = ssa_components_map.get(row.name, {})
         ssa_map[row.employee] = {
             "base": flt(row.base),
             "salary_structure": row.salary_structure,
-            "custom_basic_salary": flt(row.custom_basic_salary),
-            "custom_base_allowance": flt(row.custom_base_allowance),
-            "custom_vehicle_allowance": flt(row.custom_vehicle_allowance),
+            "components": comp_amounts,
         }
 
     no_ssa = [e.employee_name for e in employees_raw if e.name not in ssa_map]
@@ -836,17 +851,16 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
         if not ss_name or ss_name not in ss_components:
             continue
 
-        # Build variable context using actual abbreviations from Salary Component
-        comp_vals = {
-            "BS": flt(ssa.get("custom_basic_salary", 0)),
-            "BA": flt(ssa.get("custom_base_allowance", 0)),
-            "VA": flt(ssa.get("custom_vehicle_allowance", 0)),
-            "basic": flt(ssa.get("custom_basic_salary", 0)),
-            "base": flt(ssa.get("base", 0)),
-            "CUSTOM_BASIC_SALARY": flt(ssa.get("custom_basic_salary", 0)),
-            "CUSTOM_BASE_ALLOWANCE": flt(ssa.get("custom_base_allowance", 0)),
-            "CUSTOM_VEHICLE_ALLOWANCE": flt(ssa.get("custom_vehicle_allowance", 0)),
-        }
+        # Build variable context from child table components
+        ssa_comps = ssa.get("components", {})
+        comp_vals = {"base": base, "basic": base}
+        # Pre-populate with component amounts from child table
+        for comp_name, amt in ssa_comps.items():
+            abbr = ss_abbr_map.get(comp_name, comp_name.upper()[:10])
+            comp_vals[abbr] = amt
+            comp_vals[comp_name.upper()] = amt
+            comp_vals[comp_name] = amt
+
         for comp in ss_components[ss_name]:
             comp_name = comp.salary_component
             abbr = ss_abbr_map.get(comp_name, comp_name.upper()[:10])
@@ -989,9 +1003,7 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
             "designation": emp.designation or "",
             "salary_structure": ssa.get("salary_structure", ""),
             "base": base,
-            "custom_basic_salary": flt(ssa.get("custom_basic_salary", 0)),
-            "custom_base_allowance": flt(ssa.get("custom_base_allowance", 0)),
-            "custom_vehicle_allowance": flt(ssa.get("custom_vehicle_allowance", 0)),
+            "components": ssa.get("components", {}),
             "total_working_days": total_working_days,
             "present_days": present,
             "absent_days": absent,
@@ -1044,16 +1056,14 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
         base = flt(ssa.get("base", 0))
         emp_comps = {}
         if ss_name and ss_name in ss_components:
-            comp_vals = {
-                "BS": flt(ssa.get("custom_basic_salary", 0)),
-                "BA": flt(ssa.get("custom_base_allowance", 0)),
-                "VA": flt(ssa.get("custom_vehicle_allowance", 0)),
-                "basic": flt(ssa.get("custom_basic_salary", 0)),
-                "base": flt(ssa.get("base", 0)),
-                "CUSTOM_BASIC_SALARY": flt(ssa.get("custom_basic_salary", 0)),
-                "CUSTOM_BASE_ALLOWANCE": flt(ssa.get("custom_base_allowance", 0)),
-                "CUSTOM_VEHICLE_ALLOWANCE": flt(ssa.get("custom_vehicle_allowance", 0)),
-            }
+            ssa_comps = ssa.get("components", {})
+            comp_vals = {"base": base, "basic": base}
+            for comp_name, amt in ssa_comps.items():
+                abbr = ss_abbr_map.get(comp_name, comp_name.upper()[:10])
+                comp_vals[abbr] = amt
+                comp_vals[comp_name.upper()] = amt
+                comp_vals[comp_name] = amt
+
             for comp in ss_components[ss_name]:
                 comp_name = comp.salary_component
                 abbr = ss_abbr_map.get(comp_name, comp_name.upper()[:10])
@@ -1083,6 +1093,39 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
         },
         "warnings": warnings,
     }
+
+
+# ═══════════════════════════════════════════════════════════════
+# SALARY STRUCTURE COMPONENTS FOR SSA
+# ═══════════════════════════════════════════════════════════════
+
+
+@frappe.whitelist()
+def get_salary_structure_components(salary_structure):
+    """Return salary components from a salary structure for auto-populating SSA."""
+    if not salary_structure:
+        return []
+
+    details = frappe.db.sql(
+        """
+        SELECT salary_component, parentfield, formula, abbr
+        FROM `tabSalary Detail`
+        WHERE parent = %(ss)s
+        ORDER BY parentfield, idx
+        """,
+        {"ss": salary_structure},
+        as_dict=True,
+    )
+
+    result = []
+    for d in details:
+        result.append({
+            "salary_component": d.salary_component,
+            "component_type": "Earning" if d.parentfield == "earnings" else "Deduction",
+            "abbreviation": d.abbr or "",
+            "formula": d.formula or "",
+        })
+    return result
 
 
 # ═══════════════════════════════════════════════════════════════

@@ -9,7 +9,10 @@ app_email = "rajitha@evonet.lk"
 app_license = "mit"
 
 # Assets — MUST be lists
-app_include_js = ["/assets/slhrm/js/slhrm.js"]
+app_include_js = [
+    "/assets/slhrm/js/slhrm.js",
+    "/assets/slhrm/js/salary_structure_assignment.js",
+]
 app_include_css = ["/assets/slhrm/css/slhrm.css"]
 
 # Install
