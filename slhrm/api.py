@@ -685,23 +685,43 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
     )
     ssa_names = [row.name for row in ssas] if ssas else []
 
-    # Fetch component amounts from child table
+    # Fetch component amounts from Employee Salary Component (editable, no submit lock)
     ssa_components_map = {}
-    if ssa_names:
-        comp_rows = frappe.db.sql(
+    if emp_names:
+        esc_rows = frappe.db.sql(
             """
-            SELECT parent, salary_component, amount
-            FROM `tabSalary Structure Assignment Component`
-            WHERE parent IN %(ssa_names)s
+            SELECT employee, salary_component, amount
+            FROM `tabEmployee Salary Component`
+            WHERE employee IN %(employees)s
             """,
-            {"ssa_names": ssa_names},
+            {"employees": emp_names},
             as_dict=True,
         )
-        for row in comp_rows:
-            ssa_components_map.setdefault(row.parent, {})[row.salary_component] = flt(row.amount)
+        for row in esc_rows:
+            ssa_components_map.setdefault(row.employee, {})[row.salary_component] = flt(row.amount)
+
+    # Fallback: also read from SSA child table if no Employee Salary Component records
+    if ssa_names:
+        esc_employees = set(ssa_components_map.keys())
+        remaining_emps = [row.employee for row in ssas if row.employee not in esc_employees]
+        if remaining_emps:
+            comp_rows = frappe.db.sql(
+                """
+                SELECT parent, salary_component, amount
+                FROM `tabSalary Structure Assignment Component`
+                WHERE parent IN %(ssa_names)s
+                """,
+                {"ssa_names": [row.name for row in ssas if row.employee in set(remaining_emps)]},
+                as_dict=True,
+            )
+            parent_to_emp = {row.name: row.employee for row in ssas}
+            for row in comp_rows:
+                emp = parent_to_emp.get(row.parent)
+                if emp:
+                    ssa_components_map.setdefault(emp, {})[row.salary_component] = flt(row.amount)
 
     for row in ssas:
-        comp_amounts = ssa_components_map.get(row.name, {})
+        comp_amounts = ssa_components_map.get(row.employee, {})
         ssa_map[row.employee] = {
             "base": flt(row.base),
             "salary_structure": row.salary_structure,
@@ -1151,6 +1171,95 @@ def update_ssa_components(ssa_name, components):
 
     frappe.db.commit()
     return {"updated": updated, "name": ssa_name}
+
+
+@frappe.whitelist()
+def sync_employee_salary_components_on_ssa(doc, method=None):
+    """Hook: auto-sync Employee Salary Components when SSA is saved or submitted."""
+    try:
+        sync_employee_salary_components(doc.name)
+    except Exception:
+        frappe.log_error(title="SLHRM: Failed to sync Employee Salary Components")
+
+
+def sync_employee_salary_components(ssa_name):
+    """
+    Sync salary components from SSA to Employee Salary Component records.
+    Creates/updates fully editable records (no submit lock).
+    """
+    ssa = frappe.get_doc("Salary Structure Assignment", ssa_name)
+    employee = ssa.employee
+    employee_name = frappe.db.get_value("Employee", employee, "employee_name")
+    company = ssa.company
+    salary_structure = ssa.salary_structure
+
+    # Get existing records for this employee
+    existing = {}
+    for row in frappe.get_all("Employee Salary Component",
+        filters={"employee": employee},
+        fields=["name", "salary_component", "amount"]):
+        existing[row.salary_component] = row
+
+    # Get salary structure components
+    structure_comps = frappe.get_all("Salary Detail",
+        filters={"parent": salary_structure},
+        fields=["salary_component", "parentfield", "formula", "abbr", "amount"],
+        order_by="parentfield, idx")
+
+    created = 0
+    updated = 0
+    for sc in structure_comps:
+        component_type = "Earning" if sc.parentfield == "earnings" else "Deduction"
+        # Check if existing has amount set — preserve it
+        amt = 0
+        if sc.salary_component in existing:
+            amt = existing[sc.salary_component].amount
+        else:
+            amt = sc.amount or 0
+
+        if sc.salary_component in existing:
+            # Update existing
+            frappe.db.set_value("Employee Salary Component",
+                existing[sc.salary_component].name, "amount", amt)
+            updated += 1
+        else:
+            # Create new
+            doc = frappe.get_doc({
+                "doctype": "Employee Salary Component",
+                "employee": employee,
+                "employee_name": employee_name,
+                "salary_component": sc.salary_component,
+                "component_type": component_type,
+                "abbreviation": sc.abbr or "",
+                "formula": sc.formula or "",
+                "amount": amt,
+                "salary_structure": salary_structure,
+                "company": company,
+            })
+            doc.insert(ignore_permissions=True)
+            created += 1
+
+    frappe.db.commit()
+    return {"created": created, "updated": updated, "employee": employee}
+
+
+@frappe.whitelist()
+def update_employee_salary_component(name, amount):
+    """Update a single Employee Salary Component amount (called from inline editing)."""
+    frappe.db.set_value("Employee Salary Component", name, "amount", flt(amount))
+    frappe.db.commit()
+    return {"success": True, "name": name}
+
+
+@frappe.whitelist()
+def get_employee_salary_components(employee):
+    """Get all salary component amounts for an employee."""
+    comps = frappe.get_all("Employee Salary Component",
+        filters={"employee": employee},
+        fields=["name", "salary_component", "component_type", "abbreviation",
+                "formula", "amount"],
+        order_by="component_type desc, salary_component")
+    return comps
 
 
 # ═══════════════════════════════════════════════════════════════

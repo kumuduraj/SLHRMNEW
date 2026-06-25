@@ -40,6 +40,7 @@
         {"type": "Link", "label": "Payroll Entry", "link_to": "Payroll Entry", "link_type": "DocType", "onboard": 0},
         {"type": "Link", "label": "Salary Structure", "link_to": "Salary Structure", "link_type": "DocType", "onboard": 0},
         {"type": "Link", "label": "Salary Structure Assignment", "link_to": "Salary Structure Assignment", "link_type": "DocType", "onboard": 0},
+        {"type": "Link", "label": "Employee Salary Component", "link_to": "Employee Salary Component", "link_type": "DocType", "onboard": 0},
         {"type": "Link", "label": "Additional Salary", "link_to": "Additional Salary", "link_type": "DocType", "onboard": 0},
         {"type": "Card Break", "label": "Expense & Travel", "icon": "receipt"},
         {"type": "Link", "label": "Expense Claim", "link_to": "Expense Claim", "link_type": "DocType", "onboard": 1},

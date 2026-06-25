@@ -36,9 +36,14 @@ fixtures = [
 ]
 
 # Auto-create User when Employee is created
+# Auto-sync Employee Salary Components when SSA is saved/submitted
 doc_events = {
     "Employee": {
         "after_insert": "slhrm.api.create_employee_user"
+    },
+    "Salary Structure Assignment": {
+        "on_update": "slhrm.api.sync_employee_salary_components_on_ssa",
+        "on_submit": "slhrm.api.sync_employee_salary_components_on_ssa",
     }
 }
 

@@ -1,4 +1,4 @@
-// Salary Structure Assignment - dynamic salary components, editable after submit
+// Salary Structure Assignment - auto-populate salary components
 frappe.provide("slhrm.ssa");
 
 function _load_components(frm) {
@@ -25,85 +25,40 @@ function _load_components(frm) {
     });
 }
 
-function _save_components(frm) {
-    const components = [];
-    frm.doc.slhrm_components.forEach(row => {
-        components.push({
-            salary_component: row.salary_component,
-            amount: flt(row.amount) || 0,
-        });
-    });
-
-    frappe.call({
-        method: "slhrm.api.update_ssa_components",
-        args: { ssa_name: frm.doc.name, components: components },
-        freeze: true,
-        freeze_message: __("Saving amounts..."),
-        callback(r) {
-            if (r.message) {
-                frappe.show_alert({ message: __("Amounts saved"), indicator: "green" });
-                frm.reload_doc();
-            }
-        },
-    });
-}
-
-function _force_grid_editable(frm) {
-    if (frm.doc.docstatus !== 1) return;
-    const field = frm.fields_dict.slhrm_components;
-    if (!field || !field.grid) return;
-
-    const grid = field.grid;
-    grid.editable = true;
-    grid.grid_editable = true;
-
-    // Override Frappe's docstatus check that blocks editing
-    frm.enable_save = function () {};
-    frm.save = function () { _save_components(frm); };
-
-    // Make every row's Amount cell editable
-    setTimeout(() => {
-        grid.grid_rows.forEach(row => {
-            if (row && row.grid_row) {
-                row.grid_row.editable = true;
-                // Enable the input fields
-                const wrapper = row.grid_row.wrapper;
-                if (wrapper) {
-                    wrapper.find(".grid-input").removeAttr("disabled readonly");
-                    wrapper.find("input, select, textarea").removeAttr("disabled readonly");
-                    wrapper.find(".grid-row-check").removeAttr("disabled");
-                }
-            }
-        });
-    }, 300);
-
-    // Add Save button
-    frm.clear_custom_buttons();
-    frm.add_custom_button(__("Save Amounts"), function () {
-        _save_components(frm);
-    }, __("Actions"));
-}
-
 frappe.ui.form.on("Salary Structure Assignment", {
     refresh(frm) {
         _load_components(frm);
 
         if (frm.doc.docstatus === 1) {
-            // Override the form's read-only state for child table editing
-            frm.read_only = false;
-            frm.allow_edit = true;
+            frm.add_custom_button(__("Edit Salary Components"), function () {
+                frappe.set_route("List", "Employee Salary Component", {
+                    employee: frm.doc.employee,
+                });
+            }, __("Actions"));
 
-            setTimeout(() => _force_grid_editable(frm), 200);
-            setTimeout(() => _force_grid_editable(frm), 500);
-            setTimeout(() => _force_grid_editable(frm), 1000);
+            frm.add_custom_button(__("Sync Components"), function () {
+                frappe.call({
+                    method: "slhrm.api.sync_employee_salary_components",
+                    args: { ssa_name: frm.doc.name },
+                    freeze: true,
+                    freeze_message: __("Syncing components..."),
+                    callback(r) {
+                        if (r.message) {
+                            frappe.show_alert({
+                                message: __("Created: {0}, Updated: {1}",
+                                    [r.message.created, r.message.updated]),
+                                indicator: "green",
+                            });
+                        }
+                    },
+                });
+            }, __("Actions"));
         }
     },
     salary_structure(frm) {
         if (!frm.doc.salary_structure) {
             frm.clear_table("slhrm_components");
             frm.refresh_field("slhrm_components");
-            frm.set_value("base", 0);
-            frm.set_value("ctc", 0);
             return;
         }
         _load_components(frm);
