@@ -1211,8 +1211,8 @@ def sync_employee_salary_components_on_ssa(doc, method=None):
 
 def sync_employee_salary_components(ssa_name):
     """
-    Sync salary components from SSA to Employee Salary Component records.
-    Creates/updates fully editable records (no submit lock).
+    Sync salary components from SSA child table to Employee Salary Component records.
+    Reads amounts from SSA slhrm_components child table (not salary structure defaults).
     """
     ssa = frappe.get_doc("Salary Structure Assignment", ssa_name)
     employee = ssa.employee
@@ -1220,14 +1220,19 @@ def sync_employee_salary_components(ssa_name):
     company = ssa.company
     salary_structure = ssa.salary_structure
 
-    # Get existing records for this employee
+    # Get existing Employee Salary Component records for this employee
     existing = {}
     for row in frappe.get_all("Employee Salary Component",
         filters={"employee": employee},
         fields=["name", "salary_component", "amount"]):
         existing[row.salary_component] = row
 
-    # Get salary structure components
+    # Read amounts from SSA child table (slhrm_components)
+    ssa_comp_map = {}
+    for row in ssa.get("slhrm_components", []):
+        ssa_comp_map[row.salary_component] = flt(row.amount)
+
+    # Get salary structure components for component_type/formula/abbr info
     structure_comps = frappe.get_all("Salary Detail",
         filters={"parent": salary_structure},
         fields=["salary_component", "parentfield", "formula", "abbr", "amount"],
@@ -1237,20 +1242,18 @@ def sync_employee_salary_components(ssa_name):
     updated = 0
     for sc in structure_comps:
         component_type = "Earning" if sc.parentfield == "earnings" else "Deduction"
-        # Check if existing has amount set — preserve it
-        amt = 0
-        if sc.salary_component in existing:
+        # Prefer SSA child table amount, then existing Employee Salary Component, then salary structure default
+        amt = ssa_comp_map.get(sc.salary_component, 0)
+        if amt == 0 and sc.salary_component in existing:
             amt = existing[sc.salary_component].amount
-        else:
+        if amt == 0:
             amt = sc.amount or 0
 
         if sc.salary_component in existing:
-            # Update existing
             frappe.db.set_value("Employee Salary Component",
                 existing[sc.salary_component].name, "amount", amt)
             updated += 1
         else:
-            # Create new
             doc = frappe.get_doc({
                 "doctype": "Employee Salary Component",
                 "employee": employee,
