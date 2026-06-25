@@ -688,20 +688,22 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
 
     # Fetch component amounts from Employee Salary Package (new approach)
     ssa_components_map = {}
+    ssa_override_map = {}
     if emp_names:
         # Try Employee Salary Package first
         esp_rows = frappe.db.sql(
             """
-            SELECT esp.employee, espd.salary_component, espd.amount
+            SELECT esp.employee, espd.salary_component, espd.amount, espd.override
             FROM `tabEmployee Salary Package` esp
             INNER JOIN `tabEmployee Salary Package Detail` espd ON espd.parent = esp.name
-            WHERE esp.employee IN %(employees)s AND espd.amount > 0
+            WHERE esp.employee IN %(employees)s
             """,
             {"employees": emp_names},
             as_dict=True,
         )
         for row in esp_rows:
             ssa_components_map.setdefault(row.employee, {})[row.salary_component] = flt(row.amount)
+            ssa_override_map.setdefault(row.employee, {})[row.salary_component] = row.override
 
         # Fallback: Employee Salary Component (legacy)
         if not ssa_components_map:
@@ -723,6 +725,7 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
             "base": flt(row.base),
             "salary_structure": row.salary_structure,
             "components": comp_amounts,
+            "overrides": ssa_override_map.get(row.employee, {}),
         }
 
     # ── 3. Attendance summary (batch) ──
@@ -1066,6 +1069,7 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
         emp_comps = {}
         if ss_name and ss_name in ss_components:
             ssa_comps = ssa.get("components", {})
+            overrides = ssa.get("overrides", {})
             comp_vals = {"base": base, "basic": base}
             for comp_name, amt in ssa_comps.items():
                 abbr = ss_abbr_map.get(comp_name, comp_name.upper()[:10])
@@ -1076,11 +1080,16 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
             for comp in ss_components[ss_name]:
                 comp_name = comp.salary_component
                 abbr = ss_abbr_map.get(comp_name, comp_name.upper()[:10])
-                if comp.formula:
+                pkg_amt = ssa_comps.get(comp_name, 0)
+                is_override = overrides.get(comp_name, 0)
+
+                if is_override and pkg_amt:
+                    # Package overrides formula
+                    amt = pkg_amt
+                elif comp.formula:
                     amt = _eval_formula(comp.formula, comp_vals)
                 else:
-                    # Use package amount if set, otherwise salary structure default
-                    amt = ssa_comps.get(comp_name, flt(comp.amount))
+                    amt = pkg_amt if pkg_amt else flt(comp.amount)
                 comp_vals[abbr] = amt
                 comp_vals[comp_name.upper()] = amt
                 comp_vals[comp_name] = amt
