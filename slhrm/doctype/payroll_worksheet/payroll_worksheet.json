@@ -117,6 +117,12 @@
             "read_only": 1
         },
         {
+            "fieldname": "employees_with_ssa",
+            "fieldtype": "Int",
+            "label": "With Salary Structure",
+            "read_only": 1
+        },
+        {
             "fieldname": "total_ot_amount",
             "fieldtype": "Currency",
             "label": "Total OT",

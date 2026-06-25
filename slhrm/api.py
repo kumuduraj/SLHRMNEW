@@ -683,28 +683,8 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
         as_dict=True,
     )
     ssa_names = [row.name for row in ssas] if ssas else []
-
-    # Filter: only employees with SSAs
     employees_with_ssa = set(row.employee for row in ssas)
-    no_ssa_emps = [e for e in employees_raw if e.name not in employees_with_ssa]
-    employees_raw = [e for e in employees_raw if e.name in employees_with_ssa]
-    emp_names = [e.name for e in employees_raw]
-
-    if no_ssa_emps:
-        warnings.append(
-            f"{len(no_ssa_emps)} employee(s) have no Salary Structure Assignment: "
-            + ", ".join(e.employee_name for e in no_ssa_emps[:5])
-            + ("..." if len(no_ssa_emps) > 5 else "")
-        )
-
-    if not employees_raw:
-        return {
-            "employees": [],
-            "earnings": [],
-            "deductions": [],
-            "summary": {},
-            "warnings": warnings,
-        }
+    count_with_ssa = len(employees_with_ssa)
 
     # Fetch component amounts from Employee Salary Package (new approach)
     ssa_components_map = {}
@@ -1114,6 +1094,7 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
         "component_amounts": comp_amounts,
         "summary": {
             "total_employees": len(employees_result),
+            "employees_with_ssa": count_with_ssa,
             "total_ot_amount": sum_ot,
             "total_gross_pay": sum_gross,
             "total_deductions": sum_ded,

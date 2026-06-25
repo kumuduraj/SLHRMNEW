@@ -155,6 +155,7 @@ function auto_load_payroll(frm) {
 
             var s = data.summary || {};
             frm.set_value('total_employees', s.total_employees || 0);
+            frm.set_value('employees_with_ssa', s.employees_with_ssa || 0);
             frm.set_value('total_ot_amount', s.total_ot_amount || 0);
             frm.set_value('total_gross_pay', s.total_gross_pay || 0);
             frm.set_value('total_deductions', s.total_deductions || 0);
