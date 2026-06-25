@@ -323,9 +323,9 @@ function render_payroll_table(frm) {
     html += '<th rowspan="2" style="min-width:45px; text-align:center;">OT Hrs</th>';
     html += '<th colspan="' + earnings.length + '" style="background:#1b5e20; text-align:center;">EARNINGS</th>';
     html += '<th colspan="' + deductions.length + '" style="background:#b71c1c; text-align:center;">DEDUCTIONS</th>';
-    html += '<th rowspan="2" style="min-width:90px; background:#0d47a1; text-align:right;">Total Earn</th>';
-    html += '<th rowspan="2" style="min-width:90px; background:#0d47a1; text-align:right;">Total Ded</th>';
-    html += '<th rowspan="2" style="min-width:100px; background:#1b5e20; text-align:right; font-weight:bold;">Net Pay</th>';
+    html += '<th rowspan="2" style="min-width:90px; position:sticky; right:200px; background:#0d47a1; z-index:2; text-align:right;">Total Earn</th>';
+    html += '<th rowspan="2" style="min-width:90px; position:sticky; right:100px; background:#0d47a1; z-index:2; text-align:right;">Total Ded</th>';
+    html += '<th rowspan="2" style="min-width:100px; position:sticky; right:0; background:#1b5e20; z-index:2; text-align:right; font-weight:bold;">Net Pay</th>';
     html += '</tr>';
 
     // Header Row 2: full component names
@@ -388,9 +388,9 @@ function render_payroll_table(frm) {
         grand_ded += row_ded;
         grand_net += net;
 
-        html += '<td class="text-right row-earn" style="background:#e3f2fd; font-weight:500;">' + format_currency(row_earn, currency) + '</td>';
-        html += '<td class="text-right row-ded" style="background:#ffebee; font-weight:500;">' + format_currency(row_ded, currency) + '</td>';
-        html += '<td class="text-right row-net" style="background:#c8e6c9; font-weight:bold;">' + format_currency(net, currency) + '</td>';
+        html += '<td class="text-right row-earn" style="position:sticky; right:200px; background:#e3f2fd; z-index:1; font-weight:500; min-width:100px;">' + format_currency(row_earn, currency) + '</td>';
+        html += '<td class="text-right row-ded" style="position:sticky; right:100px; background:#ffebee; z-index:1; font-weight:500; min-width:100px;">' + format_currency(row_ded, currency) + '</td>';
+        html += '<td class="text-right row-net" style="position:sticky; right:0; background:#c8e6c9; z-index:1; font-weight:bold; min-width:110px;">' + format_currency(net, currency) + '</td>';
         html += '</tr>';
     });
 
@@ -404,9 +404,9 @@ function render_payroll_table(frm) {
     deductions.forEach(function(c) {
         html += '<td class="text-right col-total-ded" data-comp="' + c.name + '" style="background:#ffcdd2;">' + format_currency(totals_ded[c.name], currency) + '</td>';
     });
-    html += '<td class="text-right grand-earn" style="background:#90caf9;">' + format_currency(grand_earn, currency) + '</td>';
-    html += '<td class="text-right grand-ded" style="background:#ef9a9a;">' + format_currency(grand_ded, currency) + '</td>';
-    html += '<td class="text-right grand-net" style="background:#a5d6a7;">' + format_currency(grand_net, currency) + '</td>';
+    html += '<td class="text-right grand-earn" style="position:sticky; right:200px; background:#90caf9; z-index:1;">' + format_currency(grand_earn, currency) + '</td>';
+    html += '<td class="text-right grand-ded" style="position:sticky; right:100px; background:#ef9a9a; z-index:1;">' + format_currency(grand_ded, currency) + '</td>';
+    html += '<td class="text-right grand-net" style="position:sticky; right:0; background:#a5d6a7; z-index:1; font-weight:bold;">' + format_currency(grand_net, currency) + '</td>';
     html += '</tr>';
 
     html += '</tbody></table></div>';
