@@ -31,6 +31,8 @@ def execute():
             "doctype": "Employee",
             "employee": test_emp_id,
             "employee_name": test_name,
+            "first_name": "Test",
+            "last_name": "AutoUser",
             "company": test_company,
             "branch": test_branch,
             "company_email": test_email,
