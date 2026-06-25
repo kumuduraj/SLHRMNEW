@@ -44,7 +44,7 @@ def execute():
     company = frappe.db.get_value("Employee", {"branch": branch, "status": "Active"}, "company")
     print(f"Using Branch: {branch}, Company: {company}")
     
-    # Create the document
+    # Create the document with employees
     doc = frappe.get_doc({
         "doctype": "Bulk Additional Salary",
         "branch": branch,
@@ -54,13 +54,8 @@ def execute():
         "payroll_year": 2026,
         "default_amount": 5000,
     })
-    doc.insert()
-    frappe.db.commit()
-    print(f"Created Bulk Additional Salary: {doc.name}")
     
-    # Step 2: Get Employees
-    print("\n--- Step 2: Getting Employees ---")
-    
+    # Get employees first
     employees = frappe.get_attr("slhrm.slhrm.doctype.bulk_additional_salary.bulk_additional_salary.get_employees")(
         branch=branch,
         company=company,
@@ -79,8 +74,9 @@ def execute():
             "status": emp["status"],
         })
     
-    doc.save()
+    doc.insert()
     frappe.db.commit()
+    print(f"Created Bulk Additional Salary: {doc.name}")
     print(f"Added {len(doc.employees)} employees to the document")
     
     # Step 3: Verify totals
