@@ -1060,6 +1060,17 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
                         "abbr": ss_abbr_map.get(comp.salary_component, comp.salary_component.upper()[:10]),
                     })
 
+    # Add Additional Salary components that aren't in Salary Structure
+    for row in addl_records:
+        if row.salary_component not in comp_set:
+            comp_set.add(row.salary_component)
+            is_earning = (row.type == "Earning") if row.type else (row.component_type == "Earning")
+            all_components.append({
+                "name": row.salary_component,
+                "type": "earnings" if is_earning else "deductions",
+                "abbr": row.salary_component.upper()[:10],
+            })
+
     # Build per-employee component amounts
     comp_amounts = {}
     for emp in employees_raw:
@@ -1094,6 +1105,13 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
                 comp_vals[comp_name.upper()] = amt
                 comp_vals[comp_name] = amt
                 emp_comps[comp_name] = amt
+
+        # Add Additional Salary amounts for this employee
+        for row in addl_records:
+            if row.employee == emp.name:
+                current = emp_comps.get(row.salary_component, 0)
+                emp_comps[row.salary_component] = current + flt(row.amount)
+
         comp_amounts[emp.name] = emp_comps
 
     return {
