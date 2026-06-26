@@ -32,6 +32,14 @@ frappe.ui.form.on('Attendance Marker Detail', {
         update_summary(frm);
     },
 
+    overtime_hours(frm, cdt, cdn) {
+        var row = locals[cdt][cdn];
+        // Auto-fill actual_overtime when overtime_hours changes (if not already set)
+        if (!row.actual_overtime || row.actual_overtime === 0) {
+            frappe.model.set_value(cdt, cdn, 'actual_overtime', row.overtime_hours || 0);
+        }
+    },
+
     override_overtime(frm, cdt, cdn) {
         var row = locals[cdt][cdn];
         var grid = frm.fields_dict.attendance_details.grid;
@@ -61,6 +69,7 @@ frappe.ui.form.on('Attendance Marker Detail', {
                 frappe.model.set_value(cdt, cdn, 'auto_out_time', m.out_time || '');
                 frappe.model.set_value(cdt, cdn, 'worked_hours', m.worked_hours || 0);
                 frappe.model.set_value(cdt, cdn, 'overtime_hours', m.overtime_hours || 0);
+                frappe.model.set_value(cdt, cdn, 'actual_overtime', m.overtime_hours || 0);
                 frappe.model.set_value(cdt, cdn, 'shift_hours', m.shift_hours || 0);
                 frappe.model.set_value(cdt, cdn, 'attendance_status',
                     m.punch_count > 0 ? 'Present' : 'Absent');
@@ -116,6 +125,7 @@ function auto_load_data(frm) {
                     auto_out_time: m.out_time || '',
                     worked_hours: m.worked_hours || 0,
                     overtime_hours: m.overtime_hours || 0,
+                    actual_overtime: m.overtime_hours || 0,
                     shift_hours: m.shift_hours || 0
                 });
 

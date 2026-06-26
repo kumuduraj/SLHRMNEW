@@ -111,6 +111,13 @@
             "depends_on": "eval:!doc.override_overtime"
         },
         {
+            "fieldname": "actual_overtime",
+            "fieldtype": "Float",
+            "label": "Actual OT",
+            "in_list_view": 1,
+            "description": "Approved OT hours (editable)"
+        },
+        {
             "fieldname": "shift_hours",
             "fieldtype": "Float",
             "label": "Shift Hours",

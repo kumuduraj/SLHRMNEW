@@ -756,10 +756,11 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
             att_map[row.employee]["present"] += row.cnt
 
     # ── 4. OT hours from Attendance Marker Detail (batch, submitted only) ──
+    # Uses actual_overtime (approved/adjusted) instead of overtime_hours (calculated)
     ot_map = {}
     ot_records = frappe.db.sql(
         """
-        SELECT amd.employee, SUM(amd.overtime_hours) as total_ot
+        SELECT amd.employee, SUM(amd.actual_overtime) as total_ot
         FROM `tabAttendance Marker Detail` amd
         INNER JOIN `tabAttendance Marker` am ON am.name = amd.parent
         WHERE amd.employee IN %(employees)s
