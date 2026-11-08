@@ -7,8 +7,11 @@ Idempotent: existing records (same name) are NOT modified — differences from t
 below are reported instead. Uses the standard HRMS doctypes through the API (no core changes).
 "Standard Salary Structure - GHPL" is left untouched (printed for reference).
 
-EPF/ETF are percentages of the SSA `base`. With Employee Salary Packages, base = sum of the
-package's earning overrides (intended), so EPF 8% = 8% of total package earnings.
+EPF/ETF (v0.0.9): computed by slhrm.statutory.apply_epf on the FINAL (prorated, post-package)
+earnings whose component has slhrm_epf_applicable = 1 (BS, BA, VA), at the component's
+slhrm_epf_rate (EPF8 8, EPF12 12, ETF3 3). The structure formulas (base * rate) only make the rows
+exist; their values are always replaced. EPF_FLAGS below are SLHRM's own fields, so apply() sets them
+on existing components too (all other differences are only reported).
 Formula components have depends_on_payment_days = 0 (HRMS rejects formula + payment-days).
 Earnings have remove_if_zero_valued = 0: the structure lists them at amount 0 and the package
 overrides fill them in on the slip. HRMS v16 defaults remove_if_zero_valued to 1, which drops
@@ -32,6 +35,15 @@ COMPONENTS = [
     ("EPF Employer 12%", "EPF12", "Deduction", 0, 1),
     ("ETF Employer 3%", "ETF3", "Deduction", 0, 1),
 ]
+# component -> {slhrm_epf_applicable, slhrm_epf_rate}; applied idempotently, also on existing records
+EPF_FLAGS = {
+    "Basic Salary": {"slhrm_epf_applicable": 1, "slhrm_epf_rate": 0},
+    "Base Allowance": {"slhrm_epf_applicable": 1, "slhrm_epf_rate": 0},
+    "Vehicle Allowance": {"slhrm_epf_applicable": 1, "slhrm_epf_rate": 0},
+    "EPF Employee 8%": {"slhrm_epf_applicable": 0, "slhrm_epf_rate": 8},
+    "EPF Employer 12%": {"slhrm_epf_applicable": 0, "slhrm_epf_rate": 12},
+    "ETF Employer 3%": {"slhrm_epf_applicable": 0, "slhrm_epf_rate": 3},
+}
 EARNINGS = [("Basic Salary", 0), ("Base Allowance", 0), ("Vehicle Allowance", 0)]
 DEDUCTIONS = [("EPF Employee 8%", "base * 0.08", 0), ("EPF Employer 12%", "base * 0.12", 1),
               ("ETF Employer 3%", "base * 0.03", 1)]
@@ -64,6 +76,7 @@ def apply():
         frappe.get_doc({"doctype": "Salary Component", **spec}).insert(ignore_permissions=True)
         report["created"].append(f"Salary Component: {name} ({abbr})")
     frappe.db.commit()
+    report["epf_flags"] = sync_epf_flags(EPF_FLAGS)
 
     expected_rows = {
         "earnings": [{"salary_component": c, "amount": 0, "amount_based_on_formula": 0, "formula": ""} for c, _ in EARNINGS],
@@ -117,9 +130,31 @@ def apply():
     return {"created": len(report["created"]), "diffs": len(report["existing_with_diffs"]), "refused": len(report["refused"])}
 
 
+def sync_epf_flags(flags):
+    """Set SLHRM's own EPF fields (only these) on existing components; returns what changed."""
+    out = {}
+    for name, want in flags.items():
+        if not frappe.db.exists("Salary Component", name):
+            out[name] = "missing"
+            continue
+        cur = frappe.db.get_value("Salary Component", name, list(want), as_dict=True)
+        diff = {k: v for k, v in want.items() if flt(cur.get(k)) != flt(v)}
+        if diff:
+            doc = frappe.get_doc("Salary Component", name)
+            doc.update(diff)
+            doc.save(ignore_permissions=True)
+            out[name] = {"set": diff, "was": {k: cur.get(k) for k in diff}}
+        else:
+            out[name] = "unchanged"
+    frappe.db.commit()
+    return out
+
+
 def describe():
     """Print the Standard Staff Structure as stored (read-only)."""
     ss = frappe.get_doc("Salary Structure", STRUCTURE)
     for table in ("earnings", "deductions"):
         for r in ss.get(table):
-            print(table, r.salary_component, r.abbr, flt(r.amount), r.formula or "", "stat" if cint(r.statistical_component) else "")
+            f = frappe.db.get_value("Salary Component", r.salary_component, ["slhrm_epf_applicable", "slhrm_epf_rate"], as_dict=True)
+            print(table, r.salary_component, r.abbr, flt(r.amount), r.formula or "", "stat" if cint(r.statistical_component) else "",
+                  f"epf_applicable={cint(f.slhrm_epf_applicable)} epf_rate={flt(f.slhrm_epf_rate)}")

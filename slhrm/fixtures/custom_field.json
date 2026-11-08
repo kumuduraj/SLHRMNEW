@@ -99,5 +99,30 @@
     "depends_on": "eval:doc.slhrm_managed",
     "description": "Link to the Employee Salary Package that manages this SSA.",
     "name": "Salary Structure Assignment-slhrm_package_link"
+  },
+  {
+    "doctype": "Custom Field",
+    "dt": "Salary Component",
+    "module": "SLHRM",
+    "fieldname": "slhrm_epf_applicable",
+    "fieldtype": "Check",
+    "label": "Counts toward EPF/ETF base",
+    "insert_after": "variable_based_on_taxable_salary",
+    "default": "0",
+    "depends_on": "eval:doc.type=='Earning'",
+    "description": "SLHRM: the final (prorated, post-package) amount of this earning is part of the EPF/ETF base.",
+    "name": "Salary Component-slhrm_epf_applicable"
+  },
+  {
+    "doctype": "Custom Field",
+    "dt": "Salary Component",
+    "module": "SLHRM",
+    "fieldname": "slhrm_epf_rate",
+    "fieldtype": "Percent",
+    "label": "Rate on EPF base",
+    "insert_after": "slhrm_epf_applicable",
+    "depends_on": "eval:doc.type=='Deduction' || doc.statistical_component",
+    "description": "SLHRM: amount = EPF/ETF base x rate / 100, replacing the structure formula value. Statistical components are shown as employer lines (never in totals).",
+    "name": "Salary Component-slhrm_epf_rate"
   }
 ]

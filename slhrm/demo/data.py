@@ -40,6 +40,14 @@ C = {
     "epf": ("DEMO EPF Employee 8%", "DEPF"), "epf_er": ("DEMO EPF Employer 12%", "DEPFR"),
     "etf": ("DEMO ETF Employer 3%", "DETF"),
 }
+# SLHRM EPF/ETF flags (slhrm.statutory): EPF on final DEMO Basic + DEMO BRA
+EPF_FLAGS = {
+    C["basic"][0]: {"slhrm_epf_applicable": 1, "slhrm_epf_rate": 0},
+    C["bra"][0]: {"slhrm_epf_applicable": 1, "slhrm_epf_rate": 0},
+    C["epf"][0]: {"slhrm_epf_applicable": 0, "slhrm_epf_rate": 8},
+    C["epf_er"][0]: {"slhrm_epf_applicable": 0, "slhrm_epf_rate": 12},
+    C["etf"][0]: {"slhrm_epf_applicable": 0, "slhrm_epf_rate": 3},
+}
 SLHRM_SETTINGS = {
     "normal_ot_component": C["not"][0], "double_ot_component": C["dot"][0],
     "default_ot_rate": 300, "default_double_ot_rate": 600, "overtime_threshold": 0.5,
@@ -212,6 +220,7 @@ def create():
     comp("epf", "Deduction", depends_on_payment_days=0)
     comp("epf_er", "Deduction", depends_on_payment_days=0, statistical_component=1, do_not_include_in_total=1)
     comp("etf", "Deduction", depends_on_payment_days=0, statistical_component=1, do_not_include_in_total=1)
+    set_epf_flags()
 
     _ensure(m, "Salary Structure", {"name": STRUCTURE}, {
         "doctype": "Salary Structure", "__newname": STRUCTURE, "company": company, "currency": currency,
@@ -396,6 +405,15 @@ def _punch(m, code, emp, branch, t, log_type):
         m.data["created"].append(["Biometric Punch Log", p.name])
     m.save()
     _commit()
+
+
+def set_epf_flags():
+    """bench execute slhrm.demo.data.set_epf_flags — idempotent; also run by create()."""
+    from slhrm.salary_setup import sync_epf_flags
+
+    out = sync_epf_flags(EPF_FLAGS)
+    print(out)
+    return out
 
 
 # ── report / preview ────────────────────────────────────────────
