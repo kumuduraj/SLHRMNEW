@@ -58,67 +58,6 @@ def _validate_device_api_key():
         frappe.throw(_("Invalid or missing device API key"), frappe.PermissionError)
 
 
-def _get_shift_window(shift_name, date_str):
-    """Return (start_dt, end_dt, working_hours) for a shift on a given date.
-
-    If no shift_name, returns (None, None, 0) — meaning no filtering.
-    Uses SLHRM Settings shift_match_window_before/after to expand the window for punch filtering.
-    working_hours is calculated from the actual shift times (not expanded window).
-    """
-    if not shift_name:
-        return None, None, 0
-    shift = frappe.db.get_value(
-        "Shift Type", shift_name, ["start_time", "end_time"], as_dict=True
-    )
-    if not shift:
-        return None, None, 0
-    start = datetime.strptime(f"{date_str} {shift.start_time}", "%Y-%m-%d %H:%M:%S")
-    end = datetime.strptime(f"{date_str} {shift.end_time}", "%Y-%m-%d %H:%M:%S")
-    if end <= start:
-        end += timedelta(days=1)  # overnight shift
-
-    # Calculate working_hours from actual shift times (not expanded window)
-    working_hours = round((end - start).total_seconds() / 3600, 2)
-
-    # Apply shift match window settings from SLHRM Settings for punch filtering
-    settings = frappe.get_cached_doc("SLHRM Settings")
-    before_mins = settings.shift_match_window_before or 120
-    after_mins = settings.shift_match_window_after or 180
-    start -= timedelta(minutes=before_mins)
-    end += timedelta(minutes=after_mins)
-
-    return start, end, working_hours
-
-
-def _filter_punches_in_shift(punches, shift_start, shift_end):
-    """Return only punches that fall within the shift window.
-
-    If no shift window defined, returns all punches (no filtering).
-    """
-    if not shift_start or not shift_end:
-        return punches
-    filtered = []
-    for p in punches:
-        pt = p.punch_time
-        if isinstance(pt, str):
-            pt = datetime.strptime(pt, "%Y-%m-%d %H:%M:%S")
-        if shift_start <= pt <= shift_end:
-            filtered.append(p)
-    return filtered
-
-
-def _calc_worked_hours(in_time, out_time):
-    """Calculate worked hours between two datetimes."""
-    if not in_time or not out_time:
-        return 0
-    if isinstance(in_time, str):
-        in_time = datetime.strptime(in_time, "%Y-%m-%d %H:%M:%S")
-    if isinstance(out_time, str):
-        out_time = datetime.strptime(out_time, "%Y-%m-%d %H:%M:%S")
-    diff = out_time - in_time
-    return round(diff.total_seconds() / 3600, 2)
-
-
 # ═══════════════════════════════════════════════════════════════
 # DEVICE API ENDPOINTS (allow_guest — secured by API key)
 # ═══════════════════════════════════════════════════════════════
@@ -312,169 +251,78 @@ def load_attendance_data(date, branch, device_id=""):
     """
     Main data-loading endpoint for the Attendance Marker form.
 
+    Punches: Biometric Punch Log for everyone + Employee Checkin for employees with
+    slhrm_allow_app_checkin. OT via slhrm.overtime (through slhrm.attendance).
+
     Returns:
-        employees: list of active employees in the branch (excluding already-marked)
-        punch_logs: list of punch logs for the date
-        matched: dict keyed by employee name with calculated hours/OT
+        employees:  active employees in the branch (excluding already-marked)
+        punch_refs: punches used per employee (punch_doctype, punch_log, punch_time, used_as)
+        matched:    {employee: in/out, worked, shift_hours, ot_eligible, calc_normal_ot,
+                     calc_double_ot, is_holiday, punch_source, punch_count, warning}
     """
+    from slhrm.attendance import compute_for_employees
+
+    frappe.has_permission("Attendance Marker", "create", throw=True)
     if not date or not branch:
         frappe.throw(_("Date and Branch are required."))
 
     date_str = str(date)
 
     # ── Already-marked employees (single SQL, not N+1) ──
-    marked_employees_list = frappe.db.sql(
-        """
-        SELECT DISTINCT amd.employee
-        FROM `tabAttendance Marker Detail` amd
-        INNER JOIN `tabAttendance Marker` am ON am.name = amd.parent
-        WHERE am.date = %s AND am.docstatus = 1
-        """,
-        (date_str,),
-        as_list=True,
+    marked_employees = set(
+        frappe.db.sql_list(
+            """
+            SELECT DISTINCT amd.employee
+            FROM `tabAttendance Marker Detail` amd
+            INNER JOIN `tabAttendance Marker` am ON am.name = amd.parent
+            WHERE am.date = %s AND am.docstatus = 1
+            """,
+            (date_str,),
+        )
     )
-    marked_employees = {row[0] for row in marked_employees_list}
 
-    # ── Active employees in this branch ──
     employees = frappe.get_all(
         "Employee",
         filters={"status": "Active", "branch": branch},
         fields=[
-            "name",
-            "employee_name",
-            "department",
-            "designation",
-            "company",
-            "default_shift",
+            "name", "employee_name", "department", "designation", "company", "default_shift",
+            "slhrm_ot_eligible", "slhrm_allow_app_checkin",
         ],
         order_by="employee_name asc",
     )
     employees = [e for e in employees if e.name not in marked_employees]
-
-    # Early return if no employees to process
     if not employees:
-        return {"employees": [], "punch_logs": [], "matched": {}}
+        return {"employees": [], "punch_refs": [], "matched": {}}
 
-    # ── Punch logs for this date (SQL-level date filter) ──
-    punch_filters = {
-        "punch_time": ["between", [f"{date_str} 00:00:00", f"{date_str} 23:59:59"]],
-    }
-    if device_id:
-        punch_filters["source_device"] = device_id
-
-    # Filter by employees in this branch
-    emp_names = [e.name for e in employees]
-    if emp_names:
-        punch_filters["employee"] = ["in", emp_names]
-
-    punch_logs = frappe.get_all(
-        "Biometric Punch Log",
-        filters=punch_filters,
-        order_by="punch_time asc",
-        fields=[
-            "name",
-            "employee",
-            "employee_name",
-            "punch_time",
-            "punch_type",
-            "processing_status",
-            "source_device",
-        ],
+    computed = compute_for_employees(
+        employees, date_str, {e.name: e.default_shift for e in employees}, device_id=device_id or None
     )
 
-    # ── Group punches by employee ──
-    emp_punches = {}
-    for log in punch_logs:
-        emp_punches.setdefault(log.employee, []).append(log)
-
-    # ── Match employees to their punches, calculate hours ──
-    matched = {}
+    matched, punch_refs = {}, []
     for emp in employees:
-        emp_shift = emp.default_shift
-        shift_start, shift_end, shift_hours = _get_shift_window(emp_shift, date_str)
+        day = computed[emp.name]
+        punch_refs.extend(day.pop("refs"))
+        matched[emp.name] = day
 
-        raw_punches = emp_punches.get(emp.name, [])
-        # Filter punches to shift window for hour calculations
-        filtered_punches = _filter_punches_in_shift(raw_punches, shift_start, shift_end)
-
-        if filtered_punches:
-            in_time = filtered_punches[0].punch_time
-            out_time = filtered_punches[-1].punch_time
-            worked = _calc_worked_hours(in_time, out_time)
-            ot = max(0, round(worked - shift_hours, 2)) if shift_hours else 0
-        else:
-            in_time = None
-            out_time = None
-            worked = 0
-            ot = 0
-
-        warning = ""
-        if len(raw_punches) == 1:
-            warning = "Single punch only — missing OUT"
-
-        matched[emp.name] = {
-            "in_time": in_time,
-            "out_time": out_time,
-            "worked_hours": worked,
-            "overtime_hours": ot,
-            "shift_hours": shift_hours,
-            "shift": emp_shift or "",
-            "punch_count": len(raw_punches),
-            "warning": warning,
-        }
-
-    return {
-        "employees": employees,
-        "punch_logs": punch_logs,
-        "matched": matched,
-    }
+    return {"employees": employees, "punch_refs": punch_refs, "matched": matched}
 
 
 @frappe.whitelist()
 def recalc_attendance_row(employee, date, shift):
-    """
-    Recalculate in_time, out_time, worked_hours, overtime_hours
-    when user changes the shift on an attendance detail row.
-    """
+    """Recalculate one Attendance Marker row when the user changes its shift."""
+    from slhrm.attendance import compute_for_employees
+
+    frappe.has_permission("Attendance Marker", "create", throw=True)
     if not employee or not date:
         frappe.throw(_("Employee and Date are required."))
 
-    date_str = str(date)
-    shift_start, shift_end, shift_hours = _get_shift_window(shift, date_str)
-
-    punches = frappe.get_all(
-        "Biometric Punch Log",
-        filters={
-            "employee": employee,
-            "punch_time": ["between", [f"{date_str} 00:00:00", f"{date_str} 23:59:59"]],
-        },
-        order_by="punch_time asc",
-        fields=["name", "punch_time", "punch_type", "source_device"],
+    emp = frappe.db.get_value(
+        "Employee", employee, ["name", "slhrm_ot_eligible", "slhrm_allow_app_checkin"], as_dict=True
     )
+    if not emp:
+        frappe.throw(_("Employee {0} not found.").format(employee))
 
-    # Filter to shift window
-    filtered = _filter_punches_in_shift(punches, shift_start, shift_end)
-
-    if filtered:
-        in_time = filtered[0].punch_time
-        out_time = filtered[-1].punch_time
-        worked = _calc_worked_hours(in_time, out_time)
-        ot = max(0, round(worked - shift_hours, 2)) if shift_hours else 0
-    else:
-        in_time = None
-        out_time = None
-        worked = 0
-        ot = 0
-
-    return {
-        "in_time": in_time,
-        "out_time": out_time,
-        "worked_hours": worked,
-        "overtime_hours": ot,
-        "shift_hours": shift_hours,
-        "punch_count": len(punches),
-        "warning": "Single punch only — missing OUT" if len(punches) == 1 else "",
-    }
+    return compute_for_employees([emp], str(date), {emp.name: shift})[emp.name]
 
 
 @frappe.whitelist()

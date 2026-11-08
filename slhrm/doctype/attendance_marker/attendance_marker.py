@@ -2,7 +2,18 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import get_datetime
+from frappe.utils import cint, flt, get_datetime
+
+from slhrm.attendance import (
+    PUNCH_BIOMETRIC,
+    get_holiday_info,
+    get_settings,
+    get_shift_info,
+    worked_hours_from_times,
+)
+from slhrm.overtime import calculate_ot_hours
+
+OT_PERMLEVEL = 1
 
 
 class AttendanceMarker(Document):
@@ -10,6 +21,7 @@ class AttendanceMarker(Document):
         self._check_no_duplicate_marker()
         self._validate_details_not_empty()
         self._validate_employee_company()
+        self._apply_overtime()
 
     def before_submit(self):
         self.approved_by = frappe.session.user
@@ -78,6 +90,90 @@ class AttendanceMarker(Document):
                     )
                 )
 
+    # ── Overtime (server-side; never trust client values) ────────
+
+    def _apply_overtime(self):
+        """Recompute worked hours, calculated OT and eligibility for every row.
+
+        - eligibility is re-read from Employee
+        - calc_normal_ot / calc_double_ot are recomputed from the row's IN/OUT times,
+          its shift and the employee's holiday list (slhrm.overtime)
+        - users without permlevel-1 write: new rows take the calculated OT; existing
+          rows keep the stored (approved) value
+        - users with permlevel-1 write: their values stand; negatives are rejected
+        - ineligible employees always get 0 / 0
+        """
+        if not self.attendance_details:
+            return
+
+        settings = get_settings()
+        emp_names = list({row.employee for row in self.attendance_details if row.employee})
+        eligible = dict(
+            frappe.get_all(
+                "Employee", filters={"name": ["in", emp_names]},
+                fields=["name", "slhrm_ot_eligible"], as_list=True,
+            )
+        )
+        can_edit_ot = self._can_write_ot()
+        stored = {}
+        if not can_edit_ot and not self.is_new():
+            stored = {
+                r.name: r
+                for r in frappe.get_all(
+                    "Attendance Marker Detail",
+                    filters={"parent": self.name, "parenttype": self.doctype},
+                    fields=["name", "normal_ot_hours", "double_ot_hours"],
+                )
+            }
+
+        date_str = str(self.date)
+        for row in self.attendance_details:
+            is_eligible = cint(eligible.get(row.employee))
+            shift_info = get_shift_info(row.shift, date_str, settings)
+            worked = worked_hours_from_times(row.in_time, row.out_time)
+            calc = calculate_ot_hours(
+                {
+                    "employee": row.employee, "date": date_str, "ot_eligible": is_eligible,
+                    "shift": row.shift, "shift_hours": shift_info.hours,
+                    "in_time": row.in_time, "out_time": row.out_time, "worked_hours": worked,
+                    "is_holiday": None, "holiday_type": get_holiday_info(row.employee, date_str)[1],
+                },
+                settings,
+            )
+            row.worked_hours = worked
+            row.shift_hours = shift_info.hours
+            row.ot_eligible = is_eligible
+            row.calc_normal_ot = calc["normal"]
+            row.calc_double_ot = calc["double"]
+
+            if not is_eligible:
+                row.normal_ot_hours = 0
+                row.double_ot_hours = 0
+                continue
+
+            if not can_edit_ot:
+                prev = stored.get(row.name)
+                if prev:
+                    row.normal_ot_hours = flt(prev.normal_ot_hours)
+                    row.double_ot_hours = flt(prev.double_ot_hours)
+                else:
+                    row.normal_ot_hours = calc["normal"]
+                    row.double_ot_hours = calc["double"]
+                continue
+
+            for field in ("normal_ot_hours", "double_ot_hours"):
+                if flt(row.get(field)) < 0:
+                    frappe.throw(
+                        _("Row {0} ({1}): {2} cannot be negative.").format(
+                            row.idx, row.employee_name or row.employee, row.meta.get_label(field)
+                        )
+                    )
+
+    def _can_write_ot(self):
+        if frappe.session.user == "Administrator" or self.flags.ignore_permissions:
+            return True
+        return OT_PERMLEVEL in self.get_permlevel_access("write")
+
     # ── Submit: Create Attendance ────────────────────────────────
 
     def _create_attendance_records(self):
@@ -117,7 +213,7 @@ class AttendanceMarker(Document):
 
             # Mark consumed punches as Matched
             for ref in self.punch_references:
-                if ref.employee == row.employee:
+                if ref.employee == row.employee and (ref.punch_doctype or PUNCH_BIOMETRIC) == PUNCH_BIOMETRIC:
                     frappe.db.set_value(
                         "Biometric Punch Log",
                         ref.punch_log,
@@ -156,7 +252,11 @@ class AttendanceMarker(Document):
 
             # Collect punch logs for this employee
             for ref in self.punch_references:
-                if ref.employee == row.employee and ref.punch_log:
+                if (
+                    ref.employee == row.employee
+                    and ref.punch_log
+                    and (ref.punch_doctype or PUNCH_BIOMETRIC) == PUNCH_BIOMETRIC
+                ):
                     punch_logs_to_reset.add(ref.punch_log)
 
         # Bulk reset punch statuses in a single SQL operation
