@@ -135,14 +135,14 @@ def device_punch(device_id, employee_id, punch_time, punch_type="IN"):
     employee_id can be either:
     - ERPNext Employee ID (field: employee)
     - Employee Number (field: employee_number)
-    - Biometric Device ID (field: biometric_device_id custom field)
+    - Biometric Device ID (field: slhrm_biometric_device_id custom field)
     """
     _validate_device_api_key()
 
     if not device_id or not employee_id or not punch_time:
         frappe.throw(_("device_id, employee_id, and punch_time are required."))
 
-    # Try lookup by ERPNext Employee ID first, then employee_number, then biometric_device_id
+    # Try lookup by ERPNext Employee ID first, then employee_number, then slhrm_biometric_device_id
     employee = frappe.db.get_value(
         "Employee",
         {"employee": employee_id, "status": "Active"},
@@ -159,16 +159,16 @@ def device_punch(device_id, employee_id, punch_time, punch_type="IN"):
     if not employee:
         employee = frappe.db.get_value(
             "Employee",
-            {"biometric_device_id": employee_id, "status": "Active"},
+            {"slhrm_biometric_device_id": employee_id, "status": "Active"},
             ["name", "employee_name", "employee_number"],
             as_dict=True,
         )
     if not employee:
         frappe.throw(_("Employee {0} not found or inactive.").format(employee_id))
 
-    # Populate biometric_device_name on Employee if not set
+    # Populate slhrm_biometric_device_name on Employee if not set
     if device_id:
-        frappe.db.set_value("Employee", employee.name, "biometric_device_name", device_id, update_modified=False)
+        frappe.db.set_value("Employee", employee.name, "slhrm_biometric_device_name", device_id, update_modified=False)
 
     doc = frappe.get_doc(
         {
@@ -220,7 +220,7 @@ def device_punch_bulk(device_id, punches, strict=False):
 
     for p in punches:
         try:
-            # Try lookup by ERPNext Employee ID first, then employee_number, then biometric_device_id
+            # Try lookup by ERPNext Employee ID first, then employee_number, then slhrm_biometric_device_id
             employee = frappe.db.get_value(
                 "Employee",
                 {"employee": p.get("employee_id"), "status": "Active"},
@@ -237,7 +237,7 @@ def device_punch_bulk(device_id, punches, strict=False):
             if not employee:
                 employee = frappe.db.get_value(
                     "Employee",
-                    {"biometric_device_id": p.get("employee_id"), "status": "Active"},
+                    {"slhrm_biometric_device_id": p.get("employee_id"), "status": "Active"},
                     ["name", "employee_name", "employee_number"],
                     as_dict=True,
                 )
@@ -249,9 +249,9 @@ def device_punch_bulk(device_id, punches, strict=False):
                     frappe.throw(_("Strict mode: batch rolled back — {0}").format(err["error"]))
                 continue
 
-            # Populate biometric_device_name on Employee if not set
+            # Populate slhrm_biometric_device_name on Employee if not set
             if device_id:
-                frappe.db.set_value("Employee", employee.name, "biometric_device_name", device_id, update_modified=False)
+                frappe.db.set_value("Employee", employee.name, "slhrm_biometric_device_name", device_id, update_modified=False)
 
             doc = frappe.get_doc(
                 {

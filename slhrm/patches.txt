@@ -1,4 +1,5 @@
 [pre_model_sync]
+slhrm.patches.v0_0_3.rename_biometric_fields
 
 [post_model_sync]
 slhrm.patches.v0_0_2.remove_legacy_ssa_components
