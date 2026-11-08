@@ -451,6 +451,41 @@ const GROUP_STYLE = {
 };
 
 
+// EMPLOYER group toggle: per user, in this browser (localStorage `slhrm_pw_employer` = {user: 0|1});
+// default collapsed. Storage can throw (private mode, blocked) -> fall back to the in-memory value.
+const EMPLOYER_KEY = 'slhrm_pw_employer';
+
+function employer_expanded(frm) {
+    try {
+        const m = JSON.parse(localStorage.getItem(EMPLOYER_KEY) || '{}');
+        if (frappe.session.user in m) return !!m[frappe.session.user];
+    } catch (e) { /* storage unavailable */ }
+    return !!frm._show_employer;
+}
+
+function set_employer_expanded(frm, value) {
+    frm._show_employer = !!value;
+    try {
+        const m = JSON.parse(localStorage.getItem(EMPLOYER_KEY) || '{}');
+        m[frappe.session.user] = value ? 1 : 0;
+        localStorage.setItem(EMPLOYER_KEY, JSON.stringify(m));
+    } catch (e) { /* storage unavailable: in-memory only */ }
+}
+
+// number cells never wrap; the table scrolls horizontally inside .pw-scroll
+const TABLE_CSS = '<style>' +
+    '.pw-table td.pw-num, .pw-table th.pw-num { white-space: nowrap; text-align: right; }' +
+    '.pw-table td.pw-money { min-width: 110px; }' +
+    '.pw-table td.pw-num:not(.pw-money) { min-width: 56px; }' +
+    '.pw-table { width: auto; min-width: 100%; }' +
+    '</style>';
+
+function cell_class(c) {
+    return [c.type !== 'text' ? 'pw-num' : '', c.type === 'currency' ? 'pw-money' : '',
+            c.group === 'employer' ? 'pw-er' : ''].filter(Boolean).join(' ');
+}
+
+
 function render_payroll_table(frm) {
     const employees = frm.doc.employees || [];
     const currency = frm.doc.currency || 'LKR';
@@ -462,9 +497,10 @@ function render_payroll_table(frm) {
     }
 
     const t = build_table(employees);
-    const show_employer = !!frm._show_employer;
-    const visible = c => c.group !== 'employer' || show_employer;
-    const cols = t.columns.filter(visible);
+    const show_employer = employer_expanded(frm);
+    // decide by GROUP key: only t.columns carry c.group, the g.columns used for headers do not
+    const in_view = group_key => group_key !== 'employer' || show_employer;
+    const cols = t.columns.filter(c => in_view(c.group));
     const ot_editable = can_edit_ot(frm);
     const esc = frappe.utils.escape_html;
     const errors = employees.filter(e => e.row_error).length;
@@ -477,7 +513,7 @@ function render_payroll_table(frm) {
     const sticky_left = (c, bg, z) => c.key === 'idx' ? 'position:sticky; left:0; z-index:' + z + '; background:' + bg + ';'
         : c.key === 'employee_name' ? 'position:sticky; left:36px; z-index:' + z + '; background:' + bg + '; min-width:170px;' : '';
 
-    let html = '';
+    let html = TABLE_CSS;
     if (no_ssa_at_all) {
         html += '<div class="alert alert-warning" style="margin:5px 0;">' +
             __('No salary assignments for {0}. Check the month or create Salary Structure Assignments.', [period_label(frm)]) + '</div>';
@@ -490,12 +526,12 @@ function render_payroll_table(frm) {
             (show_employer ? '▾ ' + __('Hide employer contributions') : '▸ ' + __('Show employer contributions (EPF / ETF)')) + '</a></div>';
     }
     html += '<div class="pw-scroll" style="overflow:auto; max-height:70vh; margin:5px 0; border:1px solid #d1d8dd;">';
-    html += '<table class="table table-bordered table-sm" style="font-size:12px; border-collapse:separate; border-spacing:0; margin:0;">';
+    html += '<table class="table table-bordered table-sm pw-table" style="font-size:12px; border-collapse:separate; border-spacing:0; margin:0;">';
 
     // header row 1: groups (sticky)
     html += '<thead><tr>';
-    t.groups.filter(g => g.columns.some(visible)).forEach(g => {
-        const n = g.columns.filter(visible).length;
+    t.groups.filter(g => in_view(g.key)).forEach(g => {
+        const n = g.columns.length;
         const bg = GROUP_STYLE[g.key] || '#1a237e';
         if (g.key === 'info') {
             g.columns.forEach(c => {
@@ -506,13 +542,13 @@ function render_payroll_table(frm) {
                 html += '<th rowspan="2" style="position:sticky; top:0; z-index:3; color:white; text-align:right; min-width:95px; background:' + bg + ';">' + esc(c.label) + '</th>';
             });
         } else {
-            html += '<th colspan="' + n + '" style="position:sticky; top:0; z-index:3; color:white; text-align:center; background:' + bg + ';">' + esc(g.label) + '</th>';
+            html += '<th colspan="' + n + '"' + (g.key === 'employer' ? ' class="pw-er"' : '') + ' style="position:sticky; top:0; z-index:3; color:white; text-align:center; background:' + bg + ';">' + esc(g.label) + '</th>';
         }
     });
     html += '</tr><tr>';
-    t.groups.filter(g => g.label && g.key !== 'info').forEach(g => g.columns.filter(visible).forEach(c => {
+    t.groups.filter(g => g.label && g.key !== 'info' && in_view(g.key)).forEach(g => g.columns.forEach(c => {
         const bg = GROUP_STYLE[g.key];
-        html += '<th title="' + esc(c.tooltip || '') + '" style="position:sticky; top:28px; z-index:3; color:white; text-align:center; font-size:11px; min-width:' + (c.key.indexOf('::') > 0 ? 110 : 70) + 'px; background:' + bg + '; opacity:0.92;">' + esc(c.label) + '</th>';
+        html += '<th' + (g.key === 'employer' ? ' class="pw-er"' : '') + ' title="' + esc(c.tooltip || '') + '" style="position:sticky; top:28px; z-index:3; color:white; text-align:center; font-size:11px; min-width:' + (c.key.indexOf('::') > 0 ? 110 : 70) + 'px; background:' + bg + '; opacity:0.92;">' + esc(c.label) + '</th>';
     }));
     html += '</tr></thead><tbody>';
 
@@ -531,7 +567,7 @@ function render_payroll_table(frm) {
                     (show_error ? '<div style="color:#c62828; font-size:11px; white-space:normal;">' + esc(r.row_error) + '</div>' : '') + '</td>';
             } else {
                 const strong = ['total_earning', 'total_deduction', 'net_pay'].includes(c.key);
-                html += '<td style="' + style + (strong ? 'font-weight:600;' : '') + '">' + fmt(v, c) + '</td>';
+                html += '<td class="' + cell_class(c) + '" style="' + style + (strong ? 'font-weight:600;' : '') + '">' + fmt(v, c) + '</td>';
             }
         });
         html += '</tr>';
@@ -542,7 +578,7 @@ function render_payroll_table(frm) {
         const bg = '#e8eaf6';
         const style = 'background:' + bg + ';' + sticky_left(c, bg, 2) + (c.type === 'text' || c.type === 'int' ? '' : 'text-align:right;');
         const v = c.key === 'employee_name' ? __('TOTAL') : (c.key in t.totals ? t.totals[c.key] : '');
-        html += '<td style="' + style + '">' + (c.key === 'employee_name' ? v : (v === '' ? '' : fmt(v, c))) + '</td>';
+        html += '<td class="' + cell_class(c) + '" style="' + style + '">' + (c.key === 'employee_name' ? v : (v === '' ? '' : fmt(v, c))) + '</td>';
     });
     html += '</tr></tbody></table></div>';
     html += '<p class="text-muted small">' +
@@ -552,7 +588,7 @@ function render_payroll_table(frm) {
     wrapper.$wrapper.html(html);
 
     wrapper.$wrapper.find('.toggle-employer').on('click', () => {
-        frm._show_employer = !frm._show_employer;
+        set_employer_expanded(frm, !employer_expanded(frm));
         render_payroll_table(frm);
     });
 
