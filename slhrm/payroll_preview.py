@@ -24,6 +24,20 @@ from slhrm.overrides.salary_slip import apply_package_overrides
 WORKSHEET_DOCTYPE = "Payroll Worksheet"
 
 
+def _base_component(salary_structure):
+    """Earning whose formula is exactly `base` (used only to show it as the first column)."""
+    if not salary_structure:
+        return None
+    for r in frappe.get_all(
+        "Salary Detail",
+        filters={"parent": salary_structure, "parenttype": "Salary Structure", "parentfield": "earnings"},
+        fields=["salary_component", "formula"], order_by="idx asc",
+    ):
+        if (r.formula or "").strip().lower() == "base":
+            return r.salary_component
+    return None
+
+
 def _rows(table):
     return [
         {
@@ -36,6 +50,38 @@ def _rows(table):
         for r in table
         if not r.do_not_include_in_total
     ]
+
+
+def _employer_rows(slip):
+    """Statistical / employer lines (shown, never part of gross, deductions or net).
+
+    - v16 employer_contributions rows and any slip row marked do_not_include_in_total
+    - statistical structure components: HRMS evaluates them but never adds slip rows, and
+      add_structure_components() resets slip.data on every pass, so the values are gone by the
+      end. Re-run HRMS's own add_structure_component() for each statistical row against a COPY of
+      the final evaluation context (HRMS formula + proration) and read the value back.
+    """
+    out = []
+    for table in ("employer_contributions", "earnings", "deductions"):
+        for r in slip.get(table) or []:
+            if table == "employer_contributions" or r.do_not_include_in_total:
+                out.append({"component": r.salary_component, "abbr": r.abbr, "amount": flt(r.amount, 2)})
+    seen = {o["component"] for o in out}
+    evaluated = getattr(slip, "_evaluated_components", None) or {}
+    for component_type in ("earnings", "deductions"):
+        for row in evaluated.get(component_type) or []:
+            if not row.get("statistical_component") or row.salary_component in seen:
+                continue
+            saved = (slip.data, slip.default_data)
+            slip.data, slip.default_data = frappe._dict(saved[0] or {}), frappe._dict(saved[1] or {})
+            try:
+                slip.add_structure_component(row, component_type)
+                amount = flt(slip.data.get(row.abbr), 2)
+            finally:
+                slip.data, slip.default_data = saved
+            out.append({"component": row.salary_component, "abbr": row.abbr, "amount": amount})
+            seen.add(row.salary_component)
+    return out
 
 
 def _drop_worksheet_ot(slip):
@@ -67,14 +113,15 @@ def build_preview(employee, company, start_date, end_date):
 
     Returns a dict: earnings / deductions [{component, abbr, amount, additional_salary,
     depends_on_payment_days}], gross_pay, total_deduction, net_pay, total_loan_repayment,
-    total_working_days, payment_days, absent_days, leave_without_pay, salary_structure, base (SSA), error.
+    total_working_days, payment_days, absent_days, leave_without_pay, salary_structure, base (SSA),
+    employer [{component, abbr, amount}] (statistical, not in totals), base_component, error.
     """
     from hrms.payroll.doctype.salary_structure.salary_structure import make_salary_slip
 
     result = frappe._dict(
         employee=employee, earnings=[], deductions=[], gross_pay=0.0, total_deduction=0.0, net_pay=0.0,
         total_loan_repayment=0.0, total_working_days=0.0, payment_days=0.0, absent_days=0.0,
-        leave_without_pay=0.0, salary_structure="", base=0.0, error=None,
+        leave_without_pay=0.0, salary_structure="", base=0.0, employer=[], base_component=None, error=None,
     )
     savepoint = f"slhrm_preview_{frappe.generate_hash(length=8)}"
     messages_before = len(frappe.local.message_log or [])
@@ -98,6 +145,7 @@ def build_preview(employee, company, start_date, end_date):
             return result
 
         make_salary_slip(slip.salary_structure, slip)  # process_salary_structure -> calculate_net_pay
+        employer = _employer_rows(slip)
         result.base = flt(frappe.db.get_value(
             "Salary Structure Assignment",
             {"employee": employee, "salary_structure": slip.salary_structure, "docstatus": 1,
@@ -119,6 +167,8 @@ def build_preview(employee, company, start_date, end_date):
             absent_days=flt(slip.get("absent_days")),
             leave_without_pay=flt(slip.leave_without_pay),
             salary_structure=slip.salary_structure or "",
+            employer=employer,
+            base_component=_base_component(slip.salary_structure),
         )
     except Exception as e:
         result.error = frappe.utils.strip_html(str(e)) or type(e).__name__

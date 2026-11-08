@@ -237,8 +237,16 @@
    "fieldtype": "Small Text",
    "label": "Calculation Error",
    "read_only": 1
+  },
+  {
+   "fieldname": "components_json",
+   "fieldtype": "Long Text",
+   "label": "Salary Components (HRMS preview)",
+   "read_only": 1,
+   "hidden": 1,
+   "description": "Per-row breakdown from the HRMS Salary Slip preview; rewritten by load / Refresh Salary Data."
   }
  ],
  "permissions": [],
- "modified": "2026-11-08 19:00:00.000000"
+ "modified": "2026-11-08 21:30:00.000000"
 }

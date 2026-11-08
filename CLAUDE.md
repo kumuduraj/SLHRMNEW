@@ -43,12 +43,13 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   (`pyproject.toml`, `setup.py`, `setup.cfg`, `requirements.txt`), `SLHRM-PWA/` and `slhrm/`.
   **Never recreate root-level duplicates** of `api.py`, `hooks.py`, `install.py`, `public/` etc.
 - Module folder `slhrm/slhrm/` (module "SLHRM") holds committed symlinks
-  `doctype`, `fixtures`, `page`, `public`, `workspace`, `workspace_sidebar` → `../`.
+  `doctype`, `fixtures`, `page`, `print_format`, `public`, `workspace`, `workspace_sidebar` → `../`.
 - Desk records are standard app files synced by `bench migrate` (bump `modified` when editing):
   Workspace `slhrm/workspace/slhrm/slhrm.json`, Page `slhrm/page/slhrm_dashboard/slhrm_dashboard.json`
   (module folder), Workspace Sidebar `slhrm/workspace_sidebar/slhrm.json` and Desktop Icon
-  `slhrm/desktop_icon/slhrm.json` (app-level folders). A standard record without its JSON file is
-  deleted by Frappe's orphan cleanup on migrate.
+  `slhrm/desktop_icon/slhrm.json` (app-level folders), Print Format
+  `slhrm/print_format/payroll_worksheet/payroll_worksheet.json` (module folder). A standard record
+  without its JSON file is deleted by Frappe's orphan cleanup on migrate.
 - Every doctype folder needs an `__init__.py`.
 - Patches: `slhrm/patches/vX_Y_Z/*.py`, registered in `slhrm/patches.txt`.
 - Version: `slhrm/__init__.py` `__version__`; `hooks.app_version` imports it. Keep
@@ -108,6 +109,16 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   *before* `validate`, so the controllers enforce it themselves (new rows → calculated values,
   existing rows → stored values, for users without level-1 write).
 - Employee Salary Package overrides (`overrides/salary_slip.py`) must never include the OT components.
+- **Employee Salary Package: SSA.base = SUM of all package earning overrides — intended (Raj,
+  2026-11-08).** Formulas on `base` (EPF 8% = base * 0.08) are % of total earnings. Don't change it.
+- **Worksheet table** (component columns, OT, Gross, deductions, Total Ded, Net, EMPLOYER group) is
+  defined once in `slhrm/payroll_table.py` (print format jinja method `worksheet_table`, Excel
+  `download_worksheet_xlsx`) and mirrored by `build_table` in `payroll_worksheet.js` — change both.
+  Rows render from `components_json` (stored HRMS preview breakdown), never recomputed.
+- **Statistical components** (statistical_component / do_not_include_in_total, e.g. employer EPF 12%,
+  ETF 3%): HRMS v16 evaluates them but never adds slip rows, and resets `slip.data` per pass. The
+  preview re-runs HRMS's own `add_structure_component()` on a copy of the context to read them. They
+  appear ONLY in the EMPLOYER group — never in Total Ded / Net.
 
 ## DEMO data (`slhrm/demo/data.py`, bench execute only — never whitelisted)
 - `bench --site hrm.gillsinternational.com execute slhrm.demo.data.create` (idempotent; refuses if

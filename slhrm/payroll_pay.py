@@ -14,6 +14,8 @@ Salary — display only (already inside the preview, never added again).
 Tax/statutory components on the final Salary Slip are computed on gross INCLUDING OT, so for
 those the worksheet is an approximation (OT reaches the slip as Additional Salary).
 """
+import json
+
 import frappe
 from frappe.utils import cint, flt
 
@@ -54,6 +56,15 @@ def salary_fields_from_preview(preview):
         "absent_days": flt(preview.absent_days),
         "leave_days": flt(preview.leave_without_pay),
         "row_error": preview.error or "",
+        # per-row breakdown so saved / submitted worksheets render without recomputing
+        "components_json": json.dumps({
+            "earnings": [{"component": r["component"], "amount": r["amount"], "additional_salary": r["additional_salary"]}
+                         for r in preview.earnings],
+            "deductions": [{"component": r["component"], "amount": r["amount"], "additional_salary": r["additional_salary"]}
+                           for r in preview.deductions],
+            "employer": [{"component": r["component"], "amount": r["amount"]} for r in preview.employer or []],
+            "base_component": preview.base_component,
+        }),
     }
 
 

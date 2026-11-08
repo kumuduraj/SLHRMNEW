@@ -10,7 +10,7 @@ const ROW_FIELDS = [
     'double_ot_hours', 'double_ot_rate', 'double_ot_amount', 'ot_amount',
     'structure_gross', 'structure_deduction', 'loan_deduction',
     'additional_earning_total', 'additional_deduction_total',
-    'total_earning', 'total_deduction', 'net_pay', 'row_error'
+    'total_earning', 'total_deduction', 'net_pay', 'row_error', 'components_json'
 ];
 const SALARY_FIELDS = ROW_FIELDS.filter(f => ![
     'employee', 'ot_eligible', 'normal_ot_hours', 'normal_ot_rate', 'double_ot_hours', 'double_ot_rate'
@@ -44,6 +44,15 @@ frappe.ui.form.on('Payroll Worksheet', {
 
         if (frm.doc.docstatus === 0 && (frm.doc.employees || []).length) {
             frm.add_custom_button(__('Refresh Salary Data'), () => refresh_salary_data(frm));
+        }
+        if (!frm.is_new() && (frm.doc.employees || []).length) {
+            frm.add_custom_button(__('Download Excel'), () => {
+                if (frm.is_dirty()) {
+                    frappe.msgprint(__('Save the worksheet first — Excel is built from the saved rows.'));
+                    return;
+                }
+                window.open('/api/method/slhrm.api.download_worksheet_xlsx?name=' + encodeURIComponent(frm.doc.name));
+            });
         }
         if (frm.doc.docstatus === 1 && !frm.doc.payroll_entry) {
             frm.add_custom_button(__('Create Payroll Entry'), function() {
@@ -324,23 +333,84 @@ function set_dates(frm) {
 }
 
 
-// ── Display helpers (server values only) ───────────────────────────
+// ── Table layout (mirror of slhrm/payroll_table.py build_table — keep in step) ──
+// Values come only from the stored HRMS preview breakdown (row.components_json) and the row's
+// OT / total fields; the JS adds column sums for the totals row, nothing else.
 
-function component_data(frm) {
-    // Component columns from the stored preview lines (works after reload too).
-    const components = [], seen = {}, amounts = {};
-    [['earnings', frm.doc.earnings || []], ['deductions', frm.doc.deductions || []]].forEach(pair => {
-        pair[1].forEach(line => {
-            if (!line.salary_component) return;
-            if (!seen[line.salary_component]) {
-                seen[line.salary_component] = 1;
-                components.push({ name: line.salary_component, type: pair[0] });
-            }
-            const emp = amounts[line.employee] = amounts[line.employee] || {};
-            emp[line.salary_component] = flt(emp[line.salary_component] || 0) + flt(line.amount);
+const ADDITIONAL = '__additional__';
+const NO_TOTAL = ['normal_ot_rate', 'double_ot_rate'];
+
+function parse_breakdown(row) {
+    let b = {};
+    try { b = row.components_json ? JSON.parse(row.components_json) : {}; } catch (e) { b = {}; }
+    return { earnings: b.earnings || [], deductions: b.deductions || [], employer: b.employer || [], base_component: b.base_component || null };
+}
+
+
+function build_table(rows) {
+    rows = rows || [];
+    const parsed = rows.map(parse_breakdown);
+    const union = kind => {
+        const seen = [], bases = [];
+        parsed.forEach(b => {
+            b[kind].forEach(l => { if (!l.additional_salary && !seen.includes(l.component)) seen.push(l.component); });
+            if (kind === 'earnings' && b.base_component && !bases.includes(b.base_component)) bases.push(b.base_component);
         });
+        const first = bases.filter(c => seen.includes(c));
+        return first.concat(seen.filter(c => !first.includes(c)));
+    };
+    const earn = union('earnings'), ded = union('deductions'), emp = [];
+    parsed.forEach(b => b.employer.forEach(l => { if (!emp.includes(l.component)) emp.push(l.component); }));
+    const add_earn = parsed.some(b => b.earnings.some(l => l.additional_salary));
+    const add_ded = parsed.some(b => b.deductions.some(l => l.additional_salary));
+    const has_loan = rows.some(r => flt(r.loan_deduction) > 0);
+    const tip = c => c + ' — from Salary Structure';
+
+    let groups = [
+        { key: 'info', label: '', columns: [
+            { key: 'idx', label: '#', type: 'int' }, { key: 'employee_name', label: 'Employee', type: 'text' },
+            { key: 'total_working_days', label: 'Working Days', type: 'float' },
+            { key: 'payment_days', label: 'Payment Days', type: 'float' }, { key: 'lwp_days', label: 'LWP', type: 'float' }] },
+        { key: 'earnings', label: 'EARNINGS', columns: earn.map(c => ({ key: 'E::' + c, label: c, type: 'currency', tooltip: tip(c) }))
+            .concat(add_earn ? [{ key: 'E::' + ADDITIONAL, label: 'Additional', type: 'currency', tooltip: 'Additional Salary earnings (submitted, this period)' }] : []) },
+        { key: 'normal_ot', label: 'NORMAL OT', columns: [
+            { key: 'normal_ot_hours', label: 'Hrs', type: 'float' }, { key: 'normal_ot_rate', label: 'Rate', type: 'currency' },
+            { key: 'normal_ot_amount', label: 'Amount', type: 'currency' }] },
+        { key: 'double_ot', label: 'DOUBLE OT', columns: [
+            { key: 'double_ot_hours', label: 'Hrs', type: 'float' }, { key: 'double_ot_rate', label: 'Rate', type: 'currency' },
+            { key: 'double_ot_amount', label: 'Amount', type: 'currency' }] },
+        { key: 'gross', label: '', columns: [{ key: 'total_earning', label: 'GROSS', type: 'currency' }] },
+        { key: 'deductions', label: 'DEDUCTIONS', columns: ded.map(c => ({ key: 'D::' + c, label: c, type: 'currency', tooltip: tip(c) }))
+            .concat(add_ded ? [{ key: 'D::' + ADDITIONAL, label: 'Additional', type: 'currency', tooltip: 'Additional Salary deductions (submitted, this period)' }] : [])
+            .concat(has_loan ? [{ key: 'loan_deduction', label: 'Loan', type: 'currency' }] : []) },
+        { key: 'total_ded', label: '', columns: [{ key: 'total_deduction', label: 'TOTAL DED', type: 'currency' }] },
+        { key: 'net', label: '', columns: [{ key: 'net_pay', label: 'NET PAY', type: 'currency' }] },
+        { key: 'employer', label: 'EMPLOYER', collapsible: 1, columns: emp.map(c => ({
+            key: 'ER::' + c, label: c, type: 'currency', tooltip: c + ' — employer contribution (statistical, not in net pay)' })) }
+    ].filter(g => g.columns.length);
+    const columns = [];
+    groups.forEach(g => g.columns.forEach(c => columns.push(Object.assign({ group: g.key }, c))));
+
+    const out_rows = rows.map((r, i) => {
+        const cells = { idx: i + 1, employee_name: r.employee_name || r.employee, employee: r.employee, row_error: r.row_error || '', name: r.name };
+        ['total_working_days', 'payment_days', 'lwp_days', 'normal_ot_hours', 'normal_ot_rate', 'normal_ot_amount',
+         'double_ot_hours', 'double_ot_rate', 'double_ot_amount', 'total_earning', 'total_deduction', 'net_pay', 'loan_deduction']
+            .forEach(k => { cells[k] = flt(r[k]); });
+        const b = parsed[i];
+        [['E', 'earnings'], ['D', 'deductions']].forEach(([p, kind]) => b[kind].forEach(l => {
+            const key = p + '::' + (l.additional_salary ? ADDITIONAL : l.component);
+            cells[key] = flt(cells[key] || 0) + flt(l.amount);
+        }));
+        b.employer.forEach(l => { const key = 'ER::' + l.component; cells[key] = flt(cells[key] || 0) + flt(l.amount); });
+        return cells;
     });
-    return { components, amounts };
+    const totals = {};
+    columns.forEach(c => {
+        if ((c.type === 'currency' || c.type === 'float') && !NO_TOTAL.includes(c.key)) {
+            totals[c.key] = flt(out_rows.reduce((s, r) => s + flt(r[c.key] || 0), 0), 2);
+        }
+    });
+    return { groups, columns, rows: out_rows, totals };
 }
 
 
@@ -368,6 +438,12 @@ function can_edit_ot(frm) {
 }
 
 
+const GROUP_STYLE = {
+    info: '#1a237e', earnings: '#1b5e20', normal_ot: '#4a148c', double_ot: '#880e4f', gross: '#0d47a1',
+    deductions: '#b71c1c', total_ded: '#0d47a1', net: '#1b5e20', employer: '#e65100'
+};
+
+
 function render_payroll_table(frm) {
     const employees = frm.doc.employees || [];
     const currency = frm.doc.currency || 'LKR';
@@ -378,14 +454,21 @@ function render_payroll_table(frm) {
         return;
     }
 
-    const data = component_data(frm);
-    const earnings = data.components.filter(c => c.type === 'earnings');
-    const deductions = data.components.filter(c => c.type === 'deductions');
-    const amount_of = (emp, comp) => flt((data.amounts[emp] || {})[comp] || 0);
+    const t = build_table(employees);
+    const show_employer = !!frm._show_employer;
+    const visible = c => c.group !== 'employer' || show_employer;
+    const cols = t.columns.filter(visible);
     const ot_editable = can_edit_ot(frm);
     const esc = frappe.utils.escape_html;
     const errors = employees.filter(e => e.row_error).length;
     const no_ssa_at_all = all_rows_without_ssa(employees);
+    const fmt = (v, c) => {
+        if (v === undefined || v === null || v === '') return c.type === 'currency' || c.type === 'float' ? '-' : '';
+        if (c.type === 'currency') return format_currency(v, currency);
+        return esc(String(v));
+    };
+    const sticky_left = (c, bg, z) => c.key === 'idx' ? 'position:sticky; left:0; z-index:' + z + '; background:' + bg + ';'
+        : c.key === 'employee_name' ? 'position:sticky; left:36px; z-index:' + z + '; background:' + bg + '; min-width:170px;' : '';
 
     let html = '';
     if (no_ssa_at_all) {
@@ -395,82 +478,76 @@ function render_payroll_table(frm) {
         html += '<div class="alert alert-danger" style="margin:5px 0;">' +
             __('{0} row(s) could not be calculated (red). Submit is blocked until they are fixed — then use Refresh Salary Data.', [errors]) + '</div>';
     }
-    html += '<div style="overflow-x:auto; margin: 5px 0;">';
-    html += '<table class="table table-bordered table-sm" style="font-size: 12px; border-collapse:collapse;">';
+    if (t.groups.some(g => g.key === 'employer')) {
+        html += '<div style="margin:4px 0;"><a class="toggle-employer" style="cursor:pointer;">' +
+            (show_employer ? '▾ ' + __('Hide employer contributions') : '▸ ' + __('Show employer contributions (EPF / ETF)')) + '</a></div>';
+    }
+    html += '<div class="pw-scroll" style="overflow:auto; max-height:70vh; margin:5px 0; border:1px solid #d1d8dd;">';
+    html += '<table class="table table-bordered table-sm" style="font-size:12px; border-collapse:separate; border-spacing:0; margin:0;">';
 
-    html += '<thead><tr style="background:#1a237e; color:white;">';
-    html += '<th rowspan="2" style="min-width:40px; position:sticky; left:0; background:#1a237e; z-index:2; text-align:center;">#</th>';
-    html += '<th rowspan="2" style="min-width:160px; position:sticky; left:40px; background:#1a237e; z-index:2;">' + __('Employee') + '</th>';
-    [__('Working Days'), __('Payment Days'), __('LWP')].forEach(h => {
-        html += '<th rowspan="2" style="min-width:60px; text-align:center;">' + h + '</th>';
+    // header row 1: groups (sticky)
+    html += '<thead><tr>';
+    t.groups.filter(g => g.columns.some(visible)).forEach(g => {
+        const n = g.columns.filter(visible).length;
+        const bg = GROUP_STYLE[g.key] || '#1a237e';
+        if (g.key === 'info') {
+            g.columns.forEach(c => {
+                html += '<th rowspan="2" style="position:sticky; top:0; color:white; text-align:center; z-index:4; background:' + bg + ';' + sticky_left(c, bg, 5) + '">' + esc(c.label) + '</th>';
+            });
+        } else if (!g.label) {
+            g.columns.forEach(c => {
+                html += '<th rowspan="2" style="position:sticky; top:0; z-index:3; color:white; text-align:right; min-width:95px; background:' + bg + ';">' + esc(c.label) + '</th>';
+            });
+        } else {
+            html += '<th colspan="' + n + '" style="position:sticky; top:0; z-index:3; color:white; text-align:center; background:' + bg + ';">' + esc(g.label) + '</th>';
+        }
     });
-    html += '<th colspan="3" style="background:#4a148c; text-align:center;">' + __('NORMAL OT') + '</th>';
-    html += '<th colspan="3" style="background:#880e4f; text-align:center;">' + __('DOUBLE OT') + '</th>';
-    if (earnings.length) html += '<th colspan="' + earnings.length + '" style="background:#1b5e20; text-align:center;">' + __('EARNINGS (HRMS)') + '</th>';
-    if (deductions.length) html += '<th colspan="' + deductions.length + '" style="background:#b71c1c; text-align:center;">' + __('DEDUCTIONS (HRMS)') + '</th>';
-    html += '<th rowspan="2" style="min-width:90px; position:sticky; right:200px; background:#0d47a1; z-index:2; text-align:right;">' + __('Total Earn') + '</th>';
-    html += '<th rowspan="2" style="min-width:90px; position:sticky; right:100px; background:#0d47a1; z-index:2; text-align:right;">' + __('Total Ded') + '</th>';
-    html += '<th rowspan="2" style="min-width:100px; position:sticky; right:0; background:#1b5e20; z-index:2; text-align:right; font-weight:bold;">' + __('Net Pay') + '</th>';
-    html += '</tr><tr style="background:#283593; color:white;">';
-    ['Hrs', 'Rate', 'Amount'].forEach(t => { html += '<th style="min-width:70px; background:#6a1b9a; text-align:center; font-size:11px;">' + __(t) + '</th>'; });
-    ['Hrs', 'Rate', 'Amount'].forEach(t => { html += '<th style="min-width:70px; background:#ad1457; text-align:center; font-size:11px;">' + __(t) + '</th>'; });
-    earnings.forEach(c => { html += '<th style="min-width:110px; background:#2e7d32; text-align:center; font-size:11px;">' + esc(c.name) + '</th>'; });
-    deductions.forEach(c => { html += '<th style="min-width:110px; background:#c62828; text-align:center; font-size:11px;">' + esc(c.name) + '</th>'; });
+    html += '</tr><tr>';
+    t.groups.filter(g => g.label && g.key !== 'info').forEach(g => g.columns.filter(visible).forEach(c => {
+        const bg = GROUP_STYLE[g.key];
+        html += '<th title="' + esc(c.tooltip || '') + '" style="position:sticky; top:28px; z-index:3; color:white; text-align:center; font-size:11px; min-width:' + (c.key.indexOf('::') > 0 ? 110 : 70) + 'px; background:' + bg + '; opacity:0.92;">' + esc(c.label) + '</th>';
+    }));
     html += '</tr></thead><tbody>';
 
-    const col_totals = {};
-    employees.forEach((emp, idx) => {
-        const show_error = emp.row_error && !no_ssa_at_all;
-        const bg = show_error ? '#ffebee' : (idx % 2 === 0 ? '#ffffff' : '#f5f5f5');
-        const ot_cell = (field, value) => {
-            if (!ot_editable || !emp.ot_eligible) {
-                return '<td class="text-right" title="' + (emp.ot_eligible ? '' : __('Not eligible for overtime')) + '">' + flt(value, 2) + '</td>';
+    t.rows.forEach((r, i) => {
+        const show_error = r.row_error && !no_ssa_at_all;
+        const bg = show_error ? '#ffebee' : (i % 2 === 0 ? '#ffffff' : '#f7f7f7');
+        html += '<tr' + (show_error ? ' title="' + esc(r.row_error) + '"' : '') + '>';
+        cols.forEach(c => {
+            const v = r[c.key];
+            const style = 'background:' + bg + ';' + sticky_left(c, bg, 2) + (c.type === 'text' || c.type === 'int' ? '' : 'text-align:right;');
+            const emp = employees[i];
+            if (OT_INPUTS.includes(c.key) && ot_editable && emp.ot_eligible) {
+                html += '<td style="padding:2px;' + style + '"><input type="number" min="0" step="0.01" class="ot-input" data-row="' + emp.name + '" data-field="' + c.key + '" value="' + flt(v, 2) + '" style="width:100%; min-width:64px; text-align:right; border:1px solid #d1c4e9; border-radius:3px; padding:3px 5px; font-size:12px; background:#f3e5f5;"></td>';
+            } else if (c.key === 'employee_name') {
+                html += '<td style="' + style + '"><strong>' + esc(v || '') + '</strong>' +
+                    (show_error ? '<div style="color:#c62828; font-size:11px; white-space:normal;">' + esc(r.row_error) + '</div>' : '') + '</td>';
+            } else {
+                const strong = ['total_earning', 'total_deduction', 'net_pay'].includes(c.key);
+                html += '<td style="' + style + (strong ? 'font-weight:600;' : '') + '">' + fmt(v, c) + '</td>';
             }
-            return '<td style="padding:2px;"><input type="number" min="0" step="0.01" class="ot-input" data-row="' + emp.name + '" data-field="' + field + '" value="' + flt(value, 2) + '" style="width:100%; text-align:right; border:1px solid #d1c4e9; border-radius:3px; padding:4px 6px; font-size:12px; background:#f3e5f5;"></td>';
-        };
-
-        html += '<tr style="background:' + bg + ';"' + (show_error ? ' title="' + esc(emp.row_error) + '"' : '') + '>';
-        html += '<td style="position:sticky; left:0; background:' + bg + '; z-index:1; text-align:center;">' + (idx + 1) + '</td>';
-        html += '<td style="position:sticky; left:40px; background:' + bg + '; z-index:1;"><strong>' + esc(emp.employee_name || emp.employee) + '</strong>';
-        if (show_error) html += '<div style="color:#c62828; font-size:11px; white-space:normal;">' + esc(emp.row_error) + '</div>';
-        html += '</td>';
-        html += '<td class="text-center">' + flt(emp.total_working_days) + '</td>';
-        html += '<td class="text-center">' + flt(emp.payment_days) + '</td>';
-        html += '<td class="text-center">' + flt(emp.lwp_days) + '</td>';
-        html += ot_cell('normal_ot_hours', emp.normal_ot_hours);
-        html += ot_cell('normal_ot_rate', emp.normal_ot_rate);
-        html += '<td class="text-right">' + format_currency(emp.normal_ot_amount || 0, currency) + '</td>';
-        html += ot_cell('double_ot_hours', emp.double_ot_hours);
-        html += ot_cell('double_ot_rate', emp.double_ot_rate);
-        html += '<td class="text-right">' + format_currency(emp.double_ot_amount || 0, currency) + '</td>';
-        earnings.concat(deductions).forEach(c => {
-            const amt = amount_of(emp.employee, c.name);
-            col_totals[c.name] = flt(col_totals[c.name] || 0) + amt;
-            html += '<td class="text-right">' + format_currency(amt, currency) + '</td>';
         });
-        html += '<td class="text-right" style="position:sticky; right:200px; background:#e3f2fd; z-index:1; font-weight:500;">' + format_currency(emp.total_earning || 0, currency) + '</td>';
-        html += '<td class="text-right" style="position:sticky; right:100px; background:#ffebee; z-index:1; font-weight:500;">' + format_currency(emp.total_deduction || 0, currency) + '</td>';
-        html += '<td class="text-right" style="position:sticky; right:0; background:#c8e6c9; z-index:1; font-weight:bold;">' + format_currency(emp.net_pay || 0, currency) + '</td>';
         html += '</tr>';
     });
 
-    html += '<tr style="font-weight:bold; background:#e8eaf6;">';
-    html += '<td colspan="2" style="position:sticky; left:0; background:#e8eaf6; z-index:1;">' + __('TOTAL') + '</td>';
-    html += '<td colspan="3"></td>';
-    html += '<td colspan="2"></td><td class="text-right">' + format_currency(frm.doc.total_normal_ot_amount || 0, currency) + '</td>';
-    html += '<td colspan="2"></td><td class="text-right">' + format_currency(frm.doc.total_double_ot_amount || 0, currency) + '</td>';
-    earnings.concat(deductions).forEach(c => {
-        html += '<td class="text-right">' + format_currency(col_totals[c.name] || 0, currency) + '</td>';
+    html += '<tr style="font-weight:bold;">';
+    cols.forEach(c => {
+        const bg = '#e8eaf6';
+        const style = 'background:' + bg + ';' + sticky_left(c, bg, 2) + (c.type === 'text' || c.type === 'int' ? '' : 'text-align:right;');
+        const v = c.key === 'employee_name' ? __('TOTAL') : (c.key in t.totals ? t.totals[c.key] : '');
+        html += '<td style="' + style + '">' + (c.key === 'employee_name' ? v : (v === '' ? '' : fmt(v, c))) + '</td>';
     });
-    html += '<td class="text-right" style="position:sticky; right:200px; background:#90caf9; z-index:1;">' + format_currency(frm.doc.total_gross_pay || 0, currency) + '</td>';
-    html += '<td class="text-right" style="position:sticky; right:100px; background:#ef9a9a; z-index:1;">' + format_currency(frm.doc.total_deductions || 0, currency) + '</td>';
-    html += '<td class="text-right" style="position:sticky; right:0; background:#a5d6a7; z-index:1;">' + format_currency(frm.doc.total_net_pay || 0, currency) + '</td>';
     html += '</tr></tbody></table></div>';
     html += '<p class="text-muted small">' +
-        __('Salary columns are HRMS Salary Slip previews (structure, payment days / LWP, Additional Salary, package overrides) — calculated on the server, never saved. Gross = HRMS gross + Normal OT + Double OT.') +
+        __('Salary columns are HRMS Salary Slip previews (structure, payment days / LWP, Additional Salary, package overrides) — calculated on the server, never saved. Gross = HRMS gross + Normal OT + Double OT. "-" = component not on that employee\'s slip.') +
         '<br>' + __('Tax/statutory components are calculated on the final Salary Slip including OT.') + '</p>';
 
     wrapper.$wrapper.html(html);
+
+    wrapper.$wrapper.find('.toggle-employer').on('click', () => {
+        frm._show_employer = !frm._show_employer;
+        render_payroll_table(frm);
+    });
 
     // OT inline edit -> server recalculates OT + totals (no preview rebuild)
     wrapper.$wrapper.find('.ot-input').on('change', function() {

@@ -1,4 +1,6 @@
-from slhrm import __version__ as app_version
+from slhrm import __version__
+
+app_version = __version__
 
 app_name = "slhrm"
 app_title = "SLHRM"
@@ -70,3 +72,8 @@ website_route_rules = [
         "to_route": "slhrm",
     },
 ]
+
+# Jinja methods (print formats)
+jinja = {
+    "methods": ["slhrm.payroll_table.worksheet_table"],
+}

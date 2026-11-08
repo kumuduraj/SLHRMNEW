@@ -555,6 +555,22 @@ def refresh_salary_data(company, payroll_month, payroll_year, rows):
 
 
 @frappe.whitelist()
+def download_worksheet_xlsx(name):
+    """"Download Excel": the worksheet table (same columns + totals as the form / print)."""
+    from frappe.utils.xlsxutils import make_xlsx
+
+    from slhrm.payroll_table import build_table, sheet_rows
+
+    doc = frappe.get_doc("Payroll Worksheet", name)
+    doc.check_permission("read")
+    title = f"Payroll Worksheet {doc.name} - {doc.branch} - {doc.month_name} {doc.payroll_year}"
+    xlsx = make_xlsx(sheet_rows(title, build_table(doc.employees)), "Payroll Worksheet")
+    frappe.response["filename"] = f"{doc.name}.xlsx"
+    frappe.response["filecontent"] = xlsx.getvalue()
+    frappe.response["type"] = "binary"
+
+
+@frappe.whitelist()
 def calc_worksheet_row(employee, structure_gross=0, structure_deduction=0, loan_deduction=0,
                        normal_ot_hours=0, double_ot_hours=0, normal_ot_rate=0, double_ot_rate=0):
     """OT + totals for one row (inline OT editor). Does NOT rebuild the salary preview."""
