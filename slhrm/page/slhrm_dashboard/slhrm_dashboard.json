@@ -5,13 +5,23 @@
  "doctype": "Page",
  "icon": "chart-bar",
  "idx": 0,
- "modified": "2026-11-08 13:00:00.000000",
+ "modified": "2026-11-08 15:00:00.000000",
  "modified_by": "Administrator",
  "module": "SLHRM",
  "name": "slhrm-dashboard",
  "owner": "Administrator",
  "page_name": "slhrm-dashboard",
- "roles": [],
+ "roles": [
+  {
+   "role": "HR User"
+  },
+  {
+   "role": "HR Manager"
+  },
+  {
+   "role": "System Manager"
+  }
+ ],
  "script": null,
  "standard": "Yes",
  "style": null,
