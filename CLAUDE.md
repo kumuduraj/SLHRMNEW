@@ -28,6 +28,15 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
    `bench build --app slhrm` → `clear-cache` + `clear-website-cache` → restart.
 - **Never edit `apps/slhrm` directly. Never run git as root** (root-owned files break later pulls).
 - No changes to frappe/erpnext/hrms core. No nginx changes are needed for SLHRM.
+- **Before every commit: `tools/check.sh`** must print `CHECK PASSED` (pyflakes: 0 undefined names in
+  `slhrm/`, 0 findings in changed `.py` files; every `slhrm` module imports). pyflakes lives in the
+  bench venv (`/home/rajerp/GILLSHR/env/bin/pip install pyflakes`). Legacy files with old unused
+  imports are cleaned when a phase touches them.
+- **Smoke tests CALL every whitelisted endpoint touched in the phase** (throwaway data or minimal args)
+  — importing a module proves nothing about code inside its functions.
+- **Every deploy report includes** `git -C apps/<app> status --short` for frappe, erpnext, hrms **and**
+  slhrm, plus prod HEAD vs `upstream/master` — no exceptions.
+- Python change under `slhrm/` → stop after clear-cache; Raj restarts (`rajerp` has no passwordless sudo).
 
 ## Layout
 - The live Python package is `slhrm/`. The repo root holds only packaging files
@@ -133,6 +142,13 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - (v0.0.4) Marker submit/cancel wrote `processing_status` on every punch ref → only Biometric Punch Log refs carry it.
 - (v0.0.4) Worksheet `on_submit` called a missing `_create_payroll_entry` → grep callers when renaming methods.
 - (v0.0.5) The worksheet put structure components into `additional_earning_total` and added `base` on top, so gross counted base twice; structure amounts were also computed twice (with and without package overrides) and the JS recomputed totals itself → one pay module (`payroll_pay.py`), Additional Salary means Additional Salary only, JS displays server values.
+- (v0.0.5) The `load_payroll_data` rewrite dropped a local `flt` import; the "smoke test" only imported
+  modules, so a NameError shipped and broke the worksheet loader until a follow-up fix + restart
+  → `tools/check.sh` (pyflakes + import of every module) before every commit.
+- (v0.0.5) Import-only smoke tests can't see errors inside functions → smoke tests call every touched
+  whitelisted endpoint with throwaway data / minimal args.
+- (v0.0.5) One deploy report omitted the core-app git status → every deploy report lists frappe,
+  erpnext, hrms and slhrm status + HEAD vs upstream/master.
 
 ## Known open items (not yet fixed)
 - `SLHRM Settings` fields never read by code: `auto_mark_attendance`, `auto_create_payroll_on_submit`.

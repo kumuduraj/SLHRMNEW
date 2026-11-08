@@ -47,3 +47,6 @@ slhrm/slhrm/slhrm/
 /get_*.py
 /final_*.py
 /setup_*.py
+
+# tools/check.sh scratch
+/.check_import_status
