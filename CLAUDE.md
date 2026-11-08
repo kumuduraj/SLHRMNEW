@@ -84,6 +84,7 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - PWA depended on a Docker nginx alias and a build outside `/assets/slhrm` → serve via Frappe www page + `/assets/slhrm/frontend`, commit the build.
 - Hard-coded `/home/frappe/frappe-bench` path in `serve_pwa` → never hard-code bench paths; use `frappe.get_app_path()`.
 - (v0.0.3) Employee `biometric_*` fields had no `slhrm_` prefix, and their section anchored to `column_break_4`, which ERPNext v16 doesn't have (it landed at idx 0) → prefix every custom field; verify anchors.
+- (v0.0.3) Unanchored `.gitignore` scratch patterns (`check_*.py`, …) silently dropped a patch file, so migrate failed with ModuleNotFoundError → scratch patterns are root-anchored (`/check_*.py`); run `git status --ignored` before pushing new files.
 - (v0.0.3) install.py deleted the core "Home" workspace and rebuilt the sidebar/page/icon with raw SQL on every migrate, and Frappe's orphan cleanup then deleted the SLHRM icon (no JSON) → ship desk records as app JSON; never touch core records.
 
 ## Known open items (not yet fixed)
