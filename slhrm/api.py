@@ -431,6 +431,17 @@ def get_team_checkins(employee, date):
 # ═══════════════════════════════════════════════════════════════
 
 @frappe.whitelist()
+def calc_ot_amounts(normal_hours=0, double_hours=0, normal_rate=0, double_rate=0):
+    """OT amounts for the Payroll Worksheet inline editor (via slhrm.overtime)."""
+    from slhrm.overtime import calculate_ot_amounts
+
+    frappe.has_permission("Payroll Worksheet", "read", throw=True)
+    return calculate_ot_amounts(
+        normal_hours, double_hours, {"normal_rate": normal_rate, "double_rate": double_rate}
+    )
+
+
+@frappe.whitelist()
 def load_payroll_data(branch, company, payroll_month, payroll_year):
     """
     Main data-loading endpoint for the Payroll Worksheet form.
@@ -445,6 +456,10 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
     """
     from frappe.utils import getdate, get_first_day, get_last_day, flt, cint
 
+    from slhrm.overtime import calculate_ot_amounts, calculate_ot_rates
+    from slhrm.payroll_ot import get_marker_ot_hours
+
+    frappe.has_permission("Payroll Worksheet", "create", throw=True)
     if not branch or not company or not payroll_month or not payroll_year:
         frappe.throw(_("Branch, Company, Month and Year are required."))
 
@@ -461,7 +476,7 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
             "branch": branch,
             "status": "Active",
         },
-        fields=["name", "employee_name", "designation"],
+        fields=["name", "employee_name", "designation", "slhrm_ot_eligible"],
         order_by="employee_name asc",
     )
 
@@ -568,24 +583,8 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
         elif row.status == "Work From Home":
             att_map[row.employee]["present"] += row.cnt
 
-    # ── 4. OT hours from Attendance Marker Detail (batch, submitted only) ──
-    # Uses actual_overtime (approved/adjusted) instead of overtime_hours (calculated)
-    ot_map = {}
-    ot_records = frappe.db.sql(
-        """
-        SELECT amd.employee, SUM(amd.actual_overtime) as total_ot
-        FROM `tabAttendance Marker Detail` amd
-        INNER JOIN `tabAttendance Marker` am ON am.name = amd.parent
-        WHERE amd.employee IN %(employees)s
-            AND am.date BETWEEN %(start)s AND %(end)s
-            AND am.docstatus = 1
-        GROUP BY amd.employee
-        """,
-        {"employees": emp_names, "start": start_date, "end": end_date},
-        as_dict=True,
-    )
-    for row in ot_records:
-        ot_map[row.employee] = flt(row.total_ot)
+    # ── 4. OT hours from submitted Attendance Markers (approved normal/double hours) ──
+    ot_map = get_marker_ot_hours(emp_names, start_date, end_date)
 
     # ── 5. Additional Salary records (batch) ──
     addl_records = frappe.db.sql(
@@ -602,6 +601,7 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
         LEFT JOIN `tabSalary Component` sc ON sc.name = ads.salary_component
         WHERE ads.employee IN %(employees)s
             AND ads.docstatus = 1
+            AND IFNULL(ads.ref_doctype, '') != 'Payroll Worksheet'
             AND (
                 (ads.payroll_date BETWEEN %(start)s AND %(end)s)
                 OR (
@@ -786,14 +786,14 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
     else:
         total_working_days = total_days
 
-    # ── 8. Default OT rate ──
-    default_ot_rate = flt(
-        frappe.db.get_single_value("SLHRM Settings", "default_ot_rate") or 0
-    )
+    # ── 8. OT settings (rates/amounts via slhrm.overtime) ──
+    ot_settings = frappe.get_cached_doc("SLHRM Settings")
 
     # ── 9. Build employee result list ──
     employees_result = []
     sum_ot = 0
+    sum_normal_ot = 0
+    sum_double_ot = 0
     sum_gross = 0
     sum_ded = 0
     sum_net = 0
@@ -801,7 +801,10 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
     for emp in employees_raw:
         ssa = ssa_map.get(emp.name, {})
         att = att_map.get(emp.name, {"present": 0, "leave": 0})
-        ot_hours = flt(ot_map.get(emp.name, 0))
+        ot_eligible = cint(emp.slhrm_ot_eligible)
+        ot_hours = ot_map.get(emp.name, {}) if ot_eligible else {}
+        normal_ot_hours = flt(ot_hours.get("normal", 0))
+        double_ot_hours = flt(ot_hours.get("double", 0))
         addl_earn = flt(addl_earn_map.get(emp.name, 0))
         addl_ded = flt(addl_ded_map.get(emp.name, 0))
         loan_amt = flt(loan_map.get(emp.name, 0))
@@ -811,14 +814,17 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
         leave = flt(att["leave"])
         absent = max(0, flt(total_working_days) - present - leave)
 
-        ot_rate = default_ot_rate
-        ot_amount = flt(ot_hours) * flt(ot_rate)
+        rates = calculate_ot_rates(emp.name, base, ot_settings)
+        amounts = calculate_ot_amounts(normal_ot_hours, double_ot_hours, rates)
+        ot_amount = flt(amounts["normal"] + amounts["double"], 2)
 
         total_earning = base + ot_amount + addl_earn
         total_deduction = addl_ded + loan_amt
         net_pay = total_earning - total_deduction
 
         sum_ot += ot_amount
+        sum_normal_ot += amounts["normal"]
+        sum_double_ot += amounts["double"]
         sum_gross += total_earning
         sum_ded += total_deduction
         sum_net += net_pay
@@ -834,8 +840,13 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
             "present_days": present,
             "absent_days": absent,
             "leave_days": leave,
-            "ot_hours": ot_hours,
-            "ot_rate": ot_rate,
+            "ot_eligible": ot_eligible,
+            "normal_ot_hours": normal_ot_hours,
+            "normal_ot_rate": rates["normal_rate"],
+            "normal_ot_amount": amounts["normal"],
+            "double_ot_hours": double_ot_hours,
+            "double_ot_rate": rates["double_rate"],
+            "double_ot_amount": amounts["double"],
             "ot_amount": ot_amount,
             "additional_earning_total": addl_earn,
             "additional_deduction_total": addl_ded,
@@ -938,6 +949,8 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
             "total_employees": len(employees_result),
             "employees_with_ssa": count_with_ssa,
             "total_ot_amount": sum_ot,
+            "total_normal_ot_amount": sum_normal_ot,
+            "total_double_ot_amount": sum_double_ot,
             "total_gross_pay": sum_gross,
             "total_deductions": sum_ded,
             "total_net_pay": sum_net,

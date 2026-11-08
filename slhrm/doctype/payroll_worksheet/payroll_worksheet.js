@@ -109,8 +109,13 @@ function auto_load_payroll(frm) {
                     present_days: emp.present_days,
                     absent_days: emp.absent_days,
                     leave_days: emp.leave_days,
-                    ot_hours: emp.ot_hours,
-                    ot_rate: emp.ot_rate,
+                    ot_eligible: emp.ot_eligible,
+                    normal_ot_hours: emp.normal_ot_hours,
+                    normal_ot_rate: emp.normal_ot_rate,
+                    normal_ot_amount: emp.normal_ot_amount,
+                    double_ot_hours: emp.double_ot_hours,
+                    double_ot_rate: emp.double_ot_rate,
+                    double_ot_amount: emp.double_ot_amount,
                     ot_amount: emp.ot_amount,
                     additional_earning_total: emp.additional_earning_total,
                     additional_deduction_total: emp.additional_deduction_total,
@@ -157,6 +162,8 @@ function auto_load_payroll(frm) {
             frm.set_value('total_employees', s.total_employees || 0);
             frm.set_value('employees_with_ssa', s.employees_with_ssa || 0);
             frm.set_value('total_ot_amount', s.total_ot_amount || 0);
+            frm.set_value('total_normal_ot_amount', s.total_normal_ot_amount || 0);
+            frm.set_value('total_double_ot_amount', s.total_double_ot_amount || 0);
             frm.set_value('total_gross_pay', s.total_gross_pay || 0);
             frm.set_value('total_deductions', s.total_deductions || 0);
             frm.set_value('total_net_pay', s.total_net_pay || 0);
@@ -274,18 +281,22 @@ function recalc_totals(frm) {
     var earnings = components.filter(function(c) { return c.type === 'earnings'; });
     var deductions = components.filter(function(c) { return c.type === 'deductions'; });
 
-    var grand_earn = 0, grand_ded = 0, grand_ot = 0;
+    var grand_earn = 0, grand_ded = 0, grand_ot = 0, grand_normal = 0, grand_double = 0;
 
     employees.forEach(function(emp) {
-        var row_earn = 0, row_ded = 0;
+        var row_earn = flt(emp.ot_amount || 0), row_ded = 0;
         earnings.forEach(function(c) { row_earn += get_val(frm, emp.employee, c.name); });
         deductions.forEach(function(c) { row_ded += get_val(frm, emp.employee, c.name); });
         grand_earn += row_earn;
         grand_ded += row_ded;
         grand_ot += flt(emp.ot_amount || 0);
+        grand_normal += flt(emp.normal_ot_amount || 0);
+        grand_double += flt(emp.double_ot_amount || 0);
     });
 
     frm.set_value('total_ot_amount', grand_ot);
+    frm.set_value('total_normal_ot_amount', grand_normal);
+    frm.set_value('total_double_ot_amount', grand_double);
     frm.set_value('total_gross_pay', grand_earn);
     frm.set_value('total_deductions', grand_ded);
     frm.set_value('total_net_pay', grand_earn - grand_ded);
@@ -300,13 +311,14 @@ function render_payroll_table(frm) {
     var wrapper = frm.fields_dict.salary_component_html;
     if (!wrapper) return;
 
-    if (!components.length || !employees.length) {
+    if (!employees.length) {
         wrapper.$wrapper.html('<p class="text-muted" style="padding:10px;">Select Branch, Month and Year to load payroll data.</p>');
         return;
     }
 
     var earnings = components.filter(function(c) { return c.type === 'earnings'; });
     var deductions = components.filter(function(c) { return c.type === 'deductions'; });
+    var ot_editable = can_edit_ot(frm);
 
     var html = '<div style="overflow-x:auto; margin: 5px 0;">';
     html += '<table class="table table-bordered table-sm" id="payroll-single-table" style="font-size: 12px; border-collapse:collapse;">';
@@ -320,9 +332,10 @@ function render_payroll_table(frm) {
     html += '<th rowspan="2" style="min-width:50px; text-align:center;">Present</th>';
     html += '<th rowspan="2" style="min-width:50px; text-align:center;">Absent</th>';
     html += '<th rowspan="2" style="min-width:45px; text-align:center;">Leave</th>';
-    html += '<th rowspan="2" style="min-width:45px; text-align:center;">OT Hrs</th>';
-    html += '<th colspan="' + earnings.length + '" style="background:#1b5e20; text-align:center;">EARNINGS</th>';
-    html += '<th colspan="' + deductions.length + '" style="background:#b71c1c; text-align:center;">DEDUCTIONS</th>';
+    html += '<th colspan="3" style="background:#4a148c; text-align:center;">NORMAL OT</th>';
+    html += '<th colspan="3" style="background:#880e4f; text-align:center;">DOUBLE OT</th>';
+    if (earnings.length) html += '<th colspan="' + earnings.length + '" style="background:#1b5e20; text-align:center;">EARNINGS</th>';
+    if (deductions.length) html += '<th colspan="' + deductions.length + '" style="background:#b71c1c; text-align:center;">DEDUCTIONS</th>';
     html += '<th rowspan="2" style="min-width:90px; position:sticky; right:200px; background:#0d47a1; z-index:2; text-align:right;">Total Earn</th>';
     html += '<th rowspan="2" style="min-width:90px; position:sticky; right:100px; background:#0d47a1; z-index:2; text-align:right;">Total Ded</th>';
     html += '<th rowspan="2" style="min-width:100px; position:sticky; right:0; background:#1b5e20; z-index:2; text-align:right; font-weight:bold;">Net Pay</th>';
@@ -330,6 +343,12 @@ function render_payroll_table(frm) {
 
     // Header Row 2: full component names
     html += '<tr style="background:#283593; color:white;">';
+    ['Hrs', 'Rate', 'Amount'].forEach(function(t) {
+        html += '<th style="min-width:70px; background:#6a1b9a; text-align:center; font-size:11px;">' + t + '</th>';
+    });
+    ['Hrs', 'Rate', 'Amount'].forEach(function(t) {
+        html += '<th style="min-width:70px; background:#ad1457; text-align:center; font-size:11px;">' + t + '</th>';
+    });
     earnings.forEach(function(c) {
         html += '<th style="min-width:120px; background:#2e7d32; text-align:center; font-size:11px;">' + c.name + '</th>';
     });
@@ -359,7 +378,19 @@ function render_payroll_table(frm) {
         html += '<td class="text-center">' + (emp.present_days || 0) + '</td>';
         html += '<td class="text-center">' + (emp.absent_days || 0) + '</td>';
         html += '<td class="text-center">' + (emp.leave_days || 0) + '</td>';
-        html += '<td class="text-center">' + (emp.ot_hours || 0) + '</td>';
+        var ot_input = function(field, value) {
+            if (!ot_editable || !emp.ot_eligible) {
+                return '<td class="text-right" title="' + (emp.ot_eligible ? '' : __('Not eligible for overtime')) + '">' + flt(value, 2) + '</td>';
+            }
+            return '<td style="padding:2px;"><input type="number" min="0" step="0.01" class="ot-input" data-row="' + emp.name + '" data-field="' + field + '" value="' + flt(value, 2) + '" style="width:100%; text-align:right; border:1px solid #d1c4e9; border-radius:3px; padding:4px 6px; font-size:12px; background:#f3e5f5;"></td>';
+        };
+        html += ot_input('normal_ot_hours', emp.normal_ot_hours);
+        html += ot_input('normal_ot_rate', emp.normal_ot_rate);
+        html += '<td class="text-right">' + format_currency(emp.normal_ot_amount || 0, currency) + '</td>';
+        html += ot_input('double_ot_hours', emp.double_ot_hours);
+        html += ot_input('double_ot_rate', emp.double_ot_rate);
+        html += '<td class="text-right">' + format_currency(emp.double_ot_amount || 0, currency) + '</td>';
+        row_earn += flt(emp.ot_amount || 0);
 
         // Earning amounts (editable)
         earnings.forEach(function(c) {
@@ -397,7 +428,9 @@ function render_payroll_table(frm) {
     // Totals row
     html += '<tr style="font-weight:bold; background:#e8eaf6;">';
     html += '<td colspan="2" style="position:sticky; left:0; background:#e8eaf6; z-index:1;">TOTAL</td>';
-    html += '<td colspan="5"></td>';
+    html += '<td colspan="4"></td>';
+    html += '<td colspan="2"></td><td class="text-right">' + format_currency(frm.doc.total_normal_ot_amount || 0, currency) + '</td>';
+    html += '<td colspan="2"></td><td class="text-right">' + format_currency(frm.doc.total_double_ot_amount || 0, currency) + '</td>';
     earnings.forEach(function(c) {
         html += '<td class="text-right col-total-earn" data-comp="' + c.name + '" style="background:#c8e6c9;">' + format_currency(totals_earn[c.name], currency) + '</td>';
     });
@@ -423,7 +456,8 @@ function render_payroll_table(frm) {
 
         // Recalculate this row
         var $row = $(this).closest('tr');
-        var row_earn = 0, row_ded = 0;
+        var emp_row = (frm.doc.employees || []).find(function(e) { return e.employee === emp_id; }) || {};
+        var row_earn = flt(emp_row.ot_amount || 0), row_ded = 0;
         $row.find('.comp-input').each(function() {
             var cn = $(this).data('comp');
             var is_earning = earnings.some(function(c) { return c.name === cn; });
@@ -468,4 +502,39 @@ function render_payroll_table(frm) {
 
         sync_child_tables(frm);
     });
+
+    // OT inline edit -> amounts via server (slhrm.overtime), then re-render
+    wrapper.$wrapper.find('.ot-input').on('change', function() {
+        var cdn = $(this).data('row');
+        var field = $(this).data('field');
+        var value = Math.max(0, flt($(this).val()));
+        var row = locals['Payroll Worksheet Employee'][cdn];
+        if (!row || !row.ot_eligible) return;
+        row[field] = value;
+        frappe.call({
+            method: 'slhrm.api.calc_ot_amounts',
+            args: {
+                normal_hours: row.normal_ot_hours, double_hours: row.double_ot_hours,
+                normal_rate: row.normal_ot_rate, double_rate: row.double_ot_rate
+            },
+            callback: function(r) {
+                if (!r.message) return;
+                frappe.model.set_value(row.doctype, row.name, {
+                    [field]: value,
+                    normal_ot_amount: r.message.normal,
+                    double_ot_amount: r.message.double,
+                    ot_amount: flt(r.message.normal + r.message.double, 2)
+                }).then(function() {
+                    recalc_totals(frm);
+                    render_payroll_table(frm);
+                });
+            }
+        });
+    });
+}
+
+
+function can_edit_ot(frm) {
+    // OT hours/rates are permlevel 1 (HR Manager / System Manager); server enforces too
+    return frm.doc.docstatus === 0 && !!(frm.perm && frm.perm[1] && frm.perm[1].write);
 }
