@@ -6,7 +6,14 @@ import frappeui from "frappe-ui/vite"
 import path from "path"
 import fs from "fs"
 
-export default defineConfig({
+// Build output is committed: slhrm/public/frontend is served at /assets/slhrm/frontend/,
+// and index.html is copied to slhrm/www/slhrm.html (rendered by Frappe at /slhrm).
+const PWA_ASSET_BASE = "/assets/slhrm/frontend/"
+const PWA_OUT_DIR = path.resolve(__dirname, "../slhrm/public/frontend")
+const PWA_HTML_ENTRY = path.resolve(__dirname, "../slhrm/www/slhrm.html")
+
+export default defineConfig(({ command }) => ({
+	base: command === "build" ? PWA_ASSET_BASE : "/",
 	server: {
 		port: 8080,
 		proxy: getProxyOptions(),
@@ -15,10 +22,16 @@ export default defineConfig({
 	plugins: [
 		vue(),
 		frappeui(),
+		copyHtmlEntry(),
 		VitePWA({
 			registerType: "autoUpdate",
 			strategies: "injectManifest",
 			injectRegister: null,
+			// SW is served from /api/method/slhrm.api.pwa_sw, so precache URLs must be absolute
+			scope: "/slhrm/",
+			injectManifest: {
+				modifyURLPrefix: { "": PWA_ASSET_BASE },
+			},
 			devOptions: {
 				enabled: true,
 			},
@@ -27,6 +40,7 @@ export default defineConfig({
 				name: "SLHRM",
 				short_name: "SLHRM",
 				start_url: "/slhrm",
+				scope: "/slhrm/",
 				description: "Biometric fingerprint attendance for ERPNext",
 				theme_color: "#3b82f6",
 				icons: [
@@ -64,13 +78,13 @@ export default defineConfig({
 		},
 	},
 	build: {
-		outDir: process.env.VITE_OUT_DIR || "../SLHRM/frontend",
+		outDir: PWA_OUT_DIR,
 		emptyOutDir: true,
 		target: "es2015",
 		commonjsOptions: {
 			include: [/tailwind.config.js/, /node_modules/],
 		},
-		sourcemap: true,
+		sourcemap: false,
 		rollupOptions: {
 			output: {
 				manualChunks: {
@@ -88,7 +102,19 @@ export default defineConfig({
 			"@ionic/core",
 		],
 	},
-})
+}))
+
+function copyHtmlEntry() {
+	return {
+		name: "slhrm-copy-html-entry",
+		apply: "build",
+		closeBundle() {
+			fs.mkdirSync(path.dirname(PWA_HTML_ENTRY), { recursive: true })
+			fs.copyFileSync(path.join(PWA_OUT_DIR, "index.html"), PWA_HTML_ENTRY)
+			console.log(`Copied index.html -> ${PWA_HTML_ENTRY}`)
+		},
+	}
+}
 
 function getProxyOptions() {
 	const config = getCommonSiteConfig()

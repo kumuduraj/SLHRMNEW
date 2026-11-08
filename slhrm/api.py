@@ -9,63 +9,30 @@ import json
 
 
 # ═══════════════════════════════════════════════════════════════
-# PWA SERVING
+# PWA SERVICE WORKER
 # ═══════════════════════════════════════════════════════════════
 
-@frappe.whitelist(allow_guest=True)
-def serve_pwa():
-    """Serve the SLHRM PWA index.html."""
-    pwa_path = "/home/frappe/frappe-bench/apps/slhrm/public/frontend/index.html"
-    if not os.path.exists(pwa_path):
-        frappe.throw("PWA not found")
+@frappe.whitelist(allow_guest=True, methods=["GET"])
+def pwa_sw():
+    """Serve the built PWA service worker so it can control the /slhrm/ scope.
 
-    with open(pwa_path, "r") as f:
+    The page itself is rendered by slhrm/www/slhrm.py; static assets are served
+    from /assets/slhrm/frontend/. A SW served from /assets/... could only control
+    that path, so it is served here with Service-Worker-Allowed: /slhrm/.
+    """
+    from werkzeug.wrappers import Response
+
+    sw_path = frappe.get_app_path("slhrm", "public", "frontend", "sw.js")
+    if not os.path.exists(sw_path):
+        raise frappe.DoesNotExistError(_("PWA service worker not built"))
+
+    with open(sw_path, "rb") as f:
         content = f.read()
 
-    csrf_token = ""
-    try:
-        csrf_token = frappe.sessions.get_csrf_token()
-    except Exception:
-        pass
-
-    site_name = getattr(frappe.local, "site", "")
-
-    boot = {"sitename": site_name}
-
-    rendered = content.replace("{{ boot }}", json.dumps(boot))
-    rendered = rendered.replace("{{ csrf_token }}", csrf_token)
-    rendered = rendered.replace("{{ site_name }}", site_name)
-
-    frappe.local.response.filename = "index.html"
-    frappe.local.response.filecontent = rendered.encode("utf-8")
-    frappe.local.response.type = "download"
-    frappe.local.response.content_type = "text/html; charset=utf-8"
-    frappe.local.response.display_content_as = "inline"
-    if not os.path.exists(pwa_path):
-        frappe.throw("PWA not found")
-
-    with open(pwa_path, "r") as f:
-        content = f.read()
-
-    csrf_token = ""
-    try:
-        csrf_token = frappe.sessions.get_csrf_token()
-    except Exception:
-        pass
-
-    site_name = getattr(frappe.local, "site", "")
-
-    boot = {"sitename": site_name}
-
-    rendered = content.replace("{{ boot }}", json.dumps(boot))
-    rendered = rendered.replace("{{ csrf_token }}", csrf_token)
-    rendered = rendered.replace("{{ site_name }}", site_name)
-
-    frappe.local.response.filename = "index.html"
-    frappe.local.response.filecontent = rendered.encode("utf-8")
-    frappe.local.response.type = "download"
-    frappe.local.response.content_type = "text/html; charset=utf-8"
-    frappe.local.response.display_content_as = "inline"
+    response = Response(content, mimetype="application/javascript")
+    response.headers["Service-Worker-Allowed"] = "/slhrm/"
+    response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 # ═══════════════════════════════════════════════════════════════
