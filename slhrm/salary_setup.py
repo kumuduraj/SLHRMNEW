@@ -10,6 +10,9 @@ below are reported instead. Uses the standard HRMS doctypes through the API (no 
 EPF/ETF are percentages of the SSA `base`. With Employee Salary Packages, base = sum of the
 package's earning overrides (intended), so EPF 8% = 8% of total package earnings.
 Formula components have depends_on_payment_days = 0 (HRMS rejects formula + payment-days).
+Earnings have remove_if_zero_valued = 0: the structure lists them at amount 0 and the package
+overrides fill them in on the slip. HRMS v16 defaults remove_if_zero_valued to 1, which drops
+zero-amount structure rows, so the package overrides would have no row to override (gross 0).
 """
 import json
 
@@ -36,7 +39,9 @@ DEDUCTIONS = [("EPF Employee 8%", "base * 0.08", 0), ("EPF Employer 12%", "base 
 
 def _component_spec(name, abbr, typ, dpd, stat):
     return {"salary_component": name, "salary_component_abbr": abbr, "type": typ,
-            "depends_on_payment_days": dpd, "statistical_component": stat, "do_not_include_in_total": stat}
+            "depends_on_payment_days": dpd, "statistical_component": stat, "do_not_include_in_total": stat,
+            # earnings must stay on the slip at amount 0 so package overrides can fill them in
+            "remove_if_zero_valued": 0 if typ == "Earning" else 1}
 
 
 def apply():
