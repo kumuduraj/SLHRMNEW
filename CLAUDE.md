@@ -116,6 +116,10 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   defined once in `slhrm/payroll_table.py` (print format jinja method `worksheet_table`, Excel
   `download_worksheet_xlsx`) and mirrored by `build_table` in `payroll_worksheet.js` — change both.
   Rows render from `components_json` (stored HRMS preview breakdown), never recomputed.
+  Desk table: EMPLOYER group collapsed by default; toggle per user in localStorage `slhrm_pw_employer`
+  (`{user: 0|1}`, try/catch). Group visibility is decided by the GROUP key for header row 1, header
+  row 2, body and totals alike. Number cells (`pw-num`, currency `pw-money`) are nowrap + right-aligned;
+  the table scrolls inside `.pw-scroll`. Print format: `white-space: nowrap` on all cells.
 - **Statistical components** (statistical_component / do_not_include_in_total, e.g. employer EPF 12%,
   ETF 3%): HRMS v16 evaluates them but never adds slip rows, and resets `slip.data` per pass. The
   preview re-runs HRMS's own `add_structure_component()` on a copy of the context to read them. They
@@ -217,6 +221,13 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   whitelisted endpoint with throwaway data / minimal args.
 - (v0.0.5) One deploy report omitted the core-app git status → every deploy report lists frappe,
   erpnext, hrms and slhrm status + HEAD vs upstream/master.
+
+- (v0.0.9, 1.4a) A new worksheet opened on Month 01: Frappe's `create_new` pre-fills a required Select
+  with its first option, which a stubbed Node harness did not do, so the harness passed while Desk failed
+  → **form JS must be verified in a real browser (Playwright, `~/pwtest`, scripts in `~/pw/`, logged in as
+  a DEMO user), not a stubbed harness.** Reproduce the bug in the browser first, then fix.
+- (v0.0.9, 1.4b) The EMPLOYER toggle hid body cells but not the headers (header loops read `c.group`,
+  which only `t.columns` carry) → misaligned columns; found only by measuring the rendered DOM.
 
 ## Known open items (not yet fixed)
 - `SLHRM Settings` fields never read by code: `auto_mark_attendance`, `auto_create_payroll_on_submit`.
