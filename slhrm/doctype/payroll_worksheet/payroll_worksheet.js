@@ -23,6 +23,7 @@ const NO_SSA_PATTERN = /No active .*Salary Structure Assignment/;
 
 frappe.ui.form.on('Payroll Worksheet', {
     setup(frm) {
+        apply_new_defaults(frm);
         if (frm.is_new() && !frm.doc.company) {
             frappe.db.get_single_value('SLHRM Settings', 'default_company').then(val => {
                 if (val) frm.set_value('company', val);
@@ -106,16 +107,22 @@ function period_label(frm) {
 
 
 function apply_new_defaults(frm) {
-    if (!frm.is_new() || frm._defaults_applied) return;
-    frm._defaults_applied = true;
+    // Previous month for a NEW worksheet. Called from setup, onload and refresh; runs once per new doc
+    // (flag = doc name, because Frappe reuses `frm` for the next new doc).
+    // frappe.model.create_new pre-fills a required Select with its first option, so payroll_month
+    // arrives as "01" (and payroll_year as 0) — those are Frappe's placeholders, not a user choice;
+    // the form is not rendered yet, so the user cannot have changed them.
+    if (!frm.doc || !frm.is_new() || frm.__slhrm_period_defaulted === frm.doc.name) return;
+    frm.__slhrm_period_defaulted = frm.doc.name;
     const p = default_period(frappe.datetime.get_today());
-    frm._reverting = true;  // no load / confirm while setting defaults
-    Promise.all([
-        frm.doc.payroll_year ? null : frm.set_value('payroll_year', p.year),
-        frm.doc.payroll_month ? null : frm.set_value('payroll_month', p.month)
-    ]).then(() => {
-        frm._reverting = false;
+    const month_is_placeholder = !frm.doc.payroll_month || frm.doc.payroll_month === '01';
+    const year_is_placeholder = !cint(frm.doc.payroll_year);
+    if (!month_is_placeholder && !year_is_placeholder) return;  // e.g. route options / duplicate
+    frm._reverting = true;  // no auto-load / confirm while the defaults go in
+    frm.set_value({ payroll_year: p.year, payroll_month: p.month }).then(() => {  // year + month together
         set_dates(frm);
+        frm._reverting = false;
+        if (frm.doc.branch) auto_load_payroll(frm);  // first load uses the defaulted period
     });
 }
 
