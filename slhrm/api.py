@@ -1,7 +1,7 @@
 # slhrm/api.py
 import frappe
 from frappe import _
-from frappe.utils import cint, cstr
+from frappe.utils import cint, cstr, flt
 from datetime import datetime, timedelta
 import hmac
 import os
