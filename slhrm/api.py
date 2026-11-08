@@ -3,6 +3,7 @@ import frappe
 from frappe import _
 from frappe.utils import cstr
 from datetime import datetime, timedelta
+import hmac
 import os
 import json
 
@@ -72,25 +73,22 @@ def serve_pwa():
 # ═══════════════════════════════════════════════════════════════
 
 def _validate_device_api_key():
-    """Validate device API key from header or parameter. Raises 403 on failure."""
+    """Fail closed: raise 403 unless the device API is enabled and the key matches."""
     settings = frappe.get_cached_doc("SLHRM Settings")
     if not settings.device_api_enabled:
-        return
-    stored_key = settings.get_password("device_api_key")
+        frappe.throw(_("Device API disabled"), frappe.PermissionError)
+
+    stored_key = settings.get_password("device_api_key", raise_exception=False)
     if not stored_key:
-        frappe.throw(
-            _("Device API Key not configured. Set it in SLHRM Settings."),
-            frappe.AuthenticationError,
-        )
+        frappe.throw(_("Device API key not configured"), frappe.PermissionError)
+
     provided_key = (
-        frappe.request.headers.get("X-Device-Key")
-        or frappe.form_dict.get("api_key")
-    )
-    if not provided_key or provided_key != stored_key:
-        frappe.throw(
-            _("Invalid or missing device API key."),
-            frappe.AuthenticationError,
-        )
+        frappe.request.headers.get("X-Device-Key") if frappe.request else None
+    ) or frappe.form_dict.get("api_key")
+    if not provided_key or not hmac.compare_digest(
+        cstr(provided_key).encode(), cstr(stored_key).encode()
+    ):
+        frappe.throw(_("Invalid or missing device API key"), frappe.PermissionError)
 
 
 def _get_shift_window(shift_name, date_str):
