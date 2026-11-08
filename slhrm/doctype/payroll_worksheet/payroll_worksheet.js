@@ -338,7 +338,7 @@ function set_dates(frm) {
 // OT / total fields; the JS adds column sums for the totals row, nothing else.
 
 const ADDITIONAL = '__additional__';
-const NO_TOTAL = ['normal_ot_rate', 'double_ot_rate'];
+const NO_TOTAL = ['normal_ot_rate', 'double_ot_rate', 'total_working_days', 'payment_days', 'lwp_days'];  // money + hours only
 
 function parse_breakdown(row) {
     let b = {};

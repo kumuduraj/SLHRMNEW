@@ -14,14 +14,14 @@ Layout (left -> right):
   DEDUCTIONS: one column per deduction component in any row (+ "Additional", + Loan if > 0) |
   TOTAL DED | NET PAY |
   EMPLOYER (statistical components, e.g. employer EPF 12% / ETF 3%; collapsible in the form)
-Missing values are None (shown as "-"). Totals sum every value column except rates.
+Missing values are None (shown as "-"). Totals sum money and hours only (not rates or day counts).
 """
 import json
 
 from frappe.utils import flt
 
 ADDITIONAL = "__additional__"
-NO_TOTAL = {"normal_ot_rate", "double_ot_rate"}
+NO_TOTAL = {"normal_ot_rate", "double_ot_rate", "total_working_days", "payment_days", "lwp_days"}  # money + hours only
 
 
 def _get(row, key):
