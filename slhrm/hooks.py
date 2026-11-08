@@ -1,8 +1,9 @@
+from slhrm import __version__ as app_version
+
 app_name = "slhrm"
 app_title = "SLHRM"
 app_publisher = "Evonet"
 app_description = "Biometric fingerprint attendance for ERPNext v16"
-app_version = "0.0.1"
 app_color = "#3b22f6"
 app_icon = "hexagon"
 app_email = "rajitha@evonet.lk"
