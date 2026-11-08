@@ -1,32 +1,13 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import flt, cint, getdate
-
-from slhrm.salary_structure_utils import get_formula_base_components, resolve_base_component
+from frappe.utils import flt, cint, getdate, today
 
 
 class EmployeeSalaryPackage(Document):
     def validate(self):
         self.validate_components()
-        self.set_base_component()
         self.calculate_totals()
-
-    def set_base_component(self):
-        """The SSA base is the base component's amount only (the structure earning with formula
-        `base`, or the ticked 'Is Base Component' row). Other overrides stay component overrides
-        (overrides.salary_slip.apply_package_overrides) and never change the base."""
-        component, amount = resolve_base_component(self.salary_structure, self.components)
-        for row in self.components:
-            row.is_base_component = 1 if row.salary_component == component else 0
-        self._base_component, self._base_amount = component, amount
-
-    def get_base_amount(self):
-        if getattr(self, "_base_amount", None) is None:
-            self._base_component, self._base_amount = resolve_base_component(
-                self.salary_structure, self.components
-            )
-        return flt(self._base_amount)
 
     def validate_components(self):
         if not self.components:
@@ -78,7 +59,7 @@ class EmployeeSalaryPackage(Document):
         self.manage_ssa()
 
     def manage_ssa(self):
-        new_base = self.get_base_amount()
+        new_base = flt(self.total_earning)
         new_from_date = getdate(self.effective_from)
 
         existing_ssa = self._get_managed_ssa()
@@ -190,8 +171,6 @@ def load_components(salary_structure):
         frappe.throw(_("Please select a Salary Structure."))
 
     structure = frappe.get_doc("Salary Structure", salary_structure)
-    base_components = get_formula_base_components(salary_structure)
-    auto_base = base_components[0] if len(base_components) == 1 else None
     components = []
 
     for row in structure.earnings:
@@ -206,7 +185,6 @@ def load_components(salary_structure):
             "default_formula": row.formula or "",
             "default_amount": flt(row.amount),
             "depends_on_payment_days": cint(comp_doc.depends_on_payment_days),
-            "is_base_component": 1 if row.salary_component == auto_base else 0,
         })
 
     for row in structure.deductions:
