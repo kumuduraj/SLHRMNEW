@@ -2,6 +2,7 @@ import { computed, reactive } from "vue"
 import { createResource, call } from "frappe-ui"
 import { userResource } from "./user"
 import { employeeResource } from "./employee"
+import { appPermissions } from "./appPermissions"
 import router from "@/router"
 
 export function sessionUser() {
@@ -17,6 +18,7 @@ function handleLogin(response) {
 	if (response.message === "Logged In") {
 		userResource.reload()
 		employeeResource.reload()
+		appPermissions.reload()
 
 		session.user = sessionUser()
 
@@ -52,6 +54,7 @@ export const session = reactive({
 		onSuccess() {
 			userResource.reset()
 			employeeResource.reset()
+			appPermissions.reset()
 
 			session.user = sessionUser()
 			session.mustChangePassword = false

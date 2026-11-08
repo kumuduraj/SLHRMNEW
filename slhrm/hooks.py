@@ -42,7 +42,11 @@ doc_events = {
     },
     "Salary Slip": {
         "before_save": "slhrm.overrides.salary_slip.apply_salary_package"
-    }
+    },
+    "Employee Checkin": {
+        "before_insert": "slhrm.overrides.employee_checkin.validate",
+        "validate": "slhrm.overrides.employee_checkin.validate_update",
+    },
 }
 
 # Desk registration — modern Frappe v16 approach

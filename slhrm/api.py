@@ -1,7 +1,7 @@
 # slhrm/api.py
 import frappe
 from frappe import _
-from frappe.utils import cstr
+from frappe.utils import cint, cstr
 from datetime import datetime, timedelta
 import hmac
 import os
@@ -1074,3 +1074,20 @@ def clear_must_change_password():
         "User", frappe.session.user, "slhrm_must_change_password", 0
     )
     frappe.db.commit()
+
+
+@frappe.whitelist()
+def get_app_permissions():
+    """What the SLHRM app may show the session user (server is the source of truth).
+
+    app_checkin: Employee.slhrm_allow_app_checkin and HR Settings
+                 allow_employee_checkin_from_mobile_app are both on
+    ot_eligible: Employee.slhrm_ot_eligible
+    """
+    from slhrm.overrides.employee_checkin import app_checkin_allowed, get_session_employee
+
+    emp = get_session_employee()
+    return {
+        "app_checkin": app_checkin_allowed(emp),
+        "ot_eligible": bool(emp and cint(emp.slhrm_ot_eligible)),
+    }

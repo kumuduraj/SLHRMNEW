@@ -4,7 +4,7 @@
 			{{ __("Hey, {0} 👋", [employee?.data?.first_name]) }}
 		</h2>
 
-		<template v-if="settings.data?.allow_employee_checkin_from_mobile_app && employee?.data?.allow_mobile_checkin">
+		<template v-if="appPermissions.data?.app_checkin">
 			<div class="font-medium text-sm text-gray-500 mt-1.5" v-if="lastLog">
 				<span>{{ __("Last {0} was at {1}", [__(lastLogType), formatTimestamp(lastLog.time)]) }}</span>
 				<span class="whitespace-pre"> &middot; </span>
@@ -33,7 +33,7 @@
 	</div>
 
 	<ion-modal
-		v-if="settings.data?.allow_employee_checkin_from_mobile_app && employee?.data?.allow_mobile_checkin"
+		v-if="appPermissions.data?.app_checkin"
 		ref="modal"
 		trigger="open-checkin-modal"
 		:initial-breakpoint="1"
@@ -83,6 +83,7 @@ import { IonModal, modalController } from "@ionic/vue"
 
 import { formatTimestamp } from "@/utils/formatters"
 import { settings } from "@/data/settings"
+import { appPermissions } from "@/data/appPermissions"
 
 const DOCTYPE = "Employee Checkin"
 
@@ -94,6 +95,9 @@ const checkinTimestamp = ref(null)
 const latitude = ref(0)
 const longitude = ref(0)
 const locationStatus = ref("")
+
+// refresh on every visit; cached value shows immediately
+appPermissions.reload()
 
 const checkins = createListResource({
 	doctype: DOCTYPE,
