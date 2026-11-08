@@ -431,33 +431,61 @@ def get_team_checkins(employee, date):
 # ═══════════════════════════════════════════════════════════════
 
 @frappe.whitelist()
-def calc_ot_amounts(normal_hours=0, double_hours=0, normal_rate=0, double_rate=0):
-    """OT amounts for the Payroll Worksheet inline editor (via slhrm.overtime)."""
+def calc_worksheet_row(employee, start_date, end_date, normal_ot_hours=0, double_ot_hours=0,
+                       normal_ot_rate=0, double_ot_rate=0, loan_deduction=0):
+    """Server-side totals for one Payroll Worksheet row (used by the inline editor; the JS does
+    no math). OT via slhrm.overtime, pay via slhrm.payroll_pay.compose_pay. Eligibility is
+    re-read from Employee."""
     from slhrm.overtime import calculate_ot_amounts
+    from slhrm.payroll_ot import get_ot_eligibility
+    from slhrm.payroll_pay import compose_pay, get_additional_salary, get_structure_amounts
 
     frappe.has_permission("Payroll Worksheet", "read", throw=True)
-    return calculate_ot_amounts(
-        normal_hours, double_hours, {"normal_rate": normal_rate, "double_rate": double_rate}
+    eligible = cint(get_ot_eligibility([employee]).get(employee))
+    if not eligible:
+        normal_ot_hours = double_ot_hours = normal_ot_rate = double_ot_rate = 0
+    amounts = calculate_ot_amounts(
+        normal_ot_hours, double_ot_hours, {"normal_rate": normal_ot_rate, "double_rate": double_ot_rate}
     )
+    structure = get_structure_amounts([employee], end_date)[0][employee]
+    _rows, addl = get_additional_salary([employee], start_date, end_date)
+    addl = addl.get(employee, {"earning": 0, "deduction": 0})
+    ot_amount = flt(amounts["normal"] + amounts["double"], 2)
+    pay = compose_pay(structure.structure_earning_total, structure.structure_deduction_total, ot_amount,
+                      addl["earning"], addl["deduction"], loan_deduction)
+    return {
+        "ot_eligible": eligible,
+        "normal_ot_amount": amounts["normal"],
+        "double_ot_amount": amounts["double"],
+        "ot_amount": ot_amount,
+        "structure_earning_total": structure.structure_earning_total,
+        "structure_deduction_total": structure.structure_deduction_total,
+        "additional_earning_total": addl["earning"],
+        "additional_deduction_total": addl["deduction"],
+        **pay,
+    }
 
 
 @frappe.whitelist()
 def load_payroll_data(branch, company, payroll_month, payroll_year):
     """
     Main data-loading endpoint for the Payroll Worksheet form.
-    Same pattern as load_attendance_data() for the Attendance Marker.
+
+    Pay rule (slhrm.payroll_pay): gross = structure earnings + OT + Additional Salary earnings;
+    deductions = structure deductions + Additional Salary deductions + loans. `base` is shown
+    for reference only (the structure's Basic formula already carries it).
 
     Returns:
-        employees: list of dicts with salary, attendance, OT data per employee
-        earnings:  list of Additional Salary (Earning) records for the period
-        deductions: list of Additional Salary (Deduction) + Loan records
-        summary: totals dict
-        warnings: list of warning strings
+        employees: per-employee salary, attendance, OT and pay totals
+        earnings / deductions: structure + Additional Salary lines (child tables, display)
+        salary_components: column list; component_amounts: {employee: {component: amount}}
+        summary: totals; warnings: list of strings
     """
-    from frappe.utils import getdate, get_first_day, get_last_day, flt, cint
+    from frappe.utils import getdate, get_first_day, get_last_day, today as _today
 
     from slhrm.overtime import calculate_ot_amounts, calculate_ot_rates
     from slhrm.payroll_ot import get_marker_ot_hours
+    from slhrm.payroll_pay import compose_pay, get_additional_salary, get_structure_amounts
 
     frappe.has_permission("Payroll Worksheet", "create", throw=True)
     if not branch or not company or not payroll_month or not payroll_year:
@@ -471,94 +499,27 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
     # ── 1. Active employees in branch ──
     employees_raw = frappe.db.get_all(
         "Employee",
-        filters={
-            "company": company,
-            "branch": branch,
-            "status": "Active",
-        },
+        filters={"company": company, "branch": branch, "status": "Active"},
         fields=["name", "employee_name", "designation", "slhrm_ot_eligible"],
         order_by="employee_name asc",
     )
-
     if not employees_raw:
         return {
-            "employees": [],
-            "earnings": [],
-            "deductions": [],
-            "summary": {},
+            "employees": [], "earnings": [], "deductions": [], "salary_components": [],
+            "component_amounts": {}, "summary": {},
             "warnings": ["No active employees found in this branch."],
         }
-
     emp_names = [e.name for e in employees_raw]
+    emp_name_map = {e.name: e.employee_name for e in employees_raw}
     warnings = []
 
-    # ── 2. Salary Structure Assignments (batch — latest per employee) ──
-    ssa_map = {}
-    ssas = frappe.db.sql(
-        """
-        SELECT ssa.name, ssa.employee, ssa.base, ssa.salary_structure
-        FROM `tabSalary Structure Assignment` ssa
-        INNER JOIN (
-            SELECT employee, MAX(from_date) as max_date
-            FROM `tabSalary Structure Assignment`
-            WHERE employee IN %(employees)s
-                AND docstatus = 1
-            GROUP BY employee
-        ) latest ON ssa.employee = latest.employee AND ssa.from_date = latest.max_date
-        WHERE ssa.docstatus = 1
-        """,
-        {"employees": emp_names},
-        as_dict=True,
-    )
-    ssa_names = [row.name for row in ssas] if ssas else []
-    employees_with_ssa = set(row.employee for row in ssas)
-    count_with_ssa = len(employees_with_ssa)
-
-    # Fetch component amounts from Employee Salary Package (new approach)
-    ssa_components_map = {}
-    ssa_override_map = {}
-    if emp_names:
-        # Try Employee Salary Package first
-        esp_rows = frappe.db.sql(
-            """
-            SELECT esp.employee, espd.salary_component, espd.amount, espd.override
-            FROM `tabEmployee Salary Package` esp
-            INNER JOIN `tabEmployee Salary Package Detail` espd ON espd.parent = esp.name
-            WHERE esp.employee IN %(employees)s
-            """,
-            {"employees": emp_names},
-            as_dict=True,
-        )
-        for row in esp_rows:
-            ssa_components_map.setdefault(row.employee, {})[row.salary_component] = flt(row.amount)
-            ssa_override_map.setdefault(row.employee, {})[row.salary_component] = row.override
-
-        # Fallback: Employee Salary Component (legacy)
-        if not ssa_components_map:
-            esc_rows = frappe.db.sql(
-                """
-                SELECT employee, salary_component, amount
-                FROM `tabEmployee Salary Component`
-                WHERE employee IN %(employees)s
-                """,
-                {"employees": emp_names},
-                as_dict=True,
-            )
-            for row in esc_rows:
-                ssa_components_map.setdefault(row.employee, {})[row.salary_component] = flt(row.amount)
-
-    for row in ssas:
-        comp_amounts = ssa_components_map.get(row.employee, {})
-        ssa_map[row.employee] = {
-            "base": flt(row.base),
-            "salary_structure": row.salary_structure,
-            "components": comp_amounts,
-            "overrides": ssa_override_map.get(row.employee, {}),
-        }
+    # ── 2. Salary Structure components (formula-evaluated; display + structure totals) ──
+    structures, all_components = get_structure_amounts(emp_names, end_date)
+    count_with_ssa = sum(1 for s in structures.values() if s.salary_structure)
 
     # ── 3. Attendance summary (batch) ──
     att_map = {}
-    att_records = frappe.db.sql(
+    for row in frappe.db.sql(
         """
         SELECT employee, status, COUNT(*) as cnt
         FROM `tabAttendance`
@@ -569,180 +530,32 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
         """,
         {"employees": emp_names, "start": start_date, "end": end_date},
         as_dict=True,
-    )
-    for row in att_records:
-        if row.employee not in att_map:
-            att_map[row.employee] = {"present": 0, "leave": 0}
+    ):
+        a = att_map.setdefault(row.employee, {"present": 0, "leave": 0})
         if row.status == "Present":
-            att_map[row.employee]["present"] += row.cnt
+            a["present"] += row.cnt
         elif row.status == "Half Day":
-            att_map[row.employee]["present"] += row.cnt * 0.5
-            att_map[row.employee]["leave"] += row.cnt * 0.5
+            a["present"] += row.cnt * 0.5
+            a["leave"] += row.cnt * 0.5
         elif row.status == "On Leave":
-            att_map[row.employee]["leave"] += row.cnt
+            a["leave"] += row.cnt
         elif row.status == "Work From Home":
-            att_map[row.employee]["present"] += row.cnt
+            a["present"] += row.cnt
 
     # ── 4. OT hours from submitted Attendance Markers (approved normal/double hours) ──
     ot_map = get_marker_ot_hours(emp_names, start_date, end_date)
 
-    # ── 5. Additional Salary records (batch) ──
-    addl_records = frappe.db.sql(
-        """
-        SELECT
-            ads.name,
-            ads.employee,
-            ads.employee_name,
-            ads.salary_component,
-            ads.amount,
-            ads.type,
-            sc.type as component_type
-        FROM `tabAdditional Salary` ads
-        LEFT JOIN `tabSalary Component` sc ON sc.name = ads.salary_component
-        WHERE ads.employee IN %(employees)s
-            AND ads.docstatus = 1
-            AND IFNULL(ads.ref_doctype, '') != 'Payroll Worksheet'
-            AND (
-                (ads.payroll_date BETWEEN %(start)s AND %(end)s)
-                OR (
-                    ads.from_date IS NOT NULL
-                    AND ads.to_date IS NOT NULL
-                    AND ads.from_date <= %(end)s
-                    AND ads.to_date >= %(start)s
-                )
-            )
-        """,
-        {"employees": emp_names, "start": start_date, "end": end_date},
-        as_dict=True,
-    )
-
-    addl_earn_map = {}
-    addl_ded_map = {}
-    earnings_list = []
-    deductions_list = []
-
-    # ── 5a. Salary Structure components (calculated from formulas) ──
-    unique_ss = list(set(
-        ssa_map[e]["salary_structure"] for e in ssa_map if ssa_map[e].get("salary_structure")
-    ))
-    ss_components = {}
-    ss_abbr_map = {}
-    if unique_ss:
-        ss_details = frappe.db.sql(
-            """
-            SELECT parent, parentfield, salary_component, amount, formula, idx
-            FROM `tabSalary Detail`
-            WHERE parent IN %(structures)s
-            ORDER BY parent, parentfield, idx
-            """,
-            {"structures": unique_ss},
-            as_dict=True,
-        )
-        for d in ss_details:
-            ss_components.setdefault(d.parent, []).append(d)
-
-        # Fetch abbreviations for all salary components
-        all_comp_names = list(set(d.salary_component for comps in ss_components.values() for d in comps))
-        if all_comp_names:
-            comps_meta = frappe.get_all("Salary Component",
-                filters={"name": ["in", all_comp_names]},
-                fields=["name", "salary_component_abbr"]
-            )
-            for cm in comps_meta:
-                ss_abbr_map[cm.name] = cm.salary_component_abbr or cm.name.upper()[:10]
-
-    def _eval_formula(formula, base_vals):
-        """Simple formula evaluator for salary components.
-        Supports: BS, BA, VA, basic, etc. as variable names + basic math."""
-        if not formula:
-            return 0
-        import re as _re
-        expr = formula.strip()
-        # Map common variable names to values
-        var_map = {k.upper(): v for k, v in base_vals.items()}
-        # Replace variable names (case-insensitive) with values
-        def _replace_var(m):
-            name = m.group(0).upper()
-            return str(var_map.get(name, 0))
-        expr = _re.sub(r'[A-Za-z_]+', _replace_var, expr)
-        try:
-            return flt(eval(expr, {"__builtins__": {}}, {}))
-        except Exception:
-            return 0
-
-    for emp in employees_raw:
-        ssa = ssa_map.get(emp.name, {})
-        ss_name = ssa.get("salary_structure")
-        base = flt(ssa.get("base", 0))
-        if not ss_name or ss_name not in ss_components:
-            continue
-
-        # Build variable context from child table components
-        ssa_comps = ssa.get("components", {})
-        comp_vals = {"base": base, "basic": base}
-        # Pre-populate with component amounts from child table
-        for comp_name, amt in ssa_comps.items():
-            abbr = ss_abbr_map.get(comp_name, comp_name.upper()[:10])
-            comp_vals[abbr] = amt
-            comp_vals[comp_name.upper()] = amt
-            comp_vals[comp_name] = amt
-
-        for comp in ss_components[ss_name]:
-            comp_name = comp.salary_component
-            abbr = ss_abbr_map.get(comp_name, comp_name.upper()[:10])
-            if comp.formula:
-                amt = _eval_formula(comp.formula, comp_vals)
-            else:
-                amt = flt(comp.amount)
-            comp_vals[abbr] = amt
-            comp_vals[comp_name.upper()] = amt
-            comp_vals[comp_name] = amt
-
-            is_earning = comp.parentfield == "earnings"
-            entry = {
-                "employee": emp.name,
-                "employee_name": emp.employee_name,
-                "salary_component": comp_name,
-                "amount": amt,
-                "source_type": "Salary Structure",
-                "reference_name": "",
-            }
-            if is_earning:
-                earnings_list.append(entry)
-                addl_earn_map[emp.name] = flt(addl_earn_map.get(emp.name, 0)) + amt
-            else:
-                deductions_list.append(entry)
-                addl_ded_map[emp.name] = flt(addl_ded_map.get(emp.name, 0)) + amt
-
-    # ── 5b. Additional Salary records (batch) ──
-    for row in addl_records:
-        is_earning = (row.type == "Earning") if row.type else (row.component_type == "Earning")
-        entry = {
-            "employee": row.employee,
-            "employee_name": row.employee_name,
-            "salary_component": row.salary_component,
-            "amount": flt(row.amount),
-            "additional_salary": row.name,
-        }
-
-        if is_earning:
-            earnings_list.append(entry)
-            addl_earn_map[row.employee] = flt(addl_earn_map.get(row.employee, 0)) + flt(row.amount)
-        else:
-            entry["source_type"] = "Additional Salary"
-            entry["reference_name"] = row.name
-            deductions_list.append(entry)
-            addl_ded_map[row.employee] = flt(addl_ded_map.get(row.employee, 0)) + flt(row.amount)
+    # ── 5. Additional Salary (submitted, period; excludes Payroll Worksheet OT records) ──
+    addl_records, addl_totals = get_additional_salary(emp_names, start_date, end_date)
 
     # ── 6. Loan Repayments (batch, graceful fallback) ──
     loan_map = {}
+    deductions_list = []
     try:
-        if frappe.db.table_exists("tabLoan"):
-            loan_records = frappe.db.sql(
+        if frappe.db.table_exists("Loan"):
+            for row in frappe.db.sql(
                 """
-                SELECT
-                    l.applicant as employee,
-                    SUM(rs.total_payment) as total_due
+                SELECT l.applicant as employee, SUM(rs.total_payment) as total_due
                 FROM `tabRepayment Schedule` rs
                 INNER JOIN `tabLoan` l ON l.name = rs.parent
                 WHERE l.applicant_type = 'Employee'
@@ -755,87 +568,93 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
                 """,
                 {"employees": emp_names, "start": start_date, "end": end_date},
                 as_dict=True,
-            )
-            for row in loan_records:
+            ):
                 loan_map[row.employee] = flt(row.total_due)
                 deductions_list.append({
-                    "employee": row.employee,
-                    "employee_name": "",
-                    "salary_component": "",
-                    "amount": flt(row.total_due),
-                    "source_type": "Loan Repayment",
-                    "reference_name": "",
+                    "employee": row.employee, "employee_name": emp_name_map.get(row.employee, ""),
+                    "salary_component": "", "amount": flt(row.total_due),
+                    "source_type": "Loan Repayment", "reference_name": "",
                 })
     except Exception:
         pass
 
     # ── 7. Working days (cap at today for current month) ──
-    from frappe.utils import today as _today
     effective_end = min(getdate(end_date), getdate(_today()))
     total_days = (effective_end - getdate(start_date)).days + 1
     holiday_list = frappe.db.get_value("Company", company, "default_holiday_list")
     if holiday_list:
         holidays = frappe.db.count(
-            "Holiday",
-            filters={
-                "parent": holiday_list,
-                "holiday_date": ["between", [start_date, effective_end]],
-            },
+            "Holiday", filters={"parent": holiday_list, "holiday_date": ["between", [start_date, effective_end]]}
         )
         total_working_days = total_days - holidays
     else:
         total_working_days = total_days
 
-    # ── 8. OT settings (rates/amounts via slhrm.overtime) ──
-    ot_settings = frappe.get_cached_doc("SLHRM Settings")
-
-    # ── 9. Build employee result list ──
-    employees_result = []
-    sum_ot = 0
-    sum_normal_ot = 0
-    sum_double_ot = 0
-    sum_gross = 0
-    sum_ded = 0
-    sum_net = 0
-
+    # ── 8. Child-table lines + component columns (display only) ──
+    earnings_list = []
+    comp_amounts = {}
     for emp in employees_raw:
-        ssa = ssa_map.get(emp.name, {})
-        att = att_map.get(emp.name, {"present": 0, "leave": 0})
-        ot_eligible = cint(emp.slhrm_ot_eligible)
-        ot_hours = ot_map.get(emp.name, {}) if ot_eligible else {}
-        normal_ot_hours = flt(ot_hours.get("normal", 0))
-        double_ot_hours = flt(ot_hours.get("double", 0))
-        addl_earn = flt(addl_earn_map.get(emp.name, 0))
-        addl_ded = flt(addl_ded_map.get(emp.name, 0))
-        loan_amt = flt(loan_map.get(emp.name, 0))
-        base = flt(ssa.get("base", 0))
+        s = structures[emp.name]
+        comp_amounts[emp.name] = {**s.earnings, **s.deductions}
+        for comp, amt in s.earnings.items():
+            earnings_list.append({"employee": emp.name, "employee_name": emp.employee_name,
+                                  "salary_component": comp, "amount": amt,
+                                  "source_type": "Salary Structure", "reference_name": ""})
+        for comp, amt in s.deductions.items():
+            deductions_list.append({"employee": emp.name, "employee_name": emp.employee_name,
+                                    "salary_component": comp, "amount": amt,
+                                    "source_type": "Salary Structure", "reference_name": ""})
 
-        present = flt(att["present"])
-        leave = flt(att["leave"])
+    comp_set = {c["name"] for c in all_components}
+    for row in addl_records:
+        entry = {"employee": row.employee, "employee_name": row.employee_name or emp_name_map.get(row.employee, ""),
+                 "salary_component": row.salary_component, "amount": flt(row.amount),
+                 "additional_salary": row.name, "source_type": "Additional Salary", "reference_name": row.name}
+        (earnings_list if row.is_earning else deductions_list).append(entry)
+        amounts = comp_amounts.setdefault(row.employee, {})
+        amounts[row.salary_component] = flt(amounts.get(row.salary_component, 0) + flt(row.amount), 2)
+        if row.salary_component not in comp_set:
+            comp_set.add(row.salary_component)
+            all_components.append({"name": row.salary_component,
+                                   "type": "earnings" if row.is_earning else "deductions",
+                                   "abbr": row.salary_component.upper()[:10]})
+
+    # ── 9. Employee rows (pay via slhrm.payroll_pay.compose_pay) ──
+    ot_settings = frappe.get_cached_doc("SLHRM Settings")
+    employees_result = []
+    sums = dict(ot=0, normal=0, double=0, gross=0, ded=0, net=0)
+    for emp in employees_raw:
+        s = structures[emp.name]
+        att = att_map.get(emp.name, {"present": 0, "leave": 0})
+        present, leave = flt(att["present"]), flt(att["leave"])
         absent = max(0, flt(total_working_days) - present - leave)
 
-        rates = calculate_ot_rates(emp.name, base, ot_settings)
+        ot_eligible = cint(emp.slhrm_ot_eligible)
+        hours = ot_map.get(emp.name, {}) if ot_eligible else {}
+        normal_ot_hours, double_ot_hours = flt(hours.get("normal", 0)), flt(hours.get("double", 0))
+        rates = calculate_ot_rates(emp.name, s.base, ot_settings)
         amounts = calculate_ot_amounts(normal_ot_hours, double_ot_hours, rates)
         ot_amount = flt(amounts["normal"] + amounts["double"], 2)
 
-        total_earning = base + ot_amount + addl_earn
-        total_deduction = addl_ded + loan_amt
-        net_pay = total_earning - total_deduction
+        addl = addl_totals.get(emp.name, {"earning": 0.0, "deduction": 0.0})
+        loan_amt = flt(loan_map.get(emp.name, 0))
+        pay = compose_pay(s.structure_earning_total, s.structure_deduction_total, ot_amount,
+                          addl["earning"], addl["deduction"], loan_amt)
 
-        sum_ot += ot_amount
-        sum_normal_ot += amounts["normal"]
-        sum_double_ot += amounts["double"]
-        sum_gross += total_earning
-        sum_ded += total_deduction
-        sum_net += net_pay
+        sums["ot"] += ot_amount
+        sums["normal"] += amounts["normal"]
+        sums["double"] += amounts["double"]
+        sums["gross"] += pay["total_earning"]
+        sums["ded"] += pay["total_deduction"]
+        sums["net"] += pay["net_pay"]
 
         employees_result.append({
             "employee": emp.name,
             "employee_name": emp.employee_name,
             "designation": emp.designation or "",
-            "salary_structure": ssa.get("salary_structure", ""),
-            "base": base,
-            "components": ssa.get("components", {}),
+            "salary_structure": s.salary_structure,
+            "base": s.base,
+            "components": comp_amounts.get(emp.name, {}),
             "total_working_days": total_working_days,
             "present_days": present,
             "absent_days": absent,
@@ -848,18 +667,13 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
             "double_ot_rate": rates["double_rate"],
             "double_ot_amount": amounts["double"],
             "ot_amount": ot_amount,
-            "additional_earning_total": addl_earn,
-            "additional_deduction_total": addl_ded,
+            "structure_earning_total": s.structure_earning_total,
+            "structure_deduction_total": s.structure_deduction_total,
+            "additional_earning_total": addl["earning"],
+            "additional_deduction_total": addl["deduction"],
             "loan_deduction": loan_amt,
-            "total_earning": total_earning,
-            "total_deduction": total_deduction,
-            "net_pay": net_pay,
+            **pay,
         })
-
-    emp_name_map = {e.name: e.employee_name for e in employees_raw}
-    for d in deductions_list:
-        if not d.get("employee_name"):
-            d["employee_name"] = emp_name_map.get(d["employee"], "")
 
     no_att = [e.employee_name for e in employees_raw if e.name not in att_map]
     if no_att:
@@ -868,76 +682,6 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
             + ", ".join(no_att[:5])
             + ("..." if len(no_att) > 5 else "")
         )
-
-    # ── 10. Build salary component columns data ──
-    all_components = []
-    comp_set = set()
-    for emp in employees_raw:
-        ssa = ssa_map.get(emp.name, {})
-        ss_name = ssa.get("salary_structure")
-        if ss_name and ss_name in ss_components:
-            for comp in ss_components[ss_name]:
-                if comp.salary_component not in comp_set:
-                    comp_set.add(comp.salary_component)
-                    all_components.append({
-                        "name": comp.salary_component,
-                        "type": comp.parentfield,
-                        "abbr": ss_abbr_map.get(comp.salary_component, comp.salary_component.upper()[:10]),
-                    })
-
-    # Add Additional Salary components that aren't in Salary Structure
-    for row in addl_records:
-        if row.salary_component not in comp_set:
-            comp_set.add(row.salary_component)
-            is_earning = (row.type == "Earning") if row.type else (row.component_type == "Earning")
-            all_components.append({
-                "name": row.salary_component,
-                "type": "earnings" if is_earning else "deductions",
-                "abbr": row.salary_component.upper()[:10],
-            })
-
-    # Build per-employee component amounts
-    comp_amounts = {}
-    for emp in employees_raw:
-        ssa = ssa_map.get(emp.name, {})
-        ss_name = ssa.get("salary_structure")
-        base = flt(ssa.get("base", 0))
-        emp_comps = {}
-        if ss_name and ss_name in ss_components:
-            ssa_comps = ssa.get("components", {})
-            overrides = ssa.get("overrides", {})
-            comp_vals = {"base": base, "basic": base}
-            for comp_name, amt in ssa_comps.items():
-                abbr = ss_abbr_map.get(comp_name, comp_name.upper()[:10])
-                comp_vals[abbr] = amt
-                comp_vals[comp_name.upper()] = amt
-                comp_vals[comp_name] = amt
-
-            for comp in ss_components[ss_name]:
-                comp_name = comp.salary_component
-                abbr = ss_abbr_map.get(comp_name, comp_name.upper()[:10])
-                pkg_amt = ssa_comps.get(comp_name, 0)
-                is_override = overrides.get(comp_name, 0)
-
-                if is_override and pkg_amt:
-                    # Package overrides formula
-                    amt = pkg_amt
-                elif comp.formula:
-                    amt = _eval_formula(comp.formula, comp_vals)
-                else:
-                    amt = pkg_amt if pkg_amt else flt(comp.amount)
-                comp_vals[abbr] = amt
-                comp_vals[comp_name.upper()] = amt
-                comp_vals[comp_name] = amt
-                emp_comps[comp_name] = amt
-
-        # Add Additional Salary amounts for this employee
-        for row in addl_records:
-            if row.employee == emp.name:
-                current = emp_comps.get(row.salary_component, 0)
-                emp_comps[row.salary_component] = current + flt(row.amount)
-
-        comp_amounts[emp.name] = emp_comps
 
     return {
         "employees": employees_result,
@@ -948,12 +692,12 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
         "summary": {
             "total_employees": len(employees_result),
             "employees_with_ssa": count_with_ssa,
-            "total_ot_amount": sum_ot,
-            "total_normal_ot_amount": sum_normal_ot,
-            "total_double_ot_amount": sum_double_ot,
-            "total_gross_pay": sum_gross,
-            "total_deductions": sum_ded,
-            "total_net_pay": sum_net,
+            "total_ot_amount": flt(sums["ot"], 2),
+            "total_normal_ot_amount": flt(sums["normal"], 2),
+            "total_double_ot_amount": flt(sums["double"], 2),
+            "total_gross_pay": flt(sums["gross"], 2),
+            "total_deductions": flt(sums["ded"], 2),
+            "total_net_pay": flt(sums["net"], 2),
             "total_working_days": total_working_days,
         },
         "warnings": warnings,

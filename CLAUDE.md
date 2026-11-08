@@ -63,11 +63,18 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 `Attendance Marker` → `Payroll Worksheet` → `Additional Salary` → `Salary Slip`
 - **`slhrm/overtime.py` is the only OT math** (pure functions: `calculate_ot_hours`,
   `calculate_ot_rates`, `calculate_ot_amounts`; currently PLACEHOLDER formulas). Never compute OT
-  anywhere else — JS calls `slhrm.api.calc_ot_amounts`. Unit tests: `slhrm/tests/test_overtime.py`
+  anywhere else — the worksheet JS calls `slhrm.api.calc_worksheet_row`. Unit tests: `slhrm/tests/test_overtime.py`
   (UnitTestCase only; run with `CI=1 bench --site … run-tests --app slhrm --module
   slhrm.tests.test_overtime --skip-before-tests` — do not set `allow_tests` on production).
-- Two types: **Normal** (working-day hours beyond the shift) and **Double** (holiday / weekly off,
-  from the employee's holiday list, fallback company default).
+- Two types: **Normal** (working-day hours beyond the shift) and **Double** (holiday / weekly off).
+  HRMS v16 resolves holidays only via **Holiday List Assignment** (employee, else company);
+  `Employee.holiday_list` is ignored.
+- **Worksheet pay rule — `slhrm/payroll_pay.py` is the only place it lives** (loader, controller and
+  `calc_worksheet_row` all call it; JS only displays server values):
+  gross = structure earnings (every earning component, so Basic = base is already in) + OT +
+  Additional Salary earnings; deductions = structure deductions + Additional Salary deductions + loans.
+  `base` is a formula input, never added on its own. Additional Salary excludes `ref_doctype =
+  'Payroll Worksheet'` (that is the OT). No proration: equals the Salary Slip only for full payment days.
 - Eligibility: `Employee.slhrm_ot_eligible`. Always re-read on the server; ineligible → 0 everywhere.
 - Marker (`slhrm/attendance.py`): punches = Biometric Punch Log for all + Employee Checkin for
   `slhrm_allow_app_checkin`; window = shift start − `shift_match_window_before` … shift end +
@@ -125,6 +132,7 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - (v0.0.4) Mobile check-in relied on a non-existent Employee field and HRMS never checked on the server → app permissions are SLHRM fields enforced by doc_events.
 - (v0.0.4) Marker submit/cancel wrote `processing_status` on every punch ref → only Biometric Punch Log refs carry it.
 - (v0.0.4) Worksheet `on_submit` called a missing `_create_payroll_entry` → grep callers when renaming methods.
+- (v0.0.5) The worksheet put structure components into `additional_earning_total` and added `base` on top, so gross counted base twice; structure amounts were also computed twice (with and without package overrides) and the JS recomputed totals itself → one pay module (`payroll_pay.py`), Additional Salary means Additional Salary only, JS displays server values.
 
 ## Known open items (not yet fixed)
 - `SLHRM Settings` fields never read by code: `auto_mark_attendance`, `auto_create_payroll_on_submit`.

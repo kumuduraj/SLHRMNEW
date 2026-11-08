@@ -5,6 +5,7 @@ from frappe.utils import cint, flt, get_first_day, get_last_day, nowdate
 
 from slhrm.overtime import calculate_ot_amounts, calculate_ot_rates
 from slhrm.payroll_ot import get_marker_ot_hours, get_ot_eligibility
+from slhrm.payroll_pay import compose_pay, get_additional_salary, get_structure_amounts
 
 MONTH_NAMES = {
     "01": "January", "02": "February", "03": "March", "04": "April",
@@ -111,6 +112,11 @@ class PayrollWorksheet(Document):
         settings = frappe.get_cached_doc("SLHRM Settings")
         employees = [row.employee for row in self.employees if row.employee]
         eligibility = get_ot_eligibility(employees)
+        # pay inputs re-read on the server (slhrm.payroll_pay rule; never trust client totals)
+        structures = get_structure_amounts(employees, self.end_date)[0] if employees else {}
+        _addl_rows, addl_totals = (
+            get_additional_salary(employees, self.start_date, self.end_date) if employees else ([], {})
+        )
         can_edit_ot = self._can_write_ot()
 
         stored, marker_hours = {}, None
@@ -130,6 +136,9 @@ class PayrollWorksheet(Document):
         total_ot = total_normal = total_double = total_gross = total_ded = total_net = 0
 
         for row in self.employees:
+            structure = structures.get(row.employee)
+            row.base = structure.base if structure else 0
+            row.salary_structure = structure.salary_structure if structure else ""
             row.ot_eligible = cint(eligibility.get(row.employee))
 
             if not row.ot_eligible:
@@ -164,9 +173,17 @@ class PayrollWorksheet(Document):
             row.double_ot_amount = amounts["double"]
             row.ot_amount = flt(amounts["normal"] + amounts["double"], 2)
 
-            row.total_earning = flt(row.base) + flt(row.ot_amount) + flt(row.additional_earning_total)
-            row.total_deduction = flt(row.additional_deduction_total) + flt(row.loan_deduction)
-            row.net_pay = flt(row.total_earning) - flt(row.total_deduction)
+            # pay rule: structure earnings (Basic = base included) + OT + Additional Salary;
+            # base is never added on its own (see slhrm/payroll_pay.py)
+            addl = addl_totals.get(row.employee, {"earning": 0.0, "deduction": 0.0})
+            row.structure_earning_total = structure.structure_earning_total if structure else 0
+            row.structure_deduction_total = structure.structure_deduction_total if structure else 0
+            row.additional_earning_total = addl["earning"]
+            row.additional_deduction_total = addl["deduction"]
+            row.update(compose_pay(
+                row.structure_earning_total, row.structure_deduction_total, row.ot_amount,
+                row.additional_earning_total, row.additional_deduction_total, row.loan_deduction,
+            ))
 
             total_normal += flt(row.normal_ot_amount)
             total_double += flt(row.double_ot_amount)

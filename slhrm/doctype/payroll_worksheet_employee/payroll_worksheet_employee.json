@@ -178,15 +178,29 @@
    "collapsible": 1
   },
   {
+   "fieldname": "structure_earning_total",
+   "fieldtype": "Currency",
+   "label": "Structure Earnings",
+   "read_only": 1,
+   "description": "Salary Structure earning components (Basic = base included)."
+  },
+  {
    "fieldname": "additional_earning_total",
    "fieldtype": "Currency",
    "label": "Add. Earnings",
-   "read_only": 1
+   "read_only": 1,
+   "description": "Submitted Additional Salary only (excludes the worksheet's own OT)."
   },
   {
    "fieldname": "additional_deduction_total",
    "fieldtype": "Currency",
    "label": "Add. Deductions",
+   "read_only": 1
+  },
+  {
+   "fieldname": "structure_deduction_total",
+   "fieldtype": "Currency",
+   "label": "Structure Deductions",
    "read_only": 1
   },
   {
@@ -208,5 +222,5 @@
   }
  ],
  "permissions": [],
- "modified": "2026-11-08 15:00:00.000000"
+ "modified": "2026-11-08 17:00:00.000000"
 }
