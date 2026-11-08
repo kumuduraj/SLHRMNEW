@@ -1,22 +1,21 @@
 {
  "app": "slhrm",
- "creation": "2026-06-17 05:32:39.558508",
+ "creation": "2026-06-17 00:00:00.000000",
  "docstatus": 0,
  "doctype": "Workspace Sidebar",
  "header_icon": "hexagon",
  "idx": 0,
  "items": [
-   {
-    "child": 0,
-    "collapsible": 1,
-    "icon": "chart-bar",
-    "indent": 0,
-    "keep_closed": 0,
-    "label": "Dashboard",
-    "link_type": "Page",
-    "show_arrow": 0,
-    "type": "Section Break"
-   },
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "chart-bar",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Dashboard",
+   "show_arrow": 0,
+   "type": "Section Break"
+  },
   {
    "child": 1,
    "collapsible": 0,
@@ -29,20 +28,19 @@
    "show_arrow": 0,
    "type": "Link"
   },
-   {
-    "child": 0,
-    "collapsible": 1,
-    "icon": "clock",
-    "indent": 0,
-    "keep_closed": 0,
-    "label": "Time & Attendance",
-    "link_type": "DocType",
-    "show_arrow": 0,
-    "type": "Section Break"
-   },
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "clock",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Time & Attendance",
+   "show_arrow": 0,
+   "type": "Section Break"
+  },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "file-text",
    "indent": 0,
    "keep_closed": 0,
@@ -54,7 +52,7 @@
   },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "square-check",
    "indent": 0,
    "keep_closed": 0,
@@ -66,7 +64,7 @@
   },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "file-text",
    "indent": 0,
    "keep_closed": 0,
@@ -78,7 +76,7 @@
   },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "square-check",
    "indent": 0,
    "keep_closed": 0,
@@ -90,7 +88,7 @@
   },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "clock",
    "indent": 0,
    "keep_closed": 0,
@@ -102,7 +100,7 @@
   },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "square-check",
    "indent": 0,
    "keep_closed": 0,
@@ -118,14 +116,13 @@
    "icon": "user",
    "indent": 0,
    "keep_closed": 0,
-    "label": "Employee",
-    "link_type": "DocType",
-    "show_arrow": 0,
-    "type": "Section Break"
+   "label": "Employee",
+   "show_arrow": 0,
+   "type": "Section Break"
   },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "user",
    "indent": 0,
    "keep_closed": 0,
@@ -137,7 +134,7 @@
   },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "layout-grid",
    "indent": 0,
    "keep_closed": 0,
@@ -149,7 +146,7 @@
   },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "layout-grid",
    "indent": 0,
    "keep_closed": 0,
@@ -161,7 +158,7 @@
   },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "user",
    "indent": 0,
    "keep_closed": 0,
@@ -173,7 +170,7 @@
   },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "user",
    "indent": 0,
    "keep_closed": 0,
@@ -189,14 +186,13 @@
    "icon": "briefcase",
    "indent": 0,
    "keep_closed": 0,
-    "label": "Recruitment",
-    "link_type": "DocType",
-    "show_arrow": 0,
-    "type": "Section Break"
+   "label": "Recruitment",
+   "show_arrow": 0,
+   "type": "Section Break"
   },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "file-text",
    "indent": 0,
    "keep_closed": 0,
@@ -208,7 +204,7 @@
   },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "user",
    "indent": 0,
    "keep_closed": 0,
@@ -220,7 +216,7 @@
   },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "square-check",
    "indent": 0,
    "keep_closed": 0,
@@ -236,14 +232,13 @@
    "icon": "book-open",
    "indent": 0,
    "keep_closed": 0,
-    "label": "Leaves",
-    "link_type": "DocType",
-    "show_arrow": 0,
-    "type": "Section Break"
+   "label": "Leaves",
+   "show_arrow": 0,
+   "type": "Section Break"
   },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "file-text",
    "indent": 0,
    "keep_closed": 0,
@@ -255,7 +250,7 @@
   },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "settings",
    "indent": 0,
    "keep_closed": 0,
@@ -267,7 +262,7 @@
   },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "square-check",
    "indent": 0,
    "keep_closed": 0,
@@ -277,127 +272,137 @@
    "show_arrow": 0,
    "type": "Link"
   },
-   {
-    "child": 0,
-    "collapsible": 1,
-    "icon": "banknote",
-    "indent": 0,
-    "keep_closed": 0,
-     "label": "Payroll",
-     "link_type": "DocType",
-     "show_arrow": 0,
-     "type": "Section Break"
-   },
-   {
-    "child": 1,
-    "collapsible": 0,
-    "icon": "file-text",
-    "indent": 0,
-    "keep_closed": 0,
-    "label": "Payroll Worksheet",
-    "link_to": "Payroll Worksheet",
-    "link_type": "DocType",
-    "show_arrow": 0,
-    "type": "Link"
-   },
-   {
-    "child": 1,
-    "collapsible": 1,
-    "icon": "file-text",
-    "indent": 0,
-    "keep_closed": 0,
-    "label": "Salary Slip",
-    "link_to": "Salary Slip",
-    "link_type": "DocType",
-    "show_arrow": 0,
-    "type": "Link"
-   },
-   {
-    "child": 1,
-    "collapsible": 1,
-    "icon": "square-check",
-    "indent": 0,
-    "keep_closed": 0,
-    "label": "Payroll Entry",
-    "link_to": "Payroll Entry",
-    "link_type": "DocType",
-    "show_arrow": 0,
-    "type": "Link"
-   },
-   {
-    "child": 1,
-    "collapsible": 1,
-    "icon": "banknote",
-    "indent": 0,
-    "keep_closed": 0,
-    "label": "Employee Salary Package",
-    "link_to": "Employee Salary Package",
-    "link_type": "DocType",
-    "show_arrow": 0,
-    "type": "Link"
-   },
-   {
-    "child": 1,
-    "collapsible": 1,
-    "icon": "settings",
-    "indent": 0,
-    "keep_closed": 0,
-    "label": "Salary Structure",
-    "link_to": "Salary Structure",
-    "link_type": "DocType",
-    "show_arrow": 0,
-    "type": "Link"
-   },
-   {
-    "child": 1,
-    "collapsible": 1,
-    "icon": "settings",
-    "indent": 0,
-    "keep_closed": 0,
-    "label": "Salary Structure Assignment",
-    "link_to": "Salary Structure Assignment",
-    "link_type": "DocType",
-    "show_arrow": 0,
-    "type": "Link"
-   },
-   {
-    "child": 1,
-    "collapsible": 1,
-    "icon": "file-text",
-    "indent": 0,
-    "keep_closed": 0,
-    "label": "Additional Salary",
-    "link_to": "Additional Salary",
-    "link_type": "DocType",
-    "show_arrow": 0,
-    "type": "Link"
-   },
-   {
-    "child": 1,
-    "collapsible": 1,
-    "icon": "file-text",
-    "indent": 0,
-    "keep_closed": 0,
-    "label": "Bulk Additional Salary",
-    "link_to": "Bulk Additional Salary",
-    "link_type": "DocType",
-    "show_arrow": 0,
-    "type": "Link"
-   },
+  {
+   "child": 0,
+   "collapsible": 1,
+   "icon": "banknote",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Payroll",
+   "show_arrow": 0,
+   "type": "Section Break"
+  },
+  {
+   "child": 1,
+   "collapsible": 0,
+   "icon": "file-text",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Payroll Worksheet",
+   "link_to": "Payroll Worksheet",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 0,
+   "icon": "banknote",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Employee Salary Package",
+   "link_to": "Employee Salary Package",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 0,
+   "icon": "file-text",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Salary Slip",
+   "link_to": "Salary Slip",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 0,
+   "icon": "square-check",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Payroll Entry",
+   "link_to": "Payroll Entry",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 0,
+   "icon": "settings",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Salary Structure",
+   "link_to": "Salary Structure",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 0,
+   "icon": "settings",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Salary Structure Assignment",
+   "link_to": "Salary Structure Assignment",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 0,
+   "icon": "file-text",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Employee Salary Component",
+   "link_to": "Employee Salary Component",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 0,
+   "icon": "file-text",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Additional Salary",
+   "link_to": "Additional Salary",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 0,
+   "icon": "file-text",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Bulk Additional Salary",
+   "link_to": "Bulk Additional Salary",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
   {
    "child": 0,
    "collapsible": 1,
    "icon": "receipt",
    "indent": 0,
    "keep_closed": 0,
-    "label": "Expense & Travel",
-    "link_type": "DocType",
-    "show_arrow": 0,
-    "type": "Section Break"
+   "label": "Expense & Travel",
+   "show_arrow": 0,
+   "type": "Section Break"
   },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "file-text",
    "indent": 0,
    "keep_closed": 0,
@@ -409,7 +414,7 @@
   },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "file-text",
    "indent": 0,
    "keep_closed": 0,
@@ -425,14 +430,13 @@
    "icon": "chart-bar",
    "indent": 0,
    "keep_closed": 0,
-    "label": "Performance",
-    "link_type": "DocType",
-    "show_arrow": 0,
-    "type": "Section Break"
+   "label": "Performance",
+   "show_arrow": 0,
+   "type": "Section Break"
   },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "file-text",
    "indent": 0,
    "keep_closed": 0,
@@ -444,7 +448,7 @@
   },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "file-text",
    "indent": 0,
    "keep_closed": 0,
@@ -460,14 +464,13 @@
    "icon": "graduation-cap",
    "indent": 0,
    "keep_closed": 0,
-    "label": "Training",
-    "link_type": "DocType",
-    "show_arrow": 0,
-    "type": "Section Break"
+   "label": "Training",
+   "show_arrow": 0,
+   "type": "Section Break"
   },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "file-text",
    "indent": 0,
    "keep_closed": 0,
@@ -479,7 +482,7 @@
   },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "file-text",
    "indent": 0,
    "keep_closed": 0,
@@ -495,14 +498,13 @@
    "icon": "settings",
    "indent": 0,
    "keep_closed": 0,
-    "label": "Settings",
-    "link_type": "DocType",
-    "show_arrow": 0,
-    "type": "Section Break"
+   "label": "Settings",
+   "show_arrow": 0,
+   "type": "Section Break"
   },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "settings",
    "indent": 0,
    "keep_closed": 0,
@@ -514,7 +516,7 @@
   },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "settings",
    "indent": 0,
    "keep_closed": 0,
@@ -526,7 +528,7 @@
   },
   {
    "child": 1,
-   "collapsible": 1,
+   "collapsible": 0,
    "icon": "layout-grid",
    "indent": 0,
    "keep_closed": 0,
@@ -537,7 +539,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-06-17 05:32:39.558508",
+ "modified": "2026-11-08 13:00:00.000000",
  "modified_by": "Administrator",
  "module": "SLHRM",
  "name": "SLHRM",

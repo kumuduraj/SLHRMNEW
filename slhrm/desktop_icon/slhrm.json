@@ -1,0 +1,22 @@
+{
+ "app": "slhrm",
+ "creation": "2026-06-17 00:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Desktop Icon",
+ "hidden": 0,
+ "icon": "hexagon",
+ "icon_type": "App",
+ "idx": 0,
+ "label": "SLHRM",
+ "link_to": "SLHRM",
+ "link_type": "Workspace Sidebar",
+ "logo_url": "/assets/slhrm/icons/desktop_icons/solid/slhrm.svg",
+ "modified": "2026-11-08 13:00:00.000000",
+ "modified_by": "Administrator",
+ "name": "SLHRM",
+ "owner": "Administrator",
+ "restrict_removal": 0,
+ "roles": [],
+ "sidebar": 1,
+ "standard": 1
+}
