@@ -19,7 +19,7 @@ the message log is restored, so nothing a future HRMS version might write can pe
 import frappe
 from frappe.utils import flt, getdate
 
-from slhrm.overrides.salary_slip import apply_package_overrides
+from slhrm.overrides.salary_slip import apply_salary_rules
 
 WORKSHEET_DOCTYPE = "Payroll Worksheet"
 
@@ -81,6 +81,16 @@ def _employer_rows(slip):
                 slip.data, slip.default_data = saved
             out.append({"component": row.salary_component, "abbr": row.abbr, "amount": amount})
             seen.add(row.salary_component)
+    return out
+
+
+def _merge_employer(employer, epf_employer):
+    """EPF/ETF statistical values from slhrm.statutory replace the structure-formula values."""
+    epf = {e["component"]: e for e in epf_employer}
+    out = [dict(e, amount=epf[e["component"]]["amount"]) if e["component"] in epf else e for e in employer]
+    seen = {e["component"] for e in out}
+    out += [{"component": e["component"], "abbr": e["abbr"], "amount": e["amount"]}
+            for e in epf_employer if e["component"] not in seen]
     return out
 
 
@@ -153,7 +163,8 @@ def build_preview(employee, company, start_date, end_date):
             "base", order_by="from_date desc",
         ))
         _drop_worksheet_ot(slip)
-        apply_package_overrides(slip)
+        rules = apply_salary_rules(slip)  # package overrides -> EPF/ETF (same entry point as the real slip)
+        employer = _merge_employer(employer, rules["employer"])
 
         result.update(
             earnings=_rows(slip.earnings),

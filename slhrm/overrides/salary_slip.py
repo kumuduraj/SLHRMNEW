@@ -1,17 +1,34 @@
 import frappe
 from frappe.utils import flt
 
+from slhrm.statutory import apply_epf
+
 
 def apply_salary_package(doc, method):
-    """doc_events Salary Slip before_save: apply Employee Salary Package overrides."""
-    apply_package_overrides(doc)
+    """doc_events Salary Slip before_save AND before_submit.
+
+    Frappe runs validate + before_save on save, but validate + before_submit on submit (never
+    before_save), and HRMS validate() re-runs calculate_net_pay(), which resets every row to its
+    structure value. So the same rules must run on both events or a submitted slip would lose them.
+    """
+    apply_salary_rules(doc)
+
+
+def apply_salary_rules(slip):
+    """THE single entry point for SLHRM slip rules, in this order:
+    1. Employee Salary Package overrides  2. EPF/ETF on the final earnings (slhrm.statutory).
+    Used by the real Salary Slip hook and the Payroll Worksheet preview (slhrm.payroll_preview).
+    Returns apply_epf()'s result ({epf_base, employer, applied}).
+    """
+    apply_package_overrides(slip)
+    return apply_epf(slip)
 
 
 def apply_package_overrides(slip):
     """Apply Employee Salary Package override amounts to a Salary Slip (saved or in-memory).
 
-    Shared by the real Salary Slip (before_save) and the Payroll Worksheet preview
-    (slhrm.payroll_preview), so both produce identical numbers.
+    Call apply_salary_rules(), not this directly: it does not re-total the slip (apply_epf does,
+    with HRMS's own get_component_totals / set_net_pay).
     Returns True if any override was applied.
     """
     if not slip.employee:
@@ -50,11 +67,4 @@ def apply_package_overrides(slip):
                 slip_row.amount = flt(amount * payment_days / total_working_days)
             else:
                 slip_row.amount = amount
-
-    slip.gross_pay = sum(flt(r.amount) for r in slip.earnings)
-    slip.total_deduction = sum(flt(r.amount) for r in slip.deductions)
-    slip.net_pay = flt(slip.gross_pay) - flt(slip.total_deduction)
-
-    if hasattr(slip, "rounded_total"):
-        slip.rounded_total = round(flt(slip.net_pay))
     return True

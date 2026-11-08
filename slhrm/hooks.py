@@ -43,7 +43,9 @@ doc_events = {
         "after_insert": "slhrm.api.create_employee_user"
     },
     "Salary Slip": {
-        "before_save": "slhrm.overrides.salary_slip.apply_salary_package"
+        # same entry point on both: submit runs validate + before_submit, never before_save
+        "before_save": "slhrm.overrides.salary_slip.apply_salary_package",
+        "before_submit": "slhrm.overrides.salary_slip.apply_salary_package",
     },
     "Employee Checkin": {
         "before_insert": "slhrm.overrides.employee_checkin.validate",
