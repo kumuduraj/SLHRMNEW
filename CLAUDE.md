@@ -82,7 +82,7 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - **Worksheet = HRMS Salary Slip preview + OT. Never duplicate HRMS pay math.**
   `slhrm/payroll_preview.build_preview` builds an in-memory Salary Slip with HRMS's own methods
   (`get_working_days_details` → `check_sal_struct` → `make_salary_slip(structure, slip)`), applies
-  `overrides.salary_slip.apply_package_overrides` (same function as the real slip's before_save) and
+  `overrides.salary_slip.apply_salary_rules` (same entry point as the real slip's hook) and
   returns its earnings/deductions/gross/net/payment days/LWP. **The preview must never write:** no
   insert/save/commit, no `slip.validate()` (check_existing throws), no `get_emp_and_working_day_details`
   (loan accrual writes when lending is installed); every preview runs inside a savepoint that is rolled
@@ -92,8 +92,9 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - OT edits (`calc_worksheet_row`, `_recalculate_all`) never rebuild previews; "Refresh Salary Data"
   does (keeps OT edits). >100 employees → background job (`run_payroll_job`, realtime
   `slhrm_payroll_progress`, result via `get_payroll_job_result`). Rows with `row_error` block submit.
-- Tax/statutory components use gross INCLUDING OT on the final slip, so the worksheet shows them
-  without OT (UI note says so).
+- Tax components use gross INCLUDING OT on the final slip, so the worksheet shows them without OT
+  (UI note says so). EPF/ETF count OT only if the OT component is flagged `slhrm_epf_applicable`
+  (not the default) — if one is ever flagged, the worksheet (OT dropped from the preview) would differ.
 - Eligibility: `Employee.slhrm_ot_eligible`. Always re-read on the server; ineligible → 0 everywhere.
 - Marker (`slhrm/attendance.py`): punches = Biometric Punch Log for all + Employee Checkin for
   `slhrm_allow_app_checkin`; window = shift start − `shift_match_window_before` … shift end +
@@ -110,7 +111,7 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   existing rows → stored values, for users without level-1 write).
 - Employee Salary Package overrides (`overrides/salary_slip.py`) must never include the OT components.
 - **Employee Salary Package: SSA.base = SUM of all package earning overrides — intended (Raj,
-  2026-11-08).** Formulas on `base` (EPF 8% = base * 0.08) are % of total earnings. Don't change it.
+  2026-11-08).** Don't change it. Since v0.0.9 EPF/ETF no longer use `base` (see EPF / ETF below).
 - **Worksheet table** (component columns, OT, Gross, deductions, Total Ded, Net, EMPLOYER group) is
   defined once in `slhrm/payroll_table.py` (print format jinja method `worksheet_table`, Excel
   `download_worksheet_xlsx`) and mirrored by `build_table` in `payroll_worksheet.js` — change both.
@@ -119,6 +120,25 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   ETF 3%): HRMS v16 evaluates them but never adds slip rows, and resets `slip.data` per pass. The
   preview re-runs HRMS's own `add_structure_component()` on a copy of the context to read them. They
   appear ONLY in the EMPLOYER group — never in Total Ded / Net.
+
+## EPF / ETF (v0.0.9, `slhrm/statutory.py`)
+- **One entry point:** `overrides.salary_slip.apply_salary_rules(slip)` = package overrides →
+  `statutory.apply_epf`. Hooked on Salary Slip `before_save` AND `before_submit` (submit runs
+  validate + before_submit, never before_save, and HRMS validate resets rows) and called by the
+  worksheet preview. Never call `apply_package_overrides` alone; never add another totals step after it.
+- Salary Component fields (fixtures): `slhrm_epf_applicable` (earnings: final amount counts toward the
+  EPF base), `slhrm_epf_rate` (deductions + statistical: % of the base).
+- `epf_base` = sum of the FINAL (prorated, post-package) earning rows whose component is applicable.
+  Rated deduction rows → `round(epf_base × rate / 100, 2)`; a rated deduction the structure lists but
+  HRMS dropped as zero is added back. Rated statistical components → same value, returned as EMPLOYER
+  lines, never in totals. Totals via HRMS `get_component_totals` / `set_net_pay` (no hand-rolled sums).
+- **Structure formulas of rated components (EPF8/EPF12/ETF3 `base * 0.08` etc.) stay in the structure
+  only so the rows exist; their values are ALWAYS replaced by apply_epf.** Changing such a formula has
+  no effect — change `slhrm_epf_rate` instead.
+- Flags: `salary_setup.apply` (BS/BA/VA applicable; EPF8 8, EPF12 12, ETF3 3) and
+  `demo.data.set_epf_flags` (DEMO Basic/BRA; DEMO EPF 8/12/3) — idempotent, SLHRM fields only.
+- Not mirrored into HRMS v16 `employer_contributions`: Payroll Entry books a JV for every row there
+  (`make_employer_contribution_jv_entry`, needs per-component expense/liability accounts).
 
 ## DEMO data (`slhrm/demo/data.py`, bench execute only — never whitelisted)
 - `bench --site hrm.gillsinternational.com execute slhrm.demo.data.create` (idempotent; refuses if
