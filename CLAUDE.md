@@ -59,6 +59,38 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   `slhrm_biometric_device_id`, `slhrm_biometric_device_name`). Check that every `insert_after`
   anchor exists in the current core JSON.
 
+## Overtime (OT) flow
+`Attendance Marker` → `Payroll Worksheet` → `Additional Salary` → `Salary Slip`
+- **`slhrm/overtime.py` is the only OT math** (pure functions: `calculate_ot_hours`,
+  `calculate_ot_rates`, `calculate_ot_amounts`; currently PLACEHOLDER formulas). Never compute OT
+  anywhere else — JS calls `slhrm.api.calc_ot_amounts`. Unit tests: `slhrm/tests/test_overtime.py`
+  (UnitTestCase only; run with `CI=1 bench --site … run-tests --app slhrm --module
+  slhrm.tests.test_overtime --skip-before-tests` — do not set `allow_tests` on production).
+- Two types: **Normal** (working-day hours beyond the shift) and **Double** (holiday / weekly off,
+  from the employee's holiday list, fallback company default).
+- Eligibility: `Employee.slhrm_ot_eligible`. Always re-read on the server; ineligible → 0 everywhere.
+- Marker (`slhrm/attendance.py`): punches = Biometric Punch Log for all + Employee Checkin for
+  `slhrm_allow_app_checkin`; window = shift start − `shift_match_window_before` … shift end +
+  `ot_punch_window_after`. Rows keep `calc_normal_ot`/`calc_double_ot` (server-computed) and approved
+  `normal_ot_hours`/`double_ot_hours`.
+- Worksheet sums submitted markers' approved hours (`slhrm/payroll_ot.py`), rates from overtime.py.
+  On submit: one Additional Salary per employee per OT type (components in SLHRM Settings,
+  `ref_doctype`/`ref_docname` = the worksheet). On cancel: blocked if a submitted Salary Slip uses it,
+  else the Additional Salary is cancelled + deleted. `load_payroll_data` excludes Additional Salary
+  with `ref_doctype = 'Payroll Worksheet'` (no double count).
+- **Permlevel 1** = OT hours/rates on Marker Detail and Worksheet Employee: read for HR roles, write only
+  HR Manager / System Manager. Frappe resets level-1 child fields only for *existing* docs and only
+  *before* `validate`, so the controllers enforce it themselves (new rows → calculated values,
+  existing rows → stored values, for users without level-1 write).
+- Employee Salary Package overrides (`overrides/salary_slip.py`) must never include the OT components.
+
+## App check-in
+- Allowed only when `Employee.slhrm_allow_app_checkin` and HR Settings
+  `allow_employee_checkin_from_mobile_app` are both on. Enforced server-side by doc_events on Employee
+  Checkin (`slhrm/overrides/employee_checkin.py`: before_insert + validate) — non-HR users may only
+  check in for their own Employee. The PWA reads `slhrm.api.get_app_permissions` for visibility only.
+- HRMS's own `Employee.allow_mobile_checkin` / `geolocation_capture` do not exist in v16; don't use them.
+
 ## PWA
 - Source `SLHRM-PWA/` (Vue 3 + Ionic + frappe-ui 0.1.105). Build:
   `cd SLHRM-PWA && npm ci && npm run build` (`.npmrc` sets `legacy-peer-deps`).
@@ -86,8 +118,15 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - (v0.0.3) Employee `biometric_*` fields had no `slhrm_` prefix, and their section anchored to `column_break_4`, which ERPNext v16 doesn't have (it landed at idx 0) → prefix every custom field; verify anchors.
 - (v0.0.3) Unanchored `.gitignore` scratch patterns (`check_*.py`, …) silently dropped a patch file, so migrate failed with ModuleNotFoundError → scratch patterns are root-anchored (`/check_*.py`); run `git status --ignored` before pushing new files.
 - (v0.0.3) install.py deleted the core "Home" workspace and rebuilt the sidebar/page/icon with raw SQL on every migrate, and Frappe's orphan cleanup then deleted the SLHRM icon (no JSON) → ship desk records as app JSON; never touch core records.
+- (v0.0.4) `.gitignore`: after every commit, `git status --short --ignored` must show no file you created.
+- (v0.0.4) OT was one `actual_overtime` number computed in two places → one OT module (`overtime.py`), Normal/Double split, eligibility from Employee.
+- (v0.0.4) `read_only` fields and client-sent values were trusted for OT → controllers recompute on the server; permlevel 1 for approval fields, enforced in `validate` (Frappe skips child resets on new docs).
+- (v0.0.4) `load_attendance_data` / `load_payroll_data` had no permission check (any user could read punches/salaries) → every whitelisted data endpoint checks DocType permission.
+- (v0.0.4) Mobile check-in relied on a non-existent Employee field and HRMS never checked on the server → app permissions are SLHRM fields enforced by doc_events.
+- (v0.0.4) Marker submit/cancel wrote `processing_status` on every punch ref → only Biometric Punch Log refs carry it.
+- (v0.0.4) Worksheet `on_submit` called a missing `_create_payroll_entry` → grep callers when renaming methods.
 
 ## Known open items (not yet fixed)
-- `SLHRM Settings` fields never read by code: `auto_mark_attendance`, `auto_create_payroll_on_submit`, `overtime_threshold`.
+- `SLHRM Settings` fields never read by code: `auto_mark_attendance`, `auto_create_payroll_on_submit`.
 - `create_employee_user` sets default password `Abc@12345` and shows it in a msgprint;
   `slhrm_must_change_password` is enforced only by the PWA router, not in Desk/API.
