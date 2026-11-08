@@ -44,5 +44,34 @@
     "hidden": 1,
     "description": "Set to 1 when User is auto-created from Employee. Cleared after first password change in SLHRM PWA.",
     "name": "User-slhrm_must_change_password"
+  },
+  {
+    "doctype": "Custom Field",
+    "dt": "Salary Structure Assignment",
+    "module": "SLHRM",
+    "fieldname": "slhrm_managed",
+    "fieldtype": "Check",
+    "label": "Managed by SLHRM",
+    "insert_after": "base",
+    "read_only": 1,
+    "hidden": 1,
+    "default": "0",
+    "description": "If checked, this SSA is managed by Employee Salary Package. Do not edit manually.",
+    "name": "Salary Structure Assignment-slhrm_managed"
+  },
+  {
+    "doctype": "Custom Field",
+    "dt": "Salary Structure Assignment",
+    "module": "SLHRM",
+    "fieldname": "slhrm_package_link",
+    "fieldtype": "Link",
+    "label": "Employee Salary Package",
+    "options": "Employee Salary Package",
+    "insert_after": "slhrm_managed",
+    "read_only": 1,
+    "hidden": 0,
+    "depends_on": "eval:doc.slhrm_managed",
+    "description": "Link to the Employee Salary Package that manages this SSA.",
+    "name": "Salary Structure Assignment-slhrm_package_link"
   }
 ]

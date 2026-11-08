@@ -17,10 +17,7 @@ app_include_css = ["/assets/slhrm/css/slhrm.css"]
 
 # Install
 after_install = "slhrm.install.execute"
-after_migrate = [
-    "slhrm.install.after_migrate",
-    "slhrm.custom_fields.setup_custom_fields",
-]
+after_migrate = ["slhrm.install.after_migrate"]
 
 # Fixtures
 fixtures = [
