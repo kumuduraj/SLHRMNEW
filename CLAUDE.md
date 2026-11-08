@@ -146,6 +146,25 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - Every created doc is listed in the private File `slhrm_demo_manifest.json`; `remove()` deletes those
   plus records hooks/testing create for DEMO employees or DEMO branches, and restores SLHRM Settings.
 - Never run `create()` on a site with real employees; remove the demo before go-live.
+- **Expected DEMO payroll, Oct 2026 (v0.0.9, confirmed by Raj 2026-11-08)** — any change needs an explanation:
+
+  | Emp | Pay days | Gross | EPF 8% | Employer 12% / 3% | Net |
+  |---|---|---|---|---|---|
+  | E01 | 25 | 193152 | 12280 | 18420 / 4605 | 180872 |
+  | E02 | 25 | 138477 | 9880 | 14820 / 3705 | 128597 |
+  | E03 | 23 (2 LWP) | 99516 | 5041.60 | 7562.40 / 1890.60 | 94474.40 |
+  | E04 | 25 | 72943 | 4680 | 7020 / 1755 | 68263 |
+  | E05 | 25 | 107896 | 5880 | 8820 / 2205 | 102016 |
+  | E06 | 25 | 81827 | 5720 | 8580 / 2145 | 76107 |
+  | E07 | 25 | 51000 | 3880 | 5820 / 1455 | 47120 |
+  | E08 | 25 | 113075 | 7880 | 11820 / 2955 | 105195 |
+  | E09 | 25 | 101368 | 7080 | 10620 / 2655 | 94288 |
+  | E10 | 25 | 81000 | 6280 | 9420 / 2355 | 74720 |
+  | E11 | 25 (package) | 128099 | **9080** | 13620 / 3405 | 119019 |
+  | E12 | — | row error: no SSA | | | |
+
+  E11 EPF = 8% of FINAL DEMO Basic + BRA (110000 + 3500). The pre-v0.0.9 9400 (formula on SSA base
+  114000 + 3500) is obsolete.
 
 ## App check-in
 - Allowed only when `Employee.slhrm_allow_app_checkin` and HR Settings
