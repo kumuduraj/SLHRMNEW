@@ -74,10 +74,16 @@ ESP_EMPLOYEE, ESP_ALLOWANCE = "E11", 4000
 
 
 class Manifest:
+    """JSON manifest kept in ONE private File attached to SLHRM Settings.
+
+    Frappe stores files under a possibly hashed name, so the File is found by attachment +
+    name prefix and its own file path is rewritten on every save (never re-inserted)."""
+
     def __init__(self):
-        self.path = frappe.get_site_path("private", "files", MANIFEST)
         self.data = {"created": [], "settings_before": {}, "employees": {}}
-        if os.path.exists(self.path):
+        self.file = _manifest_files()[0] if _manifest_files() else None
+        self.path = frappe.get_doc("File", self.file).get_full_path() if self.file else None
+        if self.path and os.path.exists(self.path):
             with open(self.path) as f:
                 self.data = json.load(f)
 
@@ -87,12 +93,21 @@ class Manifest:
         self.save()
 
     def save(self):
-        with open(self.path, "w") as f:
-            json.dump(self.data, f, indent=1, default=str)
-        if not frappe.db.exists("File", {"file_url": f"/private/files/{MANIFEST}"}):
-            frappe.get_doc({"doctype": "File", "file_url": f"/private/files/{MANIFEST}", "file_name": MANIFEST,
-                            "is_private": 1, "attached_to_doctype": "SLHRM Settings",
-                            "attached_to_name": "SLHRM Settings"}).insert(ignore_permissions=True)
+        content = json.dumps(self.data, indent=1, default=str)
+        if not self.file:
+            f = frappe.get_doc({"doctype": "File", "file_name": MANIFEST, "is_private": 1, "content": content,
+                                "attached_to_doctype": "SLHRM Settings", "attached_to_name": "SLHRM Settings"})
+            f.insert(ignore_permissions=True)
+            self.file, self.path = f.name, f.get_full_path()
+            return
+        with open(self.path, "w") as fh:
+            fh.write(content)
+
+
+def _manifest_files():
+    return frappe.get_all("File", filters={"attached_to_doctype": "SLHRM Settings",
+                                            "file_name": ["like", "slhrm_demo_manifest%"]},
+                          pluck="name", order_by="creation asc")
 
 
 def _commit():
@@ -192,9 +207,11 @@ def create():
     comp("aa", "Earning", depends_on_payment_days=0)
     comp("not", "Earning", depends_on_payment_days=0)
     comp("dot", "Earning", depends_on_payment_days=0)
-    comp("epf", "Deduction", depends_on_payment_days=1)
-    comp("epf_er", "Deduction", depends_on_payment_days=1, statistical_component=1, do_not_include_in_total=1)
-    comp("etf", "Deduction", depends_on_payment_days=1, statistical_component=1, do_not_include_in_total=1)
+    # EPF/ETF formulas use the already prorated Basic + BRA, so they follow payment days without the
+    # flag; HRMS rejects formula components with depends_on_payment_days (it would prorate twice).
+    comp("epf", "Deduction", depends_on_payment_days=0)
+    comp("epf_er", "Deduction", depends_on_payment_days=0, statistical_component=1, do_not_include_in_total=1)
+    comp("etf", "Deduction", depends_on_payment_days=0, statistical_component=1, do_not_include_in_total=1)
 
     _ensure(m, "Salary Structure", {"name": STRUCTURE}, {
         "doctype": "Salary Structure", "__newname": STRUCTURE, "company": company, "currency": currency,
@@ -205,11 +222,11 @@ def create():
             {"salary_component": C["aa"][0], "amount": 2500, "depends_on_payment_days": 0},
         ],
         "deductions": [
-            {"salary_component": C["epf"][0], "amount_based_on_formula": 1, "formula": "(DBAS + DBRA) * 0.08", "depends_on_payment_days": 1},
+            {"salary_component": C["epf"][0], "amount_based_on_formula": 1, "formula": "(DBAS + DBRA) * 0.08", "depends_on_payment_days": 0},
             {"salary_component": C["epf_er"][0], "amount_based_on_formula": 1, "formula": "(DBAS + DBRA) * 0.12",
-             "depends_on_payment_days": 1, "statistical_component": 1, "do_not_include_in_total": 1},
+             "depends_on_payment_days": 0, "statistical_component": 1, "do_not_include_in_total": 1},
             {"salary_component": C["etf"][0], "amount_based_on_formula": 1, "formula": "(DBAS + DBRA) * 0.03",
-             "depends_on_payment_days": 1, "statistical_component": 1, "do_not_include_in_total": 1},
+             "depends_on_payment_days": 0, "statistical_component": 1, "do_not_include_in_total": 1},
         ],
     }, submit=True)
 
@@ -505,11 +522,8 @@ def remove():
     print("settings restored:", {k: frappe.db.get_single_value("SLHRM Settings", k) for k in before})
 
     if not remaining:
-        f = frappe.db.get_value("File", {"file_url": f"/private/files/{MANIFEST}"})
-        if f:
-            frappe.delete_doc("File", f, force=1, ignore_permissions=True)
-        if os.path.exists(m.path):
-            os.remove(m.path)
+        for f in _manifest_files():
+            frappe.delete_doc("File", f, force=1, ignore_permissions=True)  # also deletes the file on disk
         _commit()
         print("manifest removed")
     return {"remaining": len(remaining), "counts": counts}
