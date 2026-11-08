@@ -3,6 +3,20 @@
 Frappe v16 app (ERPNext + HRMS) by Evonet: biometric attendance, payroll add-ons, and an
 employee PWA at `/slhrm`. Repo: github.com/kumuduraj/SLHRMNEW (branch `master`).
 
+## HARD RULE — NO CORE CHANGES
+frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouched.
+- Never edit anything under `apps/frappe`, `apps/erpnext`, `apps/hrms`. No monkey-patching of their modules.
+- No `override_doctype_class`, no `override_whitelisted_methods` on hrms/frappe methods.
+- Extend only via: slhrm fixtures (Custom Field / Property Setter, module `SLHRM`, fieldnames
+  prefixed `slhrm_`), `doc_events`, slhrm whitelisted APIs, slhrm DocTypes, standard docs created
+  through the API (Additional Salary etc.), and the SLHRM PWA (our own code).
+- Never reuse an hrms/frappe fieldname for a custom field. If hrms may add a field later, use an
+  `slhrm_`-prefixed field instead, so an upgrade can't collide with it.
+- Never modify core-owned records (other apps' workspaces, sidebars, pages, desktop icons) and never
+  run raw SQL against core tables. SLHRM's own desk records ship as app JSON (see Layout).
+- Before finishing any task, paste `git -C apps/frappe status --short`, `git -C apps/erpnext status --short`
+  and `git -C apps/hrms status --short`; all must be clean.
+
 ## Production
 - Bench `/home/rajerp/GILLSHR`, user `rajerp`, site `hrm.gillsinternational.com`.
 - App checkout: `/home/rajerp/GILLSHR/apps/slhrm` (production mode under supervisor).
@@ -20,7 +34,12 @@ employee PWA at `/slhrm`. Repo: github.com/kumuduraj/SLHRMNEW (branch `master`).
   (`pyproject.toml`, `setup.py`, `setup.cfg`, `requirements.txt`), `SLHRM-PWA/` and `slhrm/`.
   **Never recreate root-level duplicates** of `api.py`, `hooks.py`, `install.py`, `public/` etc.
 - Module folder `slhrm/slhrm/` (module "SLHRM") holds committed symlinks
-  `doctype`, `fixtures`, `public`, `workspace`, `workspace_sidebar` → `../`, plus a real `page/`.
+  `doctype`, `fixtures`, `page`, `public`, `workspace`, `workspace_sidebar` → `../`.
+- Desk records are standard app files synced by `bench migrate` (bump `modified` when editing):
+  Workspace `slhrm/workspace/slhrm/slhrm.json`, Page `slhrm/page/slhrm_dashboard/slhrm_dashboard.json`
+  (module folder), Workspace Sidebar `slhrm/workspace_sidebar/slhrm.json` and Desktop Icon
+  `slhrm/desktop_icon/slhrm.json` (app-level folders). A standard record without its JSON file is
+  deleted by Frappe's orphan cleanup on migrate.
 - Every doctype folder needs an `__init__.py`.
 - Patches: `slhrm/patches/vX_Y_Z/*.py`, registered in `slhrm/patches.txt`.
 - Version: `slhrm/__init__.py` `__version__`; `hooks.app_version` imports it. Keep
@@ -34,8 +53,11 @@ employee PWA at `/slhrm`. Repo: github.com/kumuduraj/SLHRMNEW (branch `master`).
   Form scripts belong in the doctype folder, not in `public/js` (unless wired via `doctype_js`).
 - Device endpoints (`device_punch`, `device_punch_bulk`) are `allow_guest`; they must call
   `_validate_device_api_key()` first, and that check must fail closed (disabled/unset/wrong → 403).
-- `bench migrate` runs `install.after_migrate`, which rebuilds the SLHRM workspace/sidebar and
-  removes the "Home" workspace via raw SQL. That is expected behaviour.
+- `install.execute` / `install.after_migrate` only ensure the SLHRM Module Def via the API. Keep them
+  idempotent and API-based, on SLHRM-owned records only; no raw SQL, no file writes into the app.
+- Custom fields carry the `slhrm_` prefix (Employee: `slhrm_biometric_section`,
+  `slhrm_biometric_device_id`, `slhrm_biometric_device_name`). Check that every `insert_after`
+  anchor exists in the current core JSON.
 
 ## PWA
 - Source `SLHRM-PWA/` (Vue 3 + Ionic + frappe-ui 0.1.105). Build:
@@ -61,6 +83,8 @@ employee PWA at `/slhrm`. Repo: github.com/kumuduraj/SLHRMNEW (branch `master`).
 - Device API skipped auth when disabled, exposing guest punch writes → security checks fail closed, constant-time compare.
 - PWA depended on a Docker nginx alias and a build outside `/assets/slhrm` → serve via Frappe www page + `/assets/slhrm/frontend`, commit the build.
 - Hard-coded `/home/frappe/frappe-bench` path in `serve_pwa` → never hard-code bench paths; use `frappe.get_app_path()`.
+- (v0.0.3) Employee `biometric_*` fields had no `slhrm_` prefix, and their section anchored to `column_break_4`, which ERPNext v16 doesn't have (it landed at idx 0) → prefix every custom field; verify anchors.
+- (v0.0.3) install.py deleted the core "Home" workspace and rebuilt the sidebar/page/icon with raw SQL on every migrate, and Frappe's orphan cleanup then deleted the SLHRM icon (no JSON) → ship desk records as app JSON; never touch core records.
 
 ## Known open items (not yet fixed)
 - `SLHRM Settings` fields never read by code: `auto_mark_attendance`, `auto_create_payroll_on_submit`, `overtime_threshold`.
