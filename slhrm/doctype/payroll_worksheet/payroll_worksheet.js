@@ -17,6 +17,9 @@ const SALARY_FIELDS = ROW_FIELDS.filter(f => ![
 ].includes(f));
 const OT_INPUTS = ['normal_ot_hours', 'normal_ot_rate', 'double_ot_hours', 'double_ot_rate'];
 const JOB_TIMEOUT_MS = 15 * 60 * 1000;
+const MONTH_NAMES = ['', 'January', 'February', 'March', 'April', 'May', 'June',
+                     'July', 'August', 'September', 'October', 'November', 'December'];
+const NO_SSA_PATTERN = /No active .*Salary Structure Assignment/;
 
 frappe.ui.form.on('Payroll Worksheet', {
     setup(frm) {
@@ -25,12 +28,15 @@ frappe.ui.form.on('Payroll Worksheet', {
                 if (val) frm.set_value('company', val);
             });
         }
-        if (!frm.doc.payroll_year) {
-            frm.set_value('payroll_year', new Date().getFullYear());
-        }
+    },
+
+    onload(frm) {
+        apply_new_defaults(frm);
+        init_period_state(frm);
     },
 
     refresh(frm) {
+        apply_new_defaults(frm);
         if (frm.doc.company) {
             frm.set_df_property('company', 'read_only', 1);
         }
@@ -61,10 +67,96 @@ frappe.ui.form.on('Payroll Worksheet', {
         }
     },
 
-    branch(frm) { set_dates(frm); auto_load_payroll(frm); },
-    payroll_month(frm) { set_dates(frm); auto_load_payroll(frm); },
-    payroll_year(frm) { set_dates(frm); auto_load_payroll(frm); }
+    branch(frm) { on_period_change(frm); },
+    payroll_month(frm) { on_period_change(frm); },
+    payroll_year(frm) { on_period_change(frm); },
+
+    posting_date(frm) {
+        // the user edited it (not our automatic end-date value) -> stop following the month
+        if (frm.doc.posting_date && frm.doc.posting_date !== frm._auto_posting_date) {
+            frm._posting_date_touched = true;
+        }
+    }
 });
+
+
+// ── Period defaults (Phase 1.3a) ───────────────────────────────────
+
+function default_period(today_str) {
+    // Previous month of `today_str` (YYYY-MM-DD); January -> December of the prior year.
+    const [y, m] = today_str.split('-').map(Number);
+    const year = m === 1 ? y - 1 : y;
+    const month = m === 1 ? 12 : m - 1;
+    return { year: year, month: String(month).padStart(2, '0') };
+}
+
+
+function period_label(frm) {
+    return (MONTH_NAMES[parseInt(frm.doc.payroll_month)] || '') + ' ' + (frm.doc.payroll_year || '');
+}
+
+
+function apply_new_defaults(frm) {
+    if (!frm.is_new() || frm._defaults_applied) return;
+    frm._defaults_applied = true;
+    const p = default_period(frappe.datetime.get_today());
+    frm._reverting = true;  // no load / confirm while setting defaults
+    Promise.all([
+        frm.doc.payroll_year ? null : frm.set_value('payroll_year', p.year),
+        frm.doc.payroll_month ? null : frm.set_value('payroll_month', p.month)
+    ]).then(() => {
+        frm._reverting = false;
+        set_dates(frm);
+    });
+}
+
+
+function init_period_state(frm) {
+    // existing docs: a posting date different from the end date was set by hand
+    if (!frm.is_new() && frm.doc.posting_date && frm.doc.posting_date !== frm.doc.end_date) {
+        frm._posting_date_touched = true;
+    }
+    if ((frm.doc.employees || []).length) remember_period(frm);
+}
+
+
+function remember_period(frm) {
+    frm._loaded_period = {
+        branch: frm.doc.branch, payroll_month: frm.doc.payroll_month, payroll_year: frm.doc.payroll_year
+    };
+}
+
+
+function on_period_change(frm) {
+    if (frm._reverting) return;
+    set_dates(frm);
+    const has_rows = (frm.doc.employees || []).length > 0;
+    if (frm.doc.docstatus === 0 && has_rows && frm._loaded_period) {
+        frappe.confirm(
+            __('Reload employees for {0}?', [period_label(frm)]),
+            () => auto_load_payroll(frm),
+            () => revert_period(frm)
+        );
+        return;
+    }
+    auto_load_payroll(frm);
+}
+
+
+function revert_period(frm) {
+    const old = frm._loaded_period;
+    if (!old) return;
+    frm._reverting = true;
+    Promise.all(Object.keys(old).map(f => frm.doc[f] !== old[f] ? frm.set_value(f, old[f]) : null)).then(() => {
+        frm._reverting = false;
+        set_dates(frm);
+    });
+}
+
+
+function all_rows_without_ssa(rows) {
+    return rows.length > 0 && rows.every(r => NO_SSA_PATTERN.test(r.row_error || ''));
+}
 
 
 // ── Loading (sync, or background job for large branches) ──────────
@@ -162,6 +254,7 @@ function apply_payload(frm, data, mode) {
     const rows = data.employees || [];
 
     if (mode === 'load') {
+        remember_period(frm);
         frm.clear_table('employees');
         rows.forEach(emp => {
             const child = {};
@@ -198,6 +291,13 @@ function apply_payload(frm, data, mode) {
     refresh_doc_totals(frm);
     render_payroll_table(frm);
 
+    if (all_rows_without_ssa(rows)) {
+        frappe.msgprint({
+            title: __('No salary assignments'), indicator: 'orange',
+            message: __('No salary assignments for {0}. Check the month or create Salary Structure Assignments.', [period_label(frm)])
+        });
+        return;
+    }
     const errors = rows.filter(r => r.row_error).length;
     frappe.show_alert({
         message: __('{0} employees calculated', [rows.length - errors]) + (errors ? ', ' + __('{0} with errors', [errors]) : ''),
@@ -213,11 +313,14 @@ function set_dates(frm) {
     const year = frm.doc.payroll_year;
     const month = parseInt(frm.doc.payroll_month);
     if (!year || !month) return;
+    const end_date = frappe.datetime.obj_to_str(new Date(year, month, 0));
     frm.set_value('start_date', frappe.datetime.obj_to_str(new Date(year, month - 1, 1)));
-    frm.set_value('end_date', frappe.datetime.obj_to_str(new Date(year, month, 0)));
-    const names = ['', 'January', 'February', 'March', 'April', 'May', 'June',
-                   'July', 'August', 'September', 'October', 'November', 'December'];
-    frm.set_value('month_name', names[month] || '');
+    frm.set_value('end_date', end_date);
+    frm.set_value('month_name', MONTH_NAMES[month] || '');
+    if (!frm._posting_date_touched || !frm.doc.posting_date) {
+        frm._auto_posting_date = end_date;
+        frm.set_value('posting_date', end_date);
+    }
 }
 
 
@@ -282,9 +385,13 @@ function render_payroll_table(frm) {
     const ot_editable = can_edit_ot(frm);
     const esc = frappe.utils.escape_html;
     const errors = employees.filter(e => e.row_error).length;
+    const no_ssa_at_all = all_rows_without_ssa(employees);
 
     let html = '';
-    if (errors) {
+    if (no_ssa_at_all) {
+        html += '<div class="alert alert-warning" style="margin:5px 0;">' +
+            __('No salary assignments for {0}. Check the month or create Salary Structure Assignments.', [period_label(frm)]) + '</div>';
+    } else if (errors) {
         html += '<div class="alert alert-danger" style="margin:5px 0;">' +
             __('{0} row(s) could not be calculated (red). Submit is blocked until they are fixed — then use Refresh Salary Data.', [errors]) + '</div>';
     }
@@ -313,7 +420,8 @@ function render_payroll_table(frm) {
 
     const col_totals = {};
     employees.forEach((emp, idx) => {
-        const bg = emp.row_error ? '#ffebee' : (idx % 2 === 0 ? '#ffffff' : '#f5f5f5');
+        const show_error = emp.row_error && !no_ssa_at_all;
+        const bg = show_error ? '#ffebee' : (idx % 2 === 0 ? '#ffffff' : '#f5f5f5');
         const ot_cell = (field, value) => {
             if (!ot_editable || !emp.ot_eligible) {
                 return '<td class="text-right" title="' + (emp.ot_eligible ? '' : __('Not eligible for overtime')) + '">' + flt(value, 2) + '</td>';
@@ -321,10 +429,10 @@ function render_payroll_table(frm) {
             return '<td style="padding:2px;"><input type="number" min="0" step="0.01" class="ot-input" data-row="' + emp.name + '" data-field="' + field + '" value="' + flt(value, 2) + '" style="width:100%; text-align:right; border:1px solid #d1c4e9; border-radius:3px; padding:4px 6px; font-size:12px; background:#f3e5f5;"></td>';
         };
 
-        html += '<tr style="background:' + bg + ';"' + (emp.row_error ? ' title="' + esc(emp.row_error) + '"' : '') + '>';
+        html += '<tr style="background:' + bg + ';"' + (show_error ? ' title="' + esc(emp.row_error) + '"' : '') + '>';
         html += '<td style="position:sticky; left:0; background:' + bg + '; z-index:1; text-align:center;">' + (idx + 1) + '</td>';
         html += '<td style="position:sticky; left:40px; background:' + bg + '; z-index:1;"><strong>' + esc(emp.employee_name || emp.employee) + '</strong>';
-        if (emp.row_error) html += '<div style="color:#c62828; font-size:11px; white-space:normal;">' + esc(emp.row_error) + '</div>';
+        if (show_error) html += '<div style="color:#c62828; font-size:11px; white-space:normal;">' + esc(emp.row_error) + '</div>';
         html += '</td>';
         html += '<td class="text-center">' + flt(emp.total_working_days) + '</td>';
         html += '<td class="text-center">' + flt(emp.payment_days) + '</td>';
