@@ -33,6 +33,32 @@
   },
   {
     "doctype": "Custom Field",
+    "dt": "Employee",
+    "module": "SLHRM",
+    "fieldname": "slhrm_ot_eligible",
+    "fieldtype": "Check",
+    "label": "Eligible for Overtime",
+    "default": "0",
+    "in_standard_filter": 1,
+    "insert_after": "slhrm_biometric_device_name",
+    "description": "Only eligible employees get Normal/Double OT in Attendance Marker and Payroll Worksheet.",
+    "name": "Employee-slhrm_ot_eligible"
+  },
+  {
+    "doctype": "Custom Field",
+    "dt": "Employee",
+    "module": "SLHRM",
+    "fieldname": "slhrm_allow_app_checkin",
+    "fieldtype": "Check",
+    "label": "Allow Check-in via App",
+    "default": "0",
+    "in_standard_filter": 1,
+    "insert_after": "slhrm_ot_eligible",
+    "description": "Lets this employee check in/out from the SLHRM app. Also requires HR Settings > Allow Employee Checkin from Mobile App.",
+    "name": "Employee-slhrm_allow_app_checkin"
+  },
+  {
+    "doctype": "Custom Field",
     "dt": "User",
     "module": "SLHRM",
     "fieldname": "slhrm_must_change_password",
