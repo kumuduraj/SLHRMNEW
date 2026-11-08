@@ -60,6 +60,18 @@
    "read_only": 1
   },
   {
+   "fieldname": "payment_days",
+   "fieldtype": "Float",
+   "label": "Payment Days",
+   "read_only": 1
+  },
+  {
+   "fieldname": "lwp_days",
+   "fieldtype": "Float",
+   "label": "LWP Days",
+   "read_only": 1
+  },
+  {
    "fieldname": "present_days",
    "fieldtype": "Float",
    "label": "Present Days",
@@ -178,18 +190,18 @@
    "collapsible": 1
   },
   {
-   "fieldname": "structure_earning_total",
+   "fieldname": "structure_gross",
    "fieldtype": "Currency",
-   "label": "Structure Earnings",
+   "label": "Salary Gross (HRMS)",
    "read_only": 1,
-   "description": "Salary Structure earning components (Basic = base included)."
+   "description": "Gross pay from the HRMS Salary Slip preview (structure, proration, Additional Salary, package overrides). OT is added on top."
   },
   {
    "fieldname": "additional_earning_total",
    "fieldtype": "Currency",
    "label": "Add. Earnings",
    "read_only": 1,
-   "description": "Submitted Additional Salary only (excludes the worksheet's own OT)."
+   "description": "Additional Salary earnings inside the HRMS preview (display only; already in Salary Gross)."
   },
   {
    "fieldname": "additional_deduction_total",
@@ -198,9 +210,9 @@
    "read_only": 1
   },
   {
-   "fieldname": "structure_deduction_total",
+   "fieldname": "structure_deduction",
    "fieldtype": "Currency",
-   "label": "Structure Deductions",
+   "label": "Salary Deductions (HRMS)",
    "read_only": 1
   },
   {
@@ -219,8 +231,14 @@
    "label": "Salary Slip",
    "options": "Salary Slip",
    "read_only": 1
+  },
+  {
+   "fieldname": "row_error",
+   "fieldtype": "Small Text",
+   "label": "Calculation Error",
+   "read_only": 1
   }
  ],
  "permissions": [],
- "modified": "2026-11-08 17:00:00.000000"
+ "modified": "2026-11-08 19:00:00.000000"
 }

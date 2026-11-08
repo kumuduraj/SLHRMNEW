@@ -430,15 +430,137 @@ def get_team_checkins(employee, date):
 # PAYROLL WORKSHEET DATA LOADER
 # ═══════════════════════════════════════════════════════════════
 
+# ── Payroll Worksheet data (HRMS Salary Slip preview + OT; see slhrm/payroll_pay.py) ──
+
+PAYROLL_BACKGROUND_THRESHOLD = 100  # employees; above this load/refresh run as a background job
+PAYROLL_JOB_CACHE_KEY = "slhrm:payroll_job:{}"
+
+
+def _payroll_period(payroll_month, payroll_year):
+    from frappe.utils import get_first_day, get_last_day
+
+    year, month = cint(payroll_year), cint(payroll_month)
+    if not year or not month:
+        frappe.throw(_("Month and Year are required."))
+    return get_first_day(f"{year}-{month:02d}-01"), get_last_day(f"{year}-{month:02d}-01")
+
+
+def _employee_details(names):
+    rows = frappe.get_all(
+        "Employee", filters={"name": ["in", list(names)]},
+        fields=["name", "employee_name", "designation", "slhrm_ot_eligible"],
+    )
+    by_name = {r.name: r for r in rows}
+    return [by_name[n] for n in names if n in by_name]
+
+
+def _payroll_payload(employees, company, start_date, end_date, ot_inputs=None, progress=None):
+    from slhrm.payroll_pay import build_rows, summarize
+
+    rows, lines = build_rows(employees, company, start_date, end_date, ot_inputs=ot_inputs, progress=progress)
+    components, seen = [], set()
+    for kind, table in (("earnings", lines["earnings"]), ("deductions", lines["deductions"])):
+        for line in table:
+            if line["salary_component"] not in seen:
+                seen.add(line["salary_component"])
+                components.append({"name": line["salary_component"], "type": kind})
+    errors = [f"{r['employee_name'] or r['employee']}: {r['row_error']}" for r in rows if r["row_error"]]
+    warnings = []
+    if errors:
+        warnings.append(
+            _("{0} employee(s) could not be calculated (fix them before submitting):").format(len(errors))
+            + "<br>" + "<br>".join(frappe.utils.escape_html(e) for e in errors[:20])
+            + ("<br>…" if len(errors) > 20 else "")
+        )
+    return {
+        "employees": rows, "earnings": lines["earnings"], "deductions": lines["deductions"],
+        "salary_components": components, "summary": summarize(rows), "warnings": warnings,
+        "start_date": str(start_date), "end_date": str(end_date),
+    }
+
+
+def _enqueue_payroll_job(employees, company, start_date, end_date, ot_inputs):
+    key = frappe.generate_hash(length=16)
+    frappe.enqueue(
+        "slhrm.api.run_payroll_job", queue="long", timeout=3600, key=key, employees=employees,
+        company=company, start_date=str(start_date), end_date=str(end_date), ot_inputs=ot_inputs,
+        owner=frappe.session.user,
+    )
+    return {"job": key, "total": len(employees)}
+
+
+def run_payroll_job(key, employees, company, start_date, end_date, ot_inputs, owner):
+    """Background job (>PAYROLL_BACKGROUND_THRESHOLD employees): builds previews, stores the
+    payload in cache for the owner, publishes progress/completion over realtime."""
+    def progress(done, total):
+        if done == total or done % 5 == 0:
+            frappe.publish_realtime("slhrm_payroll_progress", {"key": key, "done": done, "total": total}, user=owner)
+
+    try:
+        payload = _payroll_payload(employees, company, start_date, end_date, ot_inputs=ot_inputs, progress=progress)
+        frappe.cache.set_value(PAYROLL_JOB_CACHE_KEY.format(key), {"owner": owner, "payload": payload},
+                               expires_in_sec=3600)
+        frappe.publish_realtime("slhrm_payroll_progress", {"key": key, "status": "done"}, user=owner)
+    except Exception:
+        frappe.log_error(title="SLHRM: Payroll Worksheet background load failed")
+        frappe.publish_realtime("slhrm_payroll_progress", {"key": key, "status": "failed"}, user=owner)
+
+
 @frappe.whitelist()
-def calc_worksheet_row(employee, start_date, end_date, normal_ot_hours=0, double_ot_hours=0,
-                       normal_ot_rate=0, double_ot_rate=0, loan_deduction=0):
-    """Server-side totals for one Payroll Worksheet row (used by the inline editor; the JS does
-    no math). OT via slhrm.overtime, pay via slhrm.payroll_pay.compose_pay. Eligibility is
-    re-read from Employee."""
+def get_payroll_job_result(key):
+    frappe.has_permission("Payroll Worksheet", "read", throw=True)
+    data = frappe.cache.get_value(PAYROLL_JOB_CACHE_KEY.format(key))
+    if not data or data.get("owner") != frappe.session.user:
+        frappe.throw(_("Payroll data is not ready or has expired. Load it again."))
+    return data["payload"]
+
+
+@frappe.whitelist()
+def load_payroll_data(branch, company, payroll_month, payroll_year):
+    """Payroll Worksheet loader: HRMS Salary Slip preview (in memory, never saved) per active
+    employee in the branch + OT from submitted Attendance Markers. >100 employees -> background
+    job ({"job": key, "total": n}; result via get_payroll_job_result)."""
+    frappe.has_permission("Payroll Worksheet", "create", throw=True)
+    if not branch or not company:
+        frappe.throw(_("Branch and Company are required."))
+    start_date, end_date = _payroll_period(payroll_month, payroll_year)
+
+    employees = frappe.db.get_all(
+        "Employee", filters={"company": company, "branch": branch, "status": "Active"},
+        fields=["name", "employee_name", "designation", "slhrm_ot_eligible"], order_by="employee_name asc",
+    )
+    if not employees:
+        return {"employees": [], "earnings": [], "deductions": [], "salary_components": [],
+                "summary": {}, "warnings": [_("No active employees found in this branch.")]}
+    if len(employees) > PAYROLL_BACKGROUND_THRESHOLD:
+        return _enqueue_payroll_job(employees, company, start_date, end_date, None)
+    return _payroll_payload(employees, company, start_date, end_date)
+
+
+@frappe.whitelist()
+def refresh_salary_data(company, payroll_month, payroll_year, rows):
+    """"Refresh Salary Data": rebuild the HRMS previews for the given worksheet rows, keeping
+    their OT hours/rates. rows: JSON [{employee, normal_ot_hours, normal_ot_rate,
+    double_ot_hours, double_ot_rate}]. Eligibility is re-read from Employee."""
+    frappe.has_permission("Payroll Worksheet", "write", throw=True)
+    start_date, end_date = _payroll_period(payroll_month, payroll_year)
+    rows = json.loads(rows) if isinstance(rows, str) else rows or []
+    ot_inputs = {r["employee"]: {f: flt(r.get(f)) for f in ("normal_ot_hours", "normal_ot_rate",
+                                                             "double_ot_hours", "double_ot_rate")}
+                 for r in rows if r.get("employee")}
+    employees = _employee_details(list(ot_inputs))
+    if len(employees) > PAYROLL_BACKGROUND_THRESHOLD:
+        return _enqueue_payroll_job(employees, company, start_date, end_date, ot_inputs)
+    return _payroll_payload(employees, company, start_date, end_date, ot_inputs=ot_inputs)
+
+
+@frappe.whitelist()
+def calc_worksheet_row(employee, structure_gross=0, structure_deduction=0, loan_deduction=0,
+                       normal_ot_hours=0, double_ot_hours=0, normal_ot_rate=0, double_ot_rate=0):
+    """OT + totals for one row (inline OT editor). Does NOT rebuild the salary preview."""
     from slhrm.overtime import calculate_ot_amounts
     from slhrm.payroll_ot import get_ot_eligibility
-    from slhrm.payroll_pay import compose_pay, get_additional_salary, get_structure_amounts
+    from slhrm.payroll_pay import compose_pay
 
     frappe.has_permission("Payroll Worksheet", "read", throw=True)
     eligible = cint(get_ot_eligibility([employee]).get(employee))
@@ -447,260 +569,12 @@ def calc_worksheet_row(employee, start_date, end_date, normal_ot_hours=0, double
     amounts = calculate_ot_amounts(
         normal_ot_hours, double_ot_hours, {"normal_rate": normal_ot_rate, "double_rate": double_ot_rate}
     )
-    structure = get_structure_amounts([employee], end_date)[0][employee]
-    _rows, addl = get_additional_salary([employee], start_date, end_date)
-    addl = addl.get(employee, {"earning": 0, "deduction": 0})
-    ot_amount = flt(amounts["normal"] + amounts["double"], 2)
-    pay = compose_pay(structure.structure_earning_total, structure.structure_deduction_total, ot_amount,
-                      addl["earning"], addl["deduction"], loan_deduction)
     return {
         "ot_eligible": eligible,
         "normal_ot_amount": amounts["normal"],
         "double_ot_amount": amounts["double"],
-        "ot_amount": ot_amount,
-        "structure_earning_total": structure.structure_earning_total,
-        "structure_deduction_total": structure.structure_deduction_total,
-        "additional_earning_total": addl["earning"],
-        "additional_deduction_total": addl["deduction"],
-        **pay,
-    }
-
-
-@frappe.whitelist()
-def load_payroll_data(branch, company, payroll_month, payroll_year):
-    """
-    Main data-loading endpoint for the Payroll Worksheet form.
-
-    Pay rule (slhrm.payroll_pay): gross = structure earnings + OT + Additional Salary earnings;
-    deductions = structure deductions + Additional Salary deductions + loans. `base` is shown
-    for reference only (the structure's Basic formula already carries it).
-
-    Returns:
-        employees: per-employee salary, attendance, OT and pay totals
-        earnings / deductions: structure + Additional Salary lines (child tables, display)
-        salary_components: column list; component_amounts: {employee: {component: amount}}
-        summary: totals; warnings: list of strings
-    """
-    from frappe.utils import getdate, get_first_day, get_last_day, today as _today
-
-    from slhrm.overtime import calculate_ot_amounts, calculate_ot_rates
-    from slhrm.payroll_ot import get_marker_ot_hours
-    from slhrm.payroll_pay import compose_pay, get_additional_salary, get_structure_amounts
-
-    frappe.has_permission("Payroll Worksheet", "create", throw=True)
-    if not branch or not company or not payroll_month or not payroll_year:
-        frappe.throw(_("Branch, Company, Month and Year are required."))
-
-    year = cint(payroll_year)
-    month = cint(payroll_month)
-    start_date = get_first_day(f"{year}-{month:02d}-01")
-    end_date = get_last_day(f"{year}-{month:02d}-01")
-
-    # ── 1. Active employees in branch ──
-    employees_raw = frappe.db.get_all(
-        "Employee",
-        filters={"company": company, "branch": branch, "status": "Active"},
-        fields=["name", "employee_name", "designation", "slhrm_ot_eligible"],
-        order_by="employee_name asc",
-    )
-    if not employees_raw:
-        return {
-            "employees": [], "earnings": [], "deductions": [], "salary_components": [],
-            "component_amounts": {}, "summary": {},
-            "warnings": ["No active employees found in this branch."],
-        }
-    emp_names = [e.name for e in employees_raw]
-    emp_name_map = {e.name: e.employee_name for e in employees_raw}
-    warnings = []
-
-    # ── 2. Salary Structure components (formula-evaluated; display + structure totals) ──
-    structures, all_components = get_structure_amounts(emp_names, end_date)
-    count_with_ssa = sum(1 for s in structures.values() if s.salary_structure)
-
-    # ── 3. Attendance summary (batch) ──
-    att_map = {}
-    for row in frappe.db.sql(
-        """
-        SELECT employee, status, COUNT(*) as cnt
-        FROM `tabAttendance`
-        WHERE employee IN %(employees)s
-            AND attendance_date BETWEEN %(start)s AND %(end)s
-            AND docstatus = 1
-        GROUP BY employee, status
-        """,
-        {"employees": emp_names, "start": start_date, "end": end_date},
-        as_dict=True,
-    ):
-        a = att_map.setdefault(row.employee, {"present": 0, "leave": 0})
-        if row.status == "Present":
-            a["present"] += row.cnt
-        elif row.status == "Half Day":
-            a["present"] += row.cnt * 0.5
-            a["leave"] += row.cnt * 0.5
-        elif row.status == "On Leave":
-            a["leave"] += row.cnt
-        elif row.status == "Work From Home":
-            a["present"] += row.cnt
-
-    # ── 4. OT hours from submitted Attendance Markers (approved normal/double hours) ──
-    ot_map = get_marker_ot_hours(emp_names, start_date, end_date)
-
-    # ── 5. Additional Salary (submitted, period; excludes Payroll Worksheet OT records) ──
-    addl_records, addl_totals = get_additional_salary(emp_names, start_date, end_date)
-
-    # ── 6. Loan Repayments (batch, graceful fallback) ──
-    loan_map = {}
-    deductions_list = []
-    try:
-        if frappe.db.table_exists("Loan"):
-            for row in frappe.db.sql(
-                """
-                SELECT l.applicant as employee, SUM(rs.total_payment) as total_due
-                FROM `tabRepayment Schedule` rs
-                INNER JOIN `tabLoan` l ON l.name = rs.parent
-                WHERE l.applicant_type = 'Employee'
-                    AND l.applicant IN %(employees)s
-                    AND l.docstatus = 1
-                    AND l.status IN ('Disbursed', 'Partially Paid')
-                    AND rs.payment_date BETWEEN %(start)s AND %(end)s
-                    AND rs.is_accrued = 0
-                GROUP BY l.applicant
-                """,
-                {"employees": emp_names, "start": start_date, "end": end_date},
-                as_dict=True,
-            ):
-                loan_map[row.employee] = flt(row.total_due)
-                deductions_list.append({
-                    "employee": row.employee, "employee_name": emp_name_map.get(row.employee, ""),
-                    "salary_component": "", "amount": flt(row.total_due),
-                    "source_type": "Loan Repayment", "reference_name": "",
-                })
-    except Exception:
-        pass
-
-    # ── 7. Working days (cap at today for current month) ──
-    effective_end = min(getdate(end_date), getdate(_today()))
-    total_days = (effective_end - getdate(start_date)).days + 1
-    holiday_list = frappe.db.get_value("Company", company, "default_holiday_list")
-    if holiday_list:
-        holidays = frappe.db.count(
-            "Holiday", filters={"parent": holiday_list, "holiday_date": ["between", [start_date, effective_end]]}
-        )
-        total_working_days = total_days - holidays
-    else:
-        total_working_days = total_days
-
-    # ── 8. Child-table lines + component columns (display only) ──
-    earnings_list = []
-    comp_amounts = {}
-    for emp in employees_raw:
-        s = structures[emp.name]
-        comp_amounts[emp.name] = {**s.earnings, **s.deductions}
-        for comp, amt in s.earnings.items():
-            earnings_list.append({"employee": emp.name, "employee_name": emp.employee_name,
-                                  "salary_component": comp, "amount": amt,
-                                  "source_type": "Salary Structure", "reference_name": ""})
-        for comp, amt in s.deductions.items():
-            deductions_list.append({"employee": emp.name, "employee_name": emp.employee_name,
-                                    "salary_component": comp, "amount": amt,
-                                    "source_type": "Salary Structure", "reference_name": ""})
-
-    comp_set = {c["name"] for c in all_components}
-    for row in addl_records:
-        entry = {"employee": row.employee, "employee_name": row.employee_name or emp_name_map.get(row.employee, ""),
-                 "salary_component": row.salary_component, "amount": flt(row.amount),
-                 "additional_salary": row.name, "source_type": "Additional Salary", "reference_name": row.name}
-        (earnings_list if row.is_earning else deductions_list).append(entry)
-        amounts = comp_amounts.setdefault(row.employee, {})
-        amounts[row.salary_component] = flt(amounts.get(row.salary_component, 0) + flt(row.amount), 2)
-        if row.salary_component not in comp_set:
-            comp_set.add(row.salary_component)
-            all_components.append({"name": row.salary_component,
-                                   "type": "earnings" if row.is_earning else "deductions",
-                                   "abbr": row.salary_component.upper()[:10]})
-
-    # ── 9. Employee rows (pay via slhrm.payroll_pay.compose_pay) ──
-    ot_settings = frappe.get_cached_doc("SLHRM Settings")
-    employees_result = []
-    sums = dict(ot=0, normal=0, double=0, gross=0, ded=0, net=0)
-    for emp in employees_raw:
-        s = structures[emp.name]
-        att = att_map.get(emp.name, {"present": 0, "leave": 0})
-        present, leave = flt(att["present"]), flt(att["leave"])
-        absent = max(0, flt(total_working_days) - present - leave)
-
-        ot_eligible = cint(emp.slhrm_ot_eligible)
-        hours = ot_map.get(emp.name, {}) if ot_eligible else {}
-        normal_ot_hours, double_ot_hours = flt(hours.get("normal", 0)), flt(hours.get("double", 0))
-        rates = calculate_ot_rates(emp.name, s.base, ot_settings)
-        amounts = calculate_ot_amounts(normal_ot_hours, double_ot_hours, rates)
-        ot_amount = flt(amounts["normal"] + amounts["double"], 2)
-
-        addl = addl_totals.get(emp.name, {"earning": 0.0, "deduction": 0.0})
-        loan_amt = flt(loan_map.get(emp.name, 0))
-        pay = compose_pay(s.structure_earning_total, s.structure_deduction_total, ot_amount,
-                          addl["earning"], addl["deduction"], loan_amt)
-
-        sums["ot"] += ot_amount
-        sums["normal"] += amounts["normal"]
-        sums["double"] += amounts["double"]
-        sums["gross"] += pay["total_earning"]
-        sums["ded"] += pay["total_deduction"]
-        sums["net"] += pay["net_pay"]
-
-        employees_result.append({
-            "employee": emp.name,
-            "employee_name": emp.employee_name,
-            "designation": emp.designation or "",
-            "salary_structure": s.salary_structure,
-            "base": s.base,
-            "components": comp_amounts.get(emp.name, {}),
-            "total_working_days": total_working_days,
-            "present_days": present,
-            "absent_days": absent,
-            "leave_days": leave,
-            "ot_eligible": ot_eligible,
-            "normal_ot_hours": normal_ot_hours,
-            "normal_ot_rate": rates["normal_rate"],
-            "normal_ot_amount": amounts["normal"],
-            "double_ot_hours": double_ot_hours,
-            "double_ot_rate": rates["double_rate"],
-            "double_ot_amount": amounts["double"],
-            "ot_amount": ot_amount,
-            "structure_earning_total": s.structure_earning_total,
-            "structure_deduction_total": s.structure_deduction_total,
-            "additional_earning_total": addl["earning"],
-            "additional_deduction_total": addl["deduction"],
-            "loan_deduction": loan_amt,
-            **pay,
-        })
-
-    no_att = [e.employee_name for e in employees_raw if e.name not in att_map]
-    if no_att:
-        warnings.append(
-            f"{len(no_att)} employee(s) have no attendance records for this period: "
-            + ", ".join(no_att[:5])
-            + ("..." if len(no_att) > 5 else "")
-        )
-
-    return {
-        "employees": employees_result,
-        "earnings": earnings_list,
-        "deductions": deductions_list,
-        "salary_components": all_components,
-        "component_amounts": comp_amounts,
-        "summary": {
-            "total_employees": len(employees_result),
-            "employees_with_ssa": count_with_ssa,
-            "total_ot_amount": flt(sums["ot"], 2),
-            "total_normal_ot_amount": flt(sums["normal"], 2),
-            "total_double_ot_amount": flt(sums["double"], 2),
-            "total_gross_pay": flt(sums["gross"], 2),
-            "total_deductions": flt(sums["ded"], 2),
-            "total_net_pay": flt(sums["net"], 2),
-            "total_working_days": total_working_days,
-        },
-        "warnings": warnings,
+        "ot_amount": flt(amounts["normal"] + amounts["double"], 2),
+        **compose_pay(structure_gross, structure_deduction, amounts["normal"], amounts["double"], loan_deduction),
     }
 
 

@@ -1,214 +1,130 @@
 # slhrm/payroll_pay.py
-"""Pay composition for the Payroll Worksheet — ONE rule, used by load_payroll_data,
-PayrollWorksheet._recalculate_all and slhrm.api.calc_worksheet_row (the JS does no math).
+"""Payroll Worksheet pay = HRMS Salary Slip preview + OT. Never duplicate HRMS pay math here.
 
-RULE (mirrors what HRMS puts on the Salary Slip for a full month):
-    total_earning   = structure earnings + OT (normal + double) + Additional Salary earnings
-    total_deduction = structure deductions + Additional Salary deductions + loan repayment
-    net_pay         = total_earning - total_deduction
+    structure_gross     = preview.gross_pay         (HRMS: structure formulas, proration by payment
+                                                    days, Additional Salary, package overrides)
+    structure_deduction = preview.total_deduction
+    loan_deduction      = preview.total_loan_repayment (0 without the lending app)
+    total_earning       = structure_gross + normal OT + double OT
+    total_deduction     = structure_deduction + loan_deduction
+    net_pay             = total_earning - total_deduction
 
-- "structure earnings/deductions" = every component of the employee's Salary Structure,
-  evaluated with the SSA base. A Basic component with formula `base` therefore already
-  carries the base salary: `base` is a formula input shown for reference and is NEVER
-  added on its own (adding it caused the old base double count).
-- "Additional Salary" = submitted records for the period, EXCLUDING the OT records a Payroll
-  Worksheet creates (ref_doctype = 'Payroll Worksheet') — those are counted as OT.
-- No proration: assumes full payment days. The Salary Slip prorates components with
-  depends_on_payment_days by payment days / working days, so absences make them differ.
+additional_earning_total / additional_deduction_total = preview rows linked to an Additional
+Salary — display only (already inside the preview, never added again).
+Tax/statutory components on the final Salary Slip are computed on gross INCLUDING OT, so for
+those the worksheet is an approximation (OT reaches the slip as Additional Salary).
 """
-import re
-
 import frappe
-from frappe.utils import flt
+from frappe.utils import cint, flt
+
+from slhrm.overtime import calculate_ot_amounts, calculate_ot_rates
+from slhrm.payroll_ot import get_marker_ot_hours
+from slhrm.payroll_preview import build_previews
 
 PRECISION = 2
+OT_INPUT_FIELDS = ("normal_ot_hours", "normal_ot_rate", "double_ot_hours", "double_ot_rate")
 
 
-# ── Salary Structure ────────────────────────────────────────────
-
-
-def get_latest_ssa(employees, as_on):
-    """{employee: _dict(name, base, salary_structure)} — latest submitted SSA with from_date <= as_on."""
-    if not employees:
-        return {}
-    rows = frappe.db.sql(
-        """
-        SELECT ssa.name, ssa.employee, ssa.base, ssa.salary_structure, ssa.from_date
-        FROM `tabSalary Structure Assignment` ssa
-        WHERE ssa.employee IN %(employees)s AND ssa.docstatus = 1 AND ssa.from_date <= %(as_on)s
-        ORDER BY ssa.employee, ssa.from_date DESC, ssa.creation DESC
-        """,
-        {"employees": list(employees), "as_on": as_on},
-        as_dict=True,
-    )
-    out = {}
-    for r in rows:
-        out.setdefault(r.employee, frappe._dict(name=r.name, base=flt(r.base), salary_structure=r.salary_structure))
-    return out
-
-
-def _get_package_components(employees):
-    """Employee Salary Package amounts + override flags (legacy Employee Salary Component fallback)."""
-    amounts, overrides = {}, {}
-    if not employees:
-        return amounts, overrides
-    for r in frappe.db.sql(
-        """
-        SELECT esp.employee, espd.salary_component, espd.amount, espd.override
-        FROM `tabEmployee Salary Package` esp
-        INNER JOIN `tabEmployee Salary Package Detail` espd ON espd.parent = esp.name
-        WHERE esp.employee IN %(employees)s
-        """,
-        {"employees": list(employees)},
-        as_dict=True,
-    ):
-        amounts.setdefault(r.employee, {})[r.salary_component] = flt(r.amount)
-        overrides.setdefault(r.employee, {})[r.salary_component] = r.override
-    if not amounts:
-        for r in frappe.db.sql(
-            """
-            SELECT employee, salary_component, amount
-            FROM `tabEmployee Salary Component`
-            WHERE employee IN %(employees)s
-            """,
-            {"employees": list(employees)},
-            as_dict=True,
-        ):
-            amounts.setdefault(r.employee, {})[r.salary_component] = flt(r.amount)
-    return amounts, overrides
-
-
-def _eval_formula(formula, values):
-    """Evaluate a structure formula: variable names -> numbers, then arithmetic only."""
-    if not formula:
-        return 0
-    var_map = {k.upper(): v for k, v in values.items()}
-    expr = re.sub(r"[A-Za-z_]+", lambda m: str(var_map.get(m.group(0).upper(), 0)), formula.strip())
-    try:
-        return flt(eval(expr, {"__builtins__": {}}, {}))
-    except Exception:
-        return 0
-
-
-def get_structure_amounts(employees, as_on):
-    """Per employee: base, salary_structure, earnings {component: amount}, deductions {...},
-    structure_earning_total, structure_deduction_total. Also returns the ordered component list
-    [{name, type ('earnings'/'deductions'), abbr}] across all structures.
-    """
-    ssa_map = get_latest_ssa(employees, as_on)
-    pkg_amounts, pkg_overrides = _get_package_components(employees)
-
-    structures = list({s.salary_structure for s in ssa_map.values() if s.salary_structure})
-    details, abbr = {}, {}
-    if structures:
-        for d in frappe.db.sql(
-            """
-            SELECT parent, parentfield, salary_component, amount, formula, idx
-            FROM `tabSalary Detail`
-            WHERE parenttype = 'Salary Structure' AND parent IN %(structures)s
-            ORDER BY parent, parentfield, idx
-            """,
-            {"structures": structures},
-            as_dict=True,
-        ):
-            details.setdefault(d.parent, []).append(d)
-        names = list({d.salary_component for rows in details.values() for d in rows})
-        for c in frappe.get_all("Salary Component", filters={"name": ["in", names]},
-                                fields=["name", "salary_component_abbr"]):
-            abbr[c.name] = c.salary_component_abbr or c.name.upper()[:10]
-
-    components, seen = [], set()
-    result = {}
-    for emp in employees:
-        ssa = ssa_map.get(emp)
-        res = frappe._dict(base=0.0, salary_structure="", earnings={}, deductions={},
-                           structure_earning_total=0.0, structure_deduction_total=0.0)
-        result[emp] = res
-        if not ssa:
-            continue
-        res.base, res.salary_structure = flt(ssa.base), ssa.salary_structure
-
-        pkg = pkg_amounts.get(emp, {})
-        ovr = pkg_overrides.get(emp, {})
-        values = {"base": res.base}
-        for comp, amt in pkg.items():
-            for key in (abbr.get(comp, comp.upper()[:10]), comp.upper(), comp):
-                values[key] = amt
-
-        for d in details.get(ssa.salary_structure, []):
-            comp = d.salary_component
-            pkg_amt = pkg.get(comp, 0)
-            if ovr.get(comp) and pkg_amt:
-                amt = pkg_amt  # package override wins over the formula
-            elif d.formula:
-                amt = _eval_formula(d.formula, values)
-            else:
-                amt = pkg_amt or flt(d.amount)
-            amt = flt(amt, PRECISION)
-            for key in (abbr.get(comp, comp.upper()[:10]), comp.upper(), comp):
-                values[key] = amt
-
-            bucket = res.earnings if d.parentfield == "earnings" else res.deductions
-            bucket[comp] = flt(bucket.get(comp, 0) + amt, PRECISION)
-            if comp not in seen:
-                seen.add(comp)
-                components.append({"name": comp, "type": d.parentfield, "abbr": abbr.get(comp, comp.upper()[:10])})
-
-        res.structure_earning_total = flt(sum(res.earnings.values()), PRECISION)
-        res.structure_deduction_total = flt(sum(res.deductions.values()), PRECISION)
-    return result, components
-
-
-# ── Additional Salary ───────────────────────────────────────────
-
-
-def get_additional_salary(employees, start_date, end_date):
-    """Submitted Additional Salary for the period, excluding Payroll Worksheet OT records.
-
-    Returns (rows, totals) where totals = {employee: {"earning": x, "deduction": y}}.
-    """
-    if not employees:
-        return [], {}
-    rows = frappe.db.sql(
-        """
-        SELECT ads.name, ads.employee, ads.employee_name, ads.salary_component, ads.amount,
-               ads.type, sc.type AS component_type
-        FROM `tabAdditional Salary` ads
-        LEFT JOIN `tabSalary Component` sc ON sc.name = ads.salary_component
-        WHERE ads.employee IN %(employees)s
-            AND ads.docstatus = 1
-            AND IFNULL(ads.ref_doctype, '') != 'Payroll Worksheet'
-            AND (
-                (ads.payroll_date BETWEEN %(start)s AND %(end)s)
-                OR (
-                    ads.from_date IS NOT NULL AND ads.to_date IS NOT NULL
-                    AND ads.from_date <= %(end)s AND ads.to_date >= %(start)s
-                )
-            )
-        """,
-        {"employees": list(employees), "start": start_date, "end": end_date},
-        as_dict=True,
-    )
-    totals = {}
-    for r in rows:
-        r.is_earning = (r.type == "Earning") if r.type else (r.component_type == "Earning")
-        t = totals.setdefault(r.employee, {"earning": 0.0, "deduction": 0.0})
-        t["earning" if r.is_earning else "deduction"] = flt(
-            t["earning" if r.is_earning else "deduction"] + flt(r.amount), PRECISION
-        )
-    return rows, totals
-
-
-# ── Composition ─────────────────────────────────────────────────
-
-
-def compose_pay(structure_earning_total=0, structure_deduction_total=0, ot_amount=0,
-                additional_earning_total=0, additional_deduction_total=0, loan_deduction=0):
-    """Apply the RULE (module docstring). Returns the totals for one employee row."""
-    earning = flt(structure_earning_total) + flt(ot_amount) + flt(additional_earning_total)
-    deduction = flt(structure_deduction_total) + flt(additional_deduction_total) + flt(loan_deduction)
+def compose_pay(structure_gross=0, structure_deduction=0, normal_ot_amount=0, double_ot_amount=0,
+                loan_deduction=0):
+    earning = flt(structure_gross) + flt(normal_ot_amount) + flt(double_ot_amount)
+    deduction = flt(structure_deduction) + flt(loan_deduction)
     return {
         "total_earning": flt(earning, PRECISION),
         "total_deduction": flt(deduction, PRECISION),
         "net_pay": flt(earning - deduction, PRECISION),
+    }
+
+
+def salary_fields_from_preview(preview):
+    """Row fields that come from the HRMS preview (never computed by SLHRM)."""
+    addl_earn = sum(r["amount"] for r in preview.earnings if r["additional_salary"])
+    addl_ded = sum(r["amount"] for r in preview.deductions if r["additional_salary"])
+    return {
+        "salary_structure": preview.salary_structure,
+        "structure_gross": flt(preview.gross_pay, PRECISION),
+        "structure_deduction": flt(preview.total_deduction, PRECISION),
+        "loan_deduction": flt(preview.total_loan_repayment, PRECISION),
+        "additional_earning_total": flt(addl_earn, PRECISION),
+        "additional_deduction_total": flt(addl_ded, PRECISION),
+        "total_working_days": flt(preview.total_working_days),
+        "payment_days": flt(preview.payment_days),
+        "lwp_days": flt(preview.leave_without_pay),
+        "present_days": flt(preview.payment_days),
+        "absent_days": flt(preview.absent_days),
+        "leave_days": flt(preview.leave_without_pay),
+        "row_error": preview.error or "",
+    }
+
+
+def build_rows(employees, company, start_date, end_date, ot_inputs=None, progress=None):
+    """Worksheet rows for `employees` (list of dicts: name, employee_name, designation,
+    slhrm_ot_eligible). `ot_inputs` {employee: {normal_ot_hours, ...}} keeps existing OT edits
+    (refresh); otherwise OT hours come from submitted markers and rates from overtime.py.
+
+    Returns (rows, lines) where lines = {"earnings": [...], "deductions": [...]} for the
+    worksheet's component tables (display).
+    """
+    names = [e["name"] for e in employees]
+    previews = build_previews(names, company, start_date, end_date, progress=progress)
+    marker_hours = get_marker_ot_hours(names, start_date, end_date) if ot_inputs is None else {}
+    settings = frappe.get_cached_doc("SLHRM Settings")
+
+    rows, earnings, deductions = [], [], []
+    for e in employees:
+        p = previews[e["name"]]
+        salary = salary_fields_from_preview(p)
+        eligible = cint(e.get("slhrm_ot_eligible"))
+        base = flt(p.base)  # SSA base (display + OT rate input); pay itself comes from the preview
+
+        if not eligible:
+            ot = dict.fromkeys(OT_INPUT_FIELDS, 0.0)
+        elif ot_inputs is not None:
+            ot = {f: flt((ot_inputs.get(e["name"]) or {}).get(f)) for f in OT_INPUT_FIELDS}
+        else:
+            hours = marker_hours.get(e["name"], {})
+            rates = calculate_ot_rates(e["name"], base, settings)
+            ot = {"normal_ot_hours": flt(hours.get("normal")), "double_ot_hours": flt(hours.get("double")),
+                  "normal_ot_rate": rates["normal_rate"], "double_ot_rate": rates["double_rate"]}
+        amounts = calculate_ot_amounts(ot["normal_ot_hours"], ot["double_ot_hours"],
+                                       {"normal_rate": ot["normal_ot_rate"], "double_rate": ot["double_ot_rate"]})
+
+        row = {
+            "employee": e["name"], "employee_name": e.get("employee_name"), "designation": e.get("designation") or "",
+            "base": flt(base, PRECISION), "ot_eligible": eligible, **ot,
+            "normal_ot_amount": amounts["normal"], "double_ot_amount": amounts["double"],
+            "ot_amount": flt(amounts["normal"] + amounts["double"], PRECISION),
+            **salary,
+        }
+        row.update(compose_pay(row["structure_gross"], row["structure_deduction"], row["normal_ot_amount"],
+                               row["double_ot_amount"], row["loan_deduction"]))
+        rows.append(row)
+
+        for r in p.earnings:
+            earnings.append({"employee": e["name"], "employee_name": e.get("employee_name"),
+                             "salary_component": r["component"], "amount": r["amount"],
+                             "additional_salary": r["additional_salary"],
+                             "source_type": "Additional Salary" if r["additional_salary"] else "Salary Structure"})
+        for r in p.deductions:
+            deductions.append({"employee": e["name"], "employee_name": e.get("employee_name"),
+                               "salary_component": r["component"], "amount": r["amount"],
+                               "source_type": "Additional Salary" if r["additional_salary"] else "Salary Structure",
+                               "reference_name": r["additional_salary"]})
+    return rows, {"earnings": earnings, "deductions": deductions}
+
+
+def summarize(rows):
+    def total(field):
+        return flt(sum(flt(r.get(field)) for r in rows), PRECISION)
+
+    return {
+        "total_employees": len(rows),
+        "employees_with_ssa": sum(1 for r in rows if r.get("salary_structure")),
+        "rows_with_error": sum(1 for r in rows if r.get("row_error")),
+        "total_ot_amount": total("ot_amount"),
+        "total_normal_ot_amount": total("normal_ot_amount"),
+        "total_double_ot_amount": total("double_ot_amount"),
+        "total_gross_pay": total("total_earning"),
+        "total_deductions": total("total_deduction"),
+        "total_net_pay": total("net_pay"),
     }

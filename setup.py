@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="slhrm",
-    version="0.0.5",
+    version="0.0.6",
     description="Biometric fingerprint attendance for ERPNext v16",
     author="Evonet",
     author_email="rajitha@evonet.lk",

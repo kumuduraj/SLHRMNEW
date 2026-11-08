@@ -5,7 +5,7 @@ from frappe.utils import cint, flt, get_first_day, get_last_day, nowdate
 
 from slhrm.overtime import calculate_ot_amounts, calculate_ot_rates
 from slhrm.payroll_ot import get_marker_ot_hours, get_ot_eligibility
-from slhrm.payroll_pay import compose_pay, get_additional_salary, get_structure_amounts
+from slhrm.payroll_pay import compose_pay
 
 MONTH_NAMES = {
     "01": "January", "02": "February", "03": "March", "04": "April",
@@ -35,6 +35,16 @@ class PayrollWorksheet(Document):
     def before_submit(self):
         if not self.employees:
             frappe.throw(_("Employee table is empty. Select branch and month to load data."))
+        errors = [r for r in self.employees if (r.row_error or "").strip()]
+        if errors:
+            frappe.throw(
+                _("Cannot submit: {0} row(s) could not be calculated. Fix them and use "
+                  "Refresh Salary Data, or remove the rows:").format(len(errors))
+                + "<br>"
+                + "<br>".join(
+                    frappe.utils.escape_html(f"{r.employee_name or r.employee}: {r.row_error}") for r in errors[:20]
+                )
+            )
 
     def on_submit(self):
         self._create_ot_additional_salaries()
@@ -108,15 +118,12 @@ class PayrollWorksheet(Document):
           existing rows keep the stored (approved) values
         - users with permlevel-1 write: their hours/rates stand; negatives are rejected
         - amounts always via slhrm.overtime.calculate_ot_amounts
+        - salary numbers (structure_gross/deduction, loan) come from the HRMS preview stored by
+          load/refresh; this method does NOT rebuild the preview (slhrm/payroll_pay.py)
         """
         settings = frappe.get_cached_doc("SLHRM Settings")
         employees = [row.employee for row in self.employees if row.employee]
         eligibility = get_ot_eligibility(employees)
-        # pay inputs re-read on the server (slhrm.payroll_pay rule; never trust client totals)
-        structures = get_structure_amounts(employees, self.end_date)[0] if employees else {}
-        _addl_rows, addl_totals = (
-            get_additional_salary(employees, self.start_date, self.end_date) if employees else ([], {})
-        )
         can_edit_ot = self._can_write_ot()
 
         stored, marker_hours = {}, None
@@ -136,9 +143,6 @@ class PayrollWorksheet(Document):
         total_ot = total_normal = total_double = total_gross = total_ded = total_net = 0
 
         for row in self.employees:
-            structure = structures.get(row.employee)
-            row.base = structure.base if structure else 0
-            row.salary_structure = structure.salary_structure if structure else ""
             row.ot_eligible = cint(eligibility.get(row.employee))
 
             if not row.ot_eligible:
@@ -173,16 +177,10 @@ class PayrollWorksheet(Document):
             row.double_ot_amount = amounts["double"]
             row.ot_amount = flt(amounts["normal"] + amounts["double"], 2)
 
-            # pay rule: structure earnings (Basic = base included) + OT + Additional Salary;
-            # base is never added on its own (see slhrm/payroll_pay.py)
-            addl = addl_totals.get(row.employee, {"earning": 0.0, "deduction": 0.0})
-            row.structure_earning_total = structure.structure_earning_total if structure else 0
-            row.structure_deduction_total = structure.structure_deduction_total if structure else 0
-            row.additional_earning_total = addl["earning"]
-            row.additional_deduction_total = addl["deduction"]
+            # pay = HRMS preview (structure_gross / structure_deduction / loan) + OT
             row.update(compose_pay(
-                row.structure_earning_total, row.structure_deduction_total, row.ot_amount,
-                row.additional_earning_total, row.additional_deduction_total, row.loan_deduction,
+                row.structure_gross, row.structure_deduction, row.normal_ot_amount,
+                row.double_ot_amount, row.loan_deduction,
             ))
 
             total_normal += flt(row.normal_ot_amount)

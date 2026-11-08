@@ -6,3 +6,4 @@ slhrm.patches.v0_0_2.remove_legacy_ssa_components
 slhrm.patches.v0_0_3.log_home_workspace
 slhrm.patches.v0_0_4.migrate_marker_ot_fields
 slhrm.patches.v0_0_4.migrate_worksheet_ot_fields
+slhrm.patches.v0_0_6.rename_worksheet_structure_fields
