@@ -478,10 +478,12 @@ const TABLE_CSS = '<style>' +
     '.pw-table td.pw-money { min-width: 110px; }' +
     '.pw-table td.pw-num:not(.pw-money) { min-width: 56px; }' +
     '.pw-table { width: auto; min-width: 100%; }' +
+    '.pw-table td.pw-name { white-space: nowrap; }' +  // one line per row; the error text below wraps
     '</style>';
 
 function cell_class(c) {
     return [c.type !== 'text' ? 'pw-num' : '', c.type === 'currency' ? 'pw-money' : '',
+            c.key === 'employee_name' ? 'pw-name' : '',
             c.group === 'employer' ? 'pw-er' : ''].filter(Boolean).join(' ');
 }
 
@@ -563,7 +565,7 @@ function render_payroll_table(frm) {
             if (OT_INPUTS.includes(c.key) && ot_editable && emp.ot_eligible) {
                 html += '<td style="padding:2px;' + style + '"><input type="number" min="0" step="0.01" class="ot-input" data-row="' + emp.name + '" data-field="' + c.key + '" value="' + flt(v, 2) + '" style="width:100%; min-width:64px; text-align:right; border:1px solid #d1c4e9; border-radius:3px; padding:3px 5px; font-size:12px; background:#f3e5f5;"></td>';
             } else if (c.key === 'employee_name') {
-                html += '<td style="' + style + '"><strong>' + esc(v || '') + '</strong>' +
+                html += '<td class="' + cell_class(c) + '" style="' + style + '"><strong>' + esc(v || '') + '</strong>' +
                     (show_error ? '<div style="color:#c62828; font-size:11px; white-space:normal;">' + esc(r.row_error) + '</div>' : '') + '</td>';
             } else {
                 const strong = ['total_earning', 'total_deduction', 'net_pay'].includes(c.key);
