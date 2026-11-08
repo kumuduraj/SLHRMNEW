@@ -33,9 +33,7 @@ console_*.py
 inspect_*.py
 check_*.py
 fix_*.py
-refresh_assets.sh
 debug_*.py
-deploy_*.py
 ssh_*.py
 find_*.py
 direct_*.py

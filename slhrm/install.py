@@ -35,38 +35,8 @@ def after_migrate():
     _set_workspace_content()
     _set_workspace_links()
     _set_workspace_redirect()
-    _sync_pwa_assets()
     frappe.db.commit()
     print("after_migrate: Sidebar rebuilt, Home removed, content + redirect set")
-
-
-def _sync_pwa_assets():
-    """Copy PWA build output to sites/slhrm_pwa/ so nginx can serve it.
-
-    Architecture:
-    - sites/ is a shared Docker volume between frontend and backend containers
-    - sites/assets is a symlink to bench/assets/ (different volume, NOT shared properly)
-    - So we write to sites/slhrm_pwa/ which IS on the shared volume
-    - Frontend nginx serves /slhrm/assets/ from sites/slhrm_pwa/assets/
-    """
-    import shutil
-    import pathlib
-
-    this_file = pathlib.Path(__file__).resolve()
-    bench_root = this_file.parent.parent.parent.parent
-    src = bench_root / "apps" / "slhrm" / "public" / "frontend"
-
-    if not src.exists() or not (src / "index.html").exists():
-        print(f"PWA sync: source not found at {src}")
-        return
-
-    # Write to sites/slhrm_pwa/ (on shared Docker volume)
-    sites_pwa = bench_root / "sites" / "slhrm_pwa"
-    if sites_pwa.exists():
-        shutil.rmtree(sites_pwa)
-
-    shutil.copytree(src, sites_pwa)
-    print(f"PWA sync: copied {src} -> {sites_pwa}")
 
 
 # â”€â”€â”€ Module Path Fix â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -114,7 +84,6 @@ def _setup_module_path():
         "fixtures": "../fixtures",
         "workspace": "../workspace",
         "workspace_sidebar": "../workspace_sidebar",
-        "page": "../../page",
     }
     for name, target in symlinks.items():
         link_path = os.path.join(module_dir, name)
