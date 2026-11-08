@@ -109,6 +109,13 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   existing rows → stored values, for users without level-1 write).
 - Employee Salary Package overrides (`overrides/salary_slip.py`) must never include the OT components.
 
+## DEMO data (`slhrm/demo/data.py`, bench execute only — never whitelisted)
+- `bench --site hrm.gillsinternational.com execute slhrm.demo.data.create` (idempotent; refuses if
+  non-DEMO Employees exist), `...report`, `...preview_payroll`, `...remove`.
+- Every created doc is listed in the private File `slhrm_demo_manifest.json`; `remove()` deletes those
+  plus records hooks/testing create for DEMO employees or DEMO branches, and restores SLHRM Settings.
+- Never run `create()` on a site with real employees; remove the demo before go-live.
+
 ## App check-in
 - Allowed only when `Employee.slhrm_allow_app_checkin` and HR Settings
   `allow_employee_checkin_from_mobile_app` are both on. Enforced server-side by doc_events on Employee
