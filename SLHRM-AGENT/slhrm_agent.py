@@ -2,8 +2,11 @@
 """SLHRM biometric agent — reads ZKTeco devices READ-ONLY and delivers every raw attendance record to
 SLHRM exactly once (slhrm.api.device_ingest). See README.md.
 
-Device rules (hard): only the pyzk calls in ALLOWED_DEVICE_CALLS are ever made (ReadOnlyDevice enforces
-it). Never clear, write, disable, set the time, restart. One connection per device at a time (run lock),
+Device rules (HARD, permanent): devices are READ-ONLY. Only the pyzk calls in ALLOWED_DEVICE_CALLS are ever
+made — every device call goes through device_call(), which raises AgentError for anything else BEFORE the
+connection is touched (FORBIDDEN_DEVICE_CALLS lists pyzk's write/control methods explicitly; ReadOnlyDevice
+exposes no attribute of the connection). Never clear, set the time, change users/fingerprints, enable/disable,
+restart/poweroff or change config — on any device, in any command or test. One connection per device at a time (run lock),
 timeout 10 s, ommit_ping. At most 2 connect attempts per device per command; never retried in a loop.
 
 Zero loss / zero duplicates:
@@ -47,11 +50,18 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-AGENT_VERSION = "0.3.0"
+AGENT_VERSION = "0.3.1"
 TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 ALLOWED_DEVICE_CALLS = frozenset({
     "connect", "get_serialnumber", "get_firmware_version", "get_device_name", "get_platform", "get_mac",
     "get_time", "read_sizes", "get_users", "get_attendance", "disconnect",
+})
+# pyzk methods that change or control a device — never callable (explicit, on top of the allowlist).
+FORBIDDEN_DEVICE_CALLS = frozenset({
+    "cancel_capture", "clear_attendance", "clear_data", "clear_lcd", "delete_user", "delete_user_template",
+    "disable_device", "enable_device", "enroll_user", "free_data", "live_capture", "poweroff", "refresh_data",
+    "reg_event", "restart", "save_user_template", "set_sdk_build_1", "set_time", "set_user", "test_voice",
+    "unlock", "verify_user", "write_lcd",
 })
 DEFAULT_PASSWORDS = (0, 111111)
 MAX_CONNECT_ATTEMPTS = 2
@@ -142,16 +152,30 @@ def setup_logging(cfg=None, verbose=False):
 # ── device (read-only) ──────────────────────────────────────────
 
 
+def device_call(obj, name, *args):
+    """The ONLY place a pyzk method is invoked. Refuses (AgentError) before touching obj."""
+    if name in FORBIDDEN_DEVICE_CALLS or name not in ALLOWED_DEVICE_CALLS:
+        raise AgentError(f"forbidden device call: {name} (devices are read-only)")
+    return getattr(obj, name)(*args)
+
+
 class ReadOnlyDevice:
-    """The only way the agent talks to a device: allowed pyzk calls only."""
+    """The only way the agent talks to a connected device: allowed pyzk calls only. Any other attribute
+    (e.g. device.clear_attendance) raises AgentError immediately, without touching the connection."""
+
+    __slots__ = ("_conn",)
 
     def __init__(self, conn):
-        self._conn = conn
+        object.__setattr__(self, "_conn", conn)
+
+    def __getattr__(self, name):
+        raise AgentError(f"forbidden device call: {name} (devices are read-only)")
+
+    def __setattr__(self, name, value):
+        raise AgentError(f"read-only device wrapper: cannot set {name}")
 
     def _call(self, name, *args):
-        if name not in ALLOWED_DEVICE_CALLS:
-            raise AgentError(f"forbidden device call: {name}")
-        return getattr(self._conn, name)(*args)
+        return device_call(self._conn, name, *args)
 
     def info(self):
         return {
@@ -219,7 +243,7 @@ def connect_once(ip, port, password, transport, timeout, factory=_zk):
     """ONE connect attempt. Raises AuthError (wrong comm password) or AgentError (network/other)."""
     zk = factory(ip, port, password, transport, timeout)
     try:
-        conn = zk.connect()  # allowed call
+        conn = device_call(zk, "connect")
     except Exception as e:
         if _is_auth_error(e):
             raise AuthError(str(e)) from e

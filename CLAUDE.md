@@ -17,6 +17,16 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - Before finishing any task, paste `git -C apps/frappe status --short`, `git -C apps/erpnext status --short`
   and `git -C apps/hrms status --short`; all must be clean.
 
+## HARD RULE — BIOMETRIC DEVICES ARE READ-ONLY, ALWAYS (Raj, 2026-11-09, permanent)
+- Never change anything on any biometric device: no clear (attendance/data), no set time, no user /
+  fingerprint / face / card changes, no enable/disable, no restart/poweroff/unlock/voice, no config.
+- Applies to EVERY device (HRM's and the old tool's on hr.gillsinternational.com), every session, every
+  script, every command — tests included. Throwaway tests use fake connections only.
+- Code: the agent makes pyzk calls only via `device_call()` (allowlist `ALLOWED_DEVICE_CALLS`, explicit
+  `FORBIDDEN_DEVICE_CALLS`; refused before the connection is touched); `ReadOnlyDevice` exposes nothing else.
+  Unit tests assert every forbidden method raises and every pyzk method is classified. Never import pyzk in a
+  helper script — use the agent. Wrong clock / users on a device → tell Raj; it's fixed on site.
+
 ## Production
 - Bench `/home/rajerp/GILLSHR`, user `rajerp`, site `hrm.gillsinternational.com`.
 - App checkout: `/home/rajerp/GILLSHR/apps/slhrm` (production mode under supervisor).
@@ -353,6 +363,8 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 ## Handoff — current state (2026-11-09, v0.0.14, prod = upstream/master)
 - Audit trail of every phase: `~/slhrm_audit_20261108.md` (Phase 1.x … "Phase 2.2 result (part 2)").
 - Prod has 94 real employees (20 DUTCHPUB, 22 BRITISHPUB, 16 ALIYA, 36 FORTFUSION), no DEMO data, no user logins yet.
+- Doubled employee names FIXED 2026-11-09 (last_name cleared where == first_name, 94/94; script archived in
+  `~/cc-tmp/archive_names_fix_20261109/`).
 - **Biometric:** only DUTCHPUB is enabled (device details: Biometric Device record + ~/slhrm-agent/config.json); agent every 5 min
   (rajerp crontab). Cutoff 2026-11-01 on both sides; rows before it deleted (backup in ~/cc-tmp). Settings:
   device API on, match by employee number ON, Biometric Start Date 2026-11-01.
@@ -363,8 +375,6 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - **Open — waiting for Raj / HR:**
   - HR maps DUTCHPUB device users (report). HR to confirm the link of device user 477 (its employee number
     belongs to a different person on hr.gillsinternational.com); device user 507 stays unmatched (name differs).
-  - Doubled employee names (first == last == full name, 94/94): fix proposed in `~/cc-tmp/fix_employee_names.py`
-    (dry run default), NOT applied.
   - DUTCHPUB clock ~11 min slow (−670 s): fix on site; the agent never sets device time.
   - BRITISHPUB and ALIYA: unreachable from the VPS; need network access + comm
     passwords, then register → `backfill --device N` → enable in config. FORTFUSION has no device.

@@ -5,6 +5,8 @@ Reads ZKTeco devices **read-only** (pyzk) and delivers every raw attendance reco
 `~/cc-tmp/biometric_sync_analysis_20261109.md` (Phase 2.0).
 
 ## Device rules (hard)
+- **Devices are READ-ONLY, always** (permanent rule): every pyzk call goes through `device_call()`, which refuses
+  anything outside `ALLOWED_DEVICE_CALLS` (and everything in `FORBIDDEN_DEVICE_CALLS`) before the connection is touched.
 - Only these pyzk calls: connect, get_serialnumber, get_firmware_version, get_device_name, get_platform,
   get_mac, get_time, read_sizes, get_users, get_attendance, disconnect (`ReadOnlyDevice` refuses others;
   pyzk's buffered reads also send CMD_FREE_DATA, which only releases the device's transfer buffer).

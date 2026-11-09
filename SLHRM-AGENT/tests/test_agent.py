@@ -141,11 +141,59 @@ class Base(unittest.TestCase):
 
 class TestReadOnly(Base):
     def test_forbidden_calls_are_refused(self):
-        dev = A.ReadOnlyDevice(FakeConn())
-        for name in ("clear_attendance", "set_time", "disable_device", "enable_device", "restart", "set_user",
-                     "delete_user", "clear_data", "poweroff", "unlock", "test_voice", "live_capture", "refresh_data"):
+        """Every forbidden pyzk method raises on the wrapper (attribute AND _call) and never reaches the
+        connection: SpyConn records any attribute access at all."""
+
+        class SpyConn:
+            def __init__(self):
+                object.__setattr__(self, "touched", [])
+
+            def __getattr__(self, name):
+                self.touched.append(name)
+                return lambda *a, **k: self.touched.append(f"called {name}")
+
+        self.assertTrue(A.FORBIDDEN_DEVICE_CALLS)
+        self.assertFalse(A.FORBIDDEN_DEVICE_CALLS & A.ALLOWED_DEVICE_CALLS)
+        for name in sorted(A.FORBIDDEN_DEVICE_CALLS):
+            with self.subTest(name=name):
+                conn = SpyConn()
+                dev = A.ReadOnlyDevice(conn)
+                with self.assertRaises(A.AgentError):
+                    getattr(dev, name)()
+                with self.assertRaises(A.AgentError):
+                    dev._call(name)
+                with self.assertRaises(A.AgentError):
+                    A.device_call(conn, name)
+                self.assertEqual(conn.touched, [])
+
+    def test_unknown_calls_refused_and_wrapper_immutable(self):
+        conn = FakeConn()
+        dev = A.ReadOnlyDevice(conn)
+        for name in ("get_templates", "get_user_template", "read_with_buffer", "anything"):
             with self.assertRaises(A.AgentError):
                 dev._call(name)
+        with self.assertRaises(A.AgentError):
+            dev._conn = object()
+        self.assertEqual(conn.calls, [])
+
+    def test_connect_goes_through_the_guard(self):
+        conn = FakeConn()
+        dev = A.connect_once("ip", 4370, 0, "tcp", 10, factory=lambda *a: conn)
+        self.assertIsInstance(dev, A.ReadOnlyDevice)
+        self.assertEqual(conn.calls, ["connect"])
+
+    def test_every_pyzk_method_is_classified(self):
+        """With pyzk installed (agent venv): each public ZK method is either allowed or forbidden."""
+        try:
+            from zk import ZK
+        except ImportError:
+            self.skipTest("pyzk not installed")
+        public = {n for n in dir(ZK) if not n.startswith("_") and callable(getattr(ZK, n))}
+        reads_not_used = {"get_compat_old_firmware", "get_extend_fmt", "get_face_fun_on", "get_face_version",
+                          "get_fp_version", "get_network_params", "get_pin_width", "get_templates",
+                          "get_user_extend_fmt", "get_user_template", "read_with_buffer"}
+        self.assertEqual(public - A.ALLOWED_DEVICE_CALLS - A.FORBIDDEN_DEVICE_CALLS - reads_not_used, set())
+        self.assertTrue(A.ALLOWED_DEVICE_CALLS <= public)
 
     def test_read_device_uses_only_allowed_calls(self):
         conn = FakeConn([rec("1", T0)], users=[SimpleNamespace(user_id="1", name="A", privilege=0)])
