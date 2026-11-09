@@ -88,10 +88,13 @@ def create_employee_user(doc, method=None):
             user.set(FLAG, 1)
         user.append("roles", {"role": "Employee"})
         user.flags.ignore_permissions = True
+        # link first: ERPNext's User validate (validate_employee_role) strips the Employee role,
+        # with a confusing message, from a user that no Employee points to yet
+        doc.db_set("user_id", email)
         user.insert()
-        doc.db_set("user_id", user.name)
     except Exception as e:
         frappe.db.rollback(save_point="slhrm_create_user")
+        doc.user_id = None
         frappe.log_error(title="SLHRM: User creation failed",
                          message=f"Employee {doc.name}: could not create User {email}: {type(e).__name__}: {e}")
         if not frappe.flags.in_import:
@@ -123,9 +126,10 @@ def _report_no_email(doc):
 
 
 def _show_password_once(user, employee_name, password):
-    """Shown to the session user in this response only (not persisted anywhere)."""
+    """Shown to the session user in this response only (not persisted anywhere).
+    Server msgprint runs Frappe's clean_html (nh3), which strips <code>: use <strong>."""
     frappe.msgprint(
-        _("User <b>{0}</b> created for {1}.<br>Temporary password (shown only now): <code>{2}</code><br>"
+        _("User <b>{0}</b> created for {1}.<br>Temporary password (shown only now): <strong>{2}</strong><br>"
           "The user must change it at first login.").format(
             frappe.utils.escape_html(user), frappe.utils.escape_html(employee_name or ""), password),
         title=_("Login created"), indicator="green")
