@@ -241,6 +241,20 @@ def clock_drift(device_time, tz):
 # ── statistics (dry run) ────────────────────────────────────────
 
 
+def per_user_activity(records, since=None):
+    """{user_id: {records, first, last, since}} — for mapping review (dry run only)."""
+    s = datetime.strptime(since, "%Y-%m-%d") if since else None
+    out = {}
+    for r in records:
+        a = out.setdefault(r["user_id"], {"records": 0, "first": r["timestamp"], "last": r["timestamp"], "since": 0})
+        a["records"] += 1
+        a["first"] = min(a["first"], r["timestamp"])
+        a["last"] = max(a["last"], r["timestamp"])
+        if s and r["timestamp"] >= s:
+            a["since"] += 1
+    return out
+
+
 def attendance_stats(records, tz, since=None, plausible_from="2020-01-01", device_users=None):
     now = datetime.now(ZoneInfo(tz)).replace(tzinfo=None)
     plausible = datetime.strptime(plausible_from, "%Y-%m-%d")
@@ -531,6 +545,7 @@ def main(argv=None):
     p.add_argument("--device")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--since")
+    p.add_argument("--per-user", help="dry run: write per-user activity JSON here (chmod 600)")
     p = sub.add_parser("push")
     p.add_argument("--retry-held", action="store_true")
     sub.add_parser("run")
@@ -579,6 +594,10 @@ def main(argv=None):
         out = {"device": dev["name"], "serial": data["info"]["serial"], "dry_run": True,
                "device_time": data["device_time"], "drift_seconds": data["drift"], "sizes": data["sizes"],
                "stats": attendance_stats(data["records"], dev["timezone"], a.since, cfg["plausible_from"], data["users"])}
+        if a.per_user:
+            fd = os.open(a.per_user, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w") as f:
+                json.dump(per_user_activity(data["records"], a.since), f, default=_jsonable, indent=0)
     elif a.cmd == "pull":
         db = db_open(cfg["db_path"])
         devs = [get_device_cfg(cfg, a.device)] if a.device else [d for d in cfg["devices"] if d.get("enabled", True)]

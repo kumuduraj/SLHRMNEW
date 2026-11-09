@@ -303,6 +303,17 @@ class TestRunAndStats(Base):
         self.assertEqual(s["records_of_user_ids_not_on_device"], 2)
 
 
+class TestPerUser(Base):
+    def test_per_user_activity(self):
+        recs = [{"user_id": "1", "timestamp": T0}, {"user_id": "1", "timestamp": T0 + timedelta(days=40)},
+                {"user_id": "2", "timestamp": T0 - timedelta(days=400)}]
+        a = A.per_user_activity(recs, since="2026-10-15")
+        self.assertEqual(a["1"]["records"], 2)
+        self.assertEqual(a["1"]["since"], 1)
+        self.assertEqual(a["1"]["last"], T0 + timedelta(days=40))
+        self.assertEqual(a["2"]["since"], 0)
+
+
 class TestConfig(Base):
     def test_world_readable_config_is_refused(self):
         p = os.path.join(self.dir, "c.json")
