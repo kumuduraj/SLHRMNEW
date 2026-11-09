@@ -231,7 +231,7 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   User `on_update` → `_forget`.
 - Prod has NO outgoing Email Account (only "Jobs", outgoing off) → every new login gets a temporary password.
 
-## Biometric ingestion (Phase 2.0, v0.0.12)
+## Biometric ingestion (Phase 2.0–2.2, v0.0.14)
 - **Devices are READ-ONLY, always.** Agent `SLHRM-AGENT/slhrm_agent.py` (runs outside the bench, own venv
   `~/slhrm-agent/venv`, config `~/slhrm-agent/config.json` chmod 600 — never in the repo). Allowed pyzk calls
   only (`ALLOWED_DEVICE_CALLS`): connect, get_serialnumber, get_firmware_version, get_device_name,
@@ -240,15 +240,23 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - Every raw record stored once: `Biometric Punch Log.punch_key` = `serial|device user id|YYYY-MM-DD HH:MM:SS`
   (device time), **unique DB index**; the agent's SQLite queue uses the same key and re-reads the whole
   device log every pull (INSERT OR IGNORE). Confirmed only by the server's per-record result
-  (`slhrm.biometric.ingest`: inserted / duplicate / unknown_employee / error; savepoint per record).
+  (`slhrm.biometric.ingest`: inserted / duplicate / unknown_employee / skipped_old / error; savepoint per record).
+- **Cutoff 2026-11-01** (Raj): SLHRM Settings `biometric_start_date` → older records get `skipped_old` (not stored,
+  confirmed by the agent); agent config `min_punch_date` (default for all devices, per-device override) → older
+  records are never queued or sent, counted `skipped_old` per pull (log, `device_pull`, `status`). All rows before
+  2026-11-01 were deleted on 2026-11-09 (backup `~/cc-tmp/punch_backup_pre_20261101.json.gz`, 600).
 - Unknown device users are STORED (`employee` empty, status Unmatched) and re-matched when
   `Employee.slhrm_biometric_device_id` is set (doc_events `on_update` → `slhrm.biometric.rematch`).
-  Matching (v0.0.13): (a) explicit `slhrm_biometric_device_id` — the employee with that id in the device's branch,
-  else the only one anywhere; (b) only if SLHRM Settings `match_device_user_by_employee_number`: the ONE Active
+  Matching: **(a) branch-scoped** (v0.0.14): the ONE Active employee of the DEVICE'S BRANCH whose
+  `slhrm_biometric_device_id` == device user id — no "anywhere" fallback; ids are unique per branch, not globally
+  (the same id 1 at DUTCHPUB and BRITISHPUB = two different people). Device without a branch → nothing matches.
+  (b) only if SLHRM Settings `match_device_user_by_employee_number` (ON since 2026-11-09): the ONE Active
   employee of the device's branch whose `employee_number` == device user id (trimmed, case-insensitive) AND whose
   name contains the name on the device (`name_sanity`, whole words) → the id is saved on that Employee
   (`link_by_number`, Employee.save → Version). Not linked → Unmatched with `match_reason` ambiguous / conflict
-  (id used by another active employee, or the hit already has a different id) / name_mismatch.
+  (id held by another active employee OF THE BRANCH, or the hit already has a different id) / name_mismatch.
+  **Branch transfer** (Employee `validate` → `on_employee_validate`): changing `branch` clears the device id with a
+  message to HR (unless the same save sets a new id); punches already matched keep their link.
   `classify_by_number` is the only implementation (ingest, rematch, report, `employee_number_matching` review/apply,
   bench execute only). Never match by Employee name alone.
 - `Biometric Device` (name = serial): branch, ip, timezone (punch times converted to the site tz), health
@@ -260,12 +268,15 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   Rotate: generate `secrets.token_urlsafe(32)` in one process → save on SLHRM Settings (device_api_enabled = 1) →
   write the config → verify no key 403 / wrong key 403 / agent heartbeat 200 (show only length + first 4 chars).
 - Mapping screen: Script Report "Unmatched Device Users" (`slhrm/report/`, module symlink `slhrm/slhrm/report`);
-  "Map to Employee" = `slhrm.biometric.map_device_user` (refuses an id used by another active employee);
+  "Map to Employee" = `slhrm.biometric.map_device_user` (refuses an employee of another branch, and an id held
+  by another active employee of the device's branch);
   columns Employee No. Hit / Reason show rule (b) live; the dialog pre-fills the number hit.
 - Agent scheduler (2026-11-09): rajerp crontab `*/5 … slhrm_agent.py --config ~/slhrm-agent/config.json run` (log
   `~/slhrm-agent/agent.log`); only devices with `enabled: true` in the config are read (DUTCHPUB). DUTCHPUB backfilled
   (27 975 records from 2025-11-04; re-send = all duplicate). `backfill --device N [--resend]` for new devices. Unit tests: `python3 -m unittest discover -s
   SLHRM-AGENT/tests`; server pure functions: `slhrm.tests.test_biometric`.
+- Throwaway biometric tests use ids like `T4-1`, never plain numbers: a test employee with id `1` in DUTCHPUB
+  would re-match real DUTCHPUB punches of device user 1.
 - The old sync tool for hr.gillsinternational.com (`~/frappe-bench/biometric-attendance-sync-tool`) is NOT
   ours: never touch it or its devices (katunayaka_1, wattala_1).
 
@@ -334,6 +345,26 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   PWA never saw a pending password change → read the resolved value; verify PWA flows in a real browser.
 - (v0.0.12) A deliberate `frappe.throw` in a Desk action is an HTTP 417 plus a server traceback in the user's console →
   expected business refusals return a structured `{"refused": msg}`; only permission failures raise.
+
+## Handoff — current state (2026-11-09, v0.0.14, prod = upstream/master)
+- Audit trail of every phase: `~/slhrm_audit_20261108.md` (Phase 1.x … "Phase 2.2 result (part 2)").
+- Prod has 94 real employees (20 DUTCHPUB, 22 BRITISHPUB, 16 ALIYA, 36 FORTFUSION), no DEMO data, no user logins yet.
+- **Biometric:** only DUTCHPUB is enabled (device details: Biometric Device record + ~/slhrm-agent/config.json); agent every 5 min
+  (rajerp crontab). Cutoff 2026-11-01 on both sides; rows before it deleted (backup in ~/cc-tmp). Settings:
+  device API on, match by employee number ON, Biometric Start Date 2026-11-01.
+  6 DUTCHPUB employees linked by employee number (375, 431, 456, 472, 477, 515); every other device user is
+  Unmatched → HR maps them in **Unmatched Device Users**.
+- Old tool (hr.gillsinternational.com, `attendance_device_id`, no branch filter) has no pub employees; no site on this
+  server holds DUTCHPUB/BRITISHPUB/ALIYA/FORTFUSION device ids — mapping is manual.
+- **Open — waiting for Raj / HR:**
+  - HR maps DUTCHPUB device users (report). HR to confirm the link of device user 477 (its employee number
+    belongs to a different person on hr.gillsinternational.com); device user 507 stays unmatched (name differs).
+  - Doubled employee names (first == last == full name, 94/94): fix proposed in `~/cc-tmp/fix_employee_names.py`
+    (dry run default), NOT applied.
+  - DUTCHPUB clock ~11 min slow (−670 s): fix on site; the agent never sets device time.
+  - BRITISHPUB and ALIYA: unreachable from the VPS; need network access + comm
+    passwords, then register → `backfill --device N` → enable in config. FORTFUSION has no device.
+  - OT formulas in `slhrm/overtime.py` are still PLACEHOLDERS.
 
 ## Known open items (not yet fixed)
 - `SLHRM Settings` fields never read by code: `auto_mark_attendance`, `auto_create_payroll_on_submit`.
