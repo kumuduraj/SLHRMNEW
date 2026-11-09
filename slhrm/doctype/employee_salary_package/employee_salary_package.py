@@ -7,6 +7,7 @@ earlier periods keep their own SSA and amounts.
 
 - SSAs with from_date < effective_from are never cancelled; only an SSA with the exact same from_date is
   replaced (cancelled + recreated).
+- Effective From must be the 1st of a month (HRMS picks a slip's SSA by the period start).
 - Blocked when a submitted Salary Slip or submitted Payroll Worksheet of the employee covers
   effective_from or any later period.
 - SSA.base = SUM of the package's earning overrides (intended, Raj 2026-11-08).
@@ -57,12 +58,26 @@ class EmployeeSalaryPackage(Document):
     def validate(self):
         if not self.effective_from:
             self.effective_from = first_day_of_next_month()
+        self.validate_effective_from_is_month_start()
         self.validate_components()
         self.calculate_totals()
         self.warn_dropped_overrides()
         self._ssa_plan = self.plan_ssa()
         if self._ssa_plan:
             self.validate_period_is_open(getdate(self.effective_from))
+
+    def validate_effective_from_is_month_start(self):
+        """Payroll is monthly and HRMS picks a slip's SSA by the period START, so a mid-month date would
+        silently apply from the next month. Require the 1st (decision Raj, 2026-11-09)."""
+        eff = getdate(self.effective_from)
+        if eff.day != 1:
+            fmt = lambda d: frappe.format_value(d, {"fieldtype": "Date"})  # noqa: E731
+            frappe.throw(
+                _("Effective From must be the first day of a month (payroll is monthly). {0} would only "
+                  "apply from the next payroll period. Use {1} or {2}.").format(
+                    fmt(eff), fmt(get_first_day(eff)), fmt(first_day_of_next_month(eff))),
+                title=_("Effective From"),
+            )
 
     # ── components ────────────────────────────────────────────────
 

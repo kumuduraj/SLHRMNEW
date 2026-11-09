@@ -126,7 +126,8 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   appear ONLY in the EMPLOYER group — never in Total Ded / Net.
 
 ## Employee Salary Package (v0.0.10) — effective dating
-- Every amount change applies from **Effective From** (reqd; default first day of next month — the form
+- Every amount change applies from **Effective From** (reqd; **must be the 1st of a month** — validated on
+  save, Raj 2026-11-09; default first day of next month — the form
   re-defaults it on the first amount change of an edit unless the user picked a date). On save the
   package creates a NEW submitted SSA from that date with a snapshot of its rows
   (`SSA.slhrm_package_components`, fixture). SSAs with an earlier from_date are never cancelled; only an

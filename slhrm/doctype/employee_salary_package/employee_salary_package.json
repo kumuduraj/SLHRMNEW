@@ -93,7 +93,7 @@
             "label": "Effective From",
             "reqd": 1,
             "in_list_view": 0,
-            "description": "Amount changes apply from this date (default: first day of next month). A new Salary Structure Assignment is created from it; earlier periods keep theirs."
+            "description": "Amount changes apply from this date — must be the 1st of a month (default: first day of next month). A new Salary Structure Assignment is created from it; earlier periods keep theirs."
         },
         {
             "fieldname": "col_break_structure",
@@ -244,5 +244,5 @@
             "create": 1
         }
     ],
-    "modified": "2026-11-09 08:30:00.000000"
+    "modified": "2026-11-09 09:30:00.000000"
 }
