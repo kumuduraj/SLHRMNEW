@@ -50,6 +50,10 @@ function slhrm_map_device_user(report, row) {
 					freeze: true,
 				}).then((r) => {
 					const m = r.message || {};
+					if (m.refused) {
+						frappe.msgprint({ title: __("Not mapped"), message: frappe.utils.escape_html(m.refused), indicator: "red" });
+						return;
+					}
 					if (m.confirm) {
 						frappe.confirm(m.confirm, () => call(true));
 						return;

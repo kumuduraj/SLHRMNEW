@@ -291,21 +291,23 @@ def suggest_employee(device_name, branch, employees):
 @frappe.whitelist(methods=["POST"])
 def map_device_user(device_serial, device_user_id, employee, replace=0):
     """Desk "Map to Employee": set Employee.slhrm_biometric_device_id; its Unmatched punches re-match
-    (Employee on_update). Refused when another active employee already uses the id. If the employee
-    already has a different id, returns {"confirm": ...} unless replace=1."""
+    (Employee on_update). Business refusals (id used by another active employee, inactive employee,
+    no punches) return {"refused": message} — no exception, so the browser shows a message, not a 417.
+    If the employee already has a different id, returns {"confirm": ...} unless replace=1.
+    Role / permission failures still raise."""
     frappe.only_for(MAP_ROLES)
     device_user_id = cstr(device_user_id).strip()
     device = get_device(device_serial)
     if not device_user_id or not frappe.db.exists(PUNCH, {"device_serial": device.name, "device_user_id": device_user_id}):
-        frappe.throw(_("No punches of device user {0} on {1}.").format(device_user_id, device.name))
+        return {"refused": _("No punches of device user {0} on {1}.").format(device_user_id, device.name)}
     emp = frappe.get_doc("Employee", employee)
     emp.check_permission("write")
     if emp.status != "Active":
-        frappe.throw(_("Employee {0} is not active.").format(emp.name))
+        return {"refused": _("Employee {0} is not active.").format(emp.name)}
     other = frappe.db.get_value("Employee", {"slhrm_biometric_device_id": device_user_id, "status": "Active",
                                              "name": ["!=", emp.name]}, ["name", "employee_name"], as_dict=True)
     if other:
-        frappe.throw(_("Device user id {0} is already used by {1} ({2}).").format(device_user_id, other.name, other.employee_name))
+        return {"refused": _("Device user id {0} is already used by {1} ({2}).").format(device_user_id, other.name, other.employee_name)}
     current = cstr(emp.slhrm_biometric_device_id).strip()
     if current == device_user_id:
         return {"matched": rematch(device_user_id), "employee": emp.name, "unchanged": True}
