@@ -346,6 +346,10 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - (v0.0.12) A deliberate `frappe.throw` in a Desk action is an HTTP 417 plus a server traceback in the user's console →
   expected business refusals return a structured `{"refused": msg}`; only permission failures raise.
 
+- (v0.0.14) A docs commit reused a stale commit-message file from the scratchpad, so 258011c (the CLAUDE.md
+  handoff + branch-scoped/cutoff docs) carries an old PWA message → write a NEW, uniquely named message file for
+  every commit and read `git log -1 --format=%B` BEFORE `git push`.
+
 ## Handoff — current state (2026-11-09, v0.0.14, prod = upstream/master)
 - Audit trail of every phase: `~/slhrm_audit_20261108.md` (Phase 1.x … "Phase 2.2 result (part 2)").
 - Prod has 94 real employees (20 DUTCHPUB, 22 BRITISHPUB, 16 ALIYA, 36 FORTFUSION), no DEMO data, no user logins yet.
