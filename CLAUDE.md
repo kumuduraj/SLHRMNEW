@@ -36,7 +36,11 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   — importing a module proves nothing about code inside its functions.
 - **Every deploy report includes** `git -C apps/<app> status --short` for frappe, erpnext, hrms **and**
   slhrm, plus prod HEAD vs `upstream/master` — no exceptions.
-- Python change under `slhrm/` → stop after clear-cache; Raj restarts (`rajerp` has no passwordless sudo).
+- **Restart (Raj, 2026-11-09):** after a SUCCESSFUL deploy you may restart ONLY this bench yourself:
+  `supervisorctl restart GILLSHR-web: GILLSHR-workers:` — then confirm every GILLSHR process
+  (gunicorn master + workers, schedule, short/long workers, socketio) started after the restart.
+  Never restart, stop or reload any other bench (AgroPublic, Gills, frappe-bench, frappe-bench-promo, …),
+  nginx, redis or the server. If the restart fails, stop and tell Raj.
 
 ## Layout
 - The live Python package is `slhrm/`. The repo root holds only packaging files
