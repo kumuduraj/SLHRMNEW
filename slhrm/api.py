@@ -39,8 +39,10 @@ def pwa_sw():
 # INTERNAL HELPERS
 # ═══════════════════════════════════════════════════════════════
 
-def _validate_device_api_key():
-    """Fail closed: raise 403 unless the device API is enabled and the key matches."""
+def _validate_device_api_key(header_only=False):
+    """Fail closed: raise 403 unless the device API is enabled and the key matches.
+    header_only: accept the key only from the X-Device-Key header (never from the URL / form,
+    which can end up in access logs)."""
     settings = frappe.get_cached_doc("SLHRM Settings")
     if not settings.device_api_enabled:
         frappe.throw(_("Device API disabled"), frappe.PermissionError)
@@ -49,9 +51,9 @@ def _validate_device_api_key():
     if not stored_key:
         frappe.throw(_("Device API key not configured"), frappe.PermissionError)
 
-    provided_key = (
-        frappe.request.headers.get("X-Device-Key") if frappe.request else None
-    ) or frappe.form_dict.get("api_key")
+    provided_key = frappe.request.headers.get("X-Device-Key") if frappe.request else None
+    if not provided_key and not header_only:
+        provided_key = frappe.form_dict.get("api_key")
     if not provided_key or not hmac.compare_digest(
         cstr(provided_key).encode(), cstr(stored_key).encode()
     ):
@@ -223,6 +225,29 @@ def device_punch_bulk(device_id, punches, strict=False):
 
     return {"created": len(created), "errors": errors, "created_names": created}
 
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+def device_ingest(serial, punches, agent=None):
+    """SLHRM agent → raw device records (slhrm.biometric.ingest).
+
+    POST /api/method/slhrm.api.device_ingest     Header: X-Device-Key
+    Body (JSON): serial, punches [{device_user_id, timestamp "YYYY-MM-DD HH:MM:SS" device time,
+                 punch_state, verify_mode}], agent
+    Returns per-record results: inserted / duplicate / unknown_employee (stored) / error.
+    """
+    _validate_device_api_key(header_only=True)
+    from slhrm.biometric import ingest
+
+    return ingest(serial, punches, agent)
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+def device_heartbeat(serial, info, agent=None):
+    """SLHRM agent → device health (slhrm.biometric.heartbeat). Header: X-Device-Key."""
+    _validate_device_api_key(header_only=True)
+    from slhrm.biometric import heartbeat
+
+    return heartbeat(serial, info, agent)
 
 
 # ═══════════════════════════════════════════════════════════════

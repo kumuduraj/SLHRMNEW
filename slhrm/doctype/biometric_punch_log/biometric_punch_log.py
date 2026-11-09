@@ -11,8 +11,11 @@ class BiometricPunchLog(Document):
         self._check_duplicate_punch()
 
     def _validate_employee(self):
+        # device records (punch_key set) may be stored unmatched; manual entries need an employee
         if not self.employee:
-            frappe.throw(_("Employee is required."))
+            if not self.punch_key:
+                frappe.throw(_("Employee is required."))
+            return
         if not frappe.db.exists("Employee", self.employee):
             frappe.throw(_("Employee {0} does not exist.").format(self.employee))
 
@@ -21,7 +24,11 @@ class BiometricPunchLog(Document):
             frappe.throw(_("Punch Time is required."))
 
     def _check_duplicate_punch(self):
-        """Prevent exact duplicate punches — same employee, same timestamp."""
+        """Manual / legacy entries: same employee, same timestamp = duplicate.
+        Device records are unique by punch_key (DB unique index) instead: two devices may record
+        the same employee in the same second, and both raw records are kept."""
+        if self.punch_key or not self.employee:
+            return
         if self.is_new():
             existing = frappe.db.exists("Biometric Punch Log", {
                 "employee": self.employee,

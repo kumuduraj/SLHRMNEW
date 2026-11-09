@@ -1,0 +1,205 @@
+{
+ "name": "Biometric Device",
+ "module": "SLHRM",
+ "doctype": "DocType",
+ "document_type": "Setup",
+ "issingle": 0,
+ "istable": 0,
+ "is_submittable": 0,
+ "track_changes": 1,
+ "autoname": "field:serial",
+ "naming_rule": "By fieldname",
+ "title_field": "device_name",
+ "show_title_field_in_link": 1,
+ "search_fields": "device_name,branch",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "modified": "2026-11-09 11:00:00.000000",
+ "fields": [
+  {
+   "fieldname": "serial",
+   "fieldtype": "Data",
+   "label": "Serial Number",
+   "reqd": 1,
+   "unique": 1,
+   "in_list_view": 1,
+   "description": "Read from the device by the SLHRM agent (get_serialnumber). The document name."
+  },
+  {
+   "fieldname": "device_name",
+   "fieldtype": "Data",
+   "label": "Device Name",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "label": "Branch",
+   "options": "Branch",
+   "in_list_view": 1,
+   "description": "Device user ids are matched to Employee.slhrm_biometric_device_id, preferring employees of this branch."
+  },
+  {
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled",
+   "default": "1",
+   "in_list_view": 1,
+   "description": "Punches of a disabled device are refused."
+  },
+  {
+   "fieldname": "column_break_conn",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ip",
+   "fieldtype": "Data",
+   "label": "IP Address"
+  },
+  {
+   "fieldname": "port",
+   "fieldtype": "Int",
+   "label": "Port",
+   "default": "4370"
+  },
+  {
+   "fieldname": "timezone",
+   "fieldtype": "Data",
+   "label": "Device Clock Timezone",
+   "reqd": 1,
+   "default": "Asia/Colombo",
+   "description": "IANA timezone of the device clock (e.g. Asia/Colombo). Punch times are converted to the site timezone."
+  },
+  {
+   "fieldname": "section_info",
+   "fieldtype": "Section Break",
+   "label": "Device Info (read by the agent)",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "platform",
+   "fieldtype": "Data",
+   "label": "Platform / Model",
+   "read_only": 1
+  },
+  {
+   "fieldname": "firmware",
+   "fieldtype": "Data",
+   "label": "Firmware",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_info",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "mac",
+   "fieldtype": "Data",
+   "label": "MAC Address",
+   "read_only": 1
+  },
+  {
+   "fieldname": "device_reported_name",
+   "fieldtype": "Data",
+   "label": "Name Reported by Device",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_health",
+   "fieldtype": "Section Break",
+   "label": "Health (agent heartbeat)"
+  },
+  {
+   "fieldname": "last_heartbeat",
+   "fieldtype": "Datetime",
+   "label": "Last Heartbeat",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "last_pull",
+   "fieldtype": "Datetime",
+   "label": "Last Device Read",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_pull_ok",
+   "fieldtype": "Check",
+   "label": "Last Device Read OK",
+   "read_only": 1
+  },
+  {
+   "fieldname": "clock_drift_seconds",
+   "fieldtype": "Float",
+   "label": "Clock Drift (s)",
+   "read_only": 1,
+   "description": "Device clock minus the agent's NTP-synced clock, in the device timezone. Positive = device ahead."
+  },
+  {
+   "fieldname": "agent",
+   "fieldtype": "Data",
+   "label": "Agent",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_health",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "user_count",
+   "fieldtype": "Int",
+   "label": "Users",
+   "read_only": 1
+  },
+  {
+   "fieldname": "user_capacity",
+   "fieldtype": "Int",
+   "label": "User Capacity",
+   "read_only": 1
+  },
+  {
+   "fieldname": "record_count",
+   "fieldtype": "Int",
+   "label": "Attendance Records",
+   "read_only": 1
+  },
+  {
+   "fieldname": "record_capacity",
+   "fieldtype": "Int",
+   "label": "Record Capacity",
+   "read_only": 1
+  },
+  {
+   "fieldname": "queue_depth",
+   "fieldtype": "Int",
+   "label": "Agent Queue (not yet confirmed)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_error",
+   "fieldtype": "Small Text",
+   "label": "Last Error",
+   "read_only": 1
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1
+  },
+  {
+   "role": "HR Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1
+  },
+  {
+   "role": "HR User",
+   "read": 1
+  }
+ ]
+}
