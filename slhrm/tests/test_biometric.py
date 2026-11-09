@@ -4,7 +4,9 @@ from datetime import datetime
 
 from frappe.tests import UnitTestCase
 
-from slhrm.biometric import PUNCH_TYPES, parse_device_time, punch_key, to_site_time
+import frappe
+
+from slhrm.biometric import PUNCH_TYPES, name_sanity, outcome, parse_device_time, punch_key, to_site_time
 
 
 class TestBiometric(UnitTestCase):
@@ -32,3 +34,19 @@ class TestBiometric(UnitTestCase):
         self.assertEqual(PUNCH_TYPES[0], "IN")
         self.assertEqual(PUNCH_TYPES[1], "OUT")
         self.assertEqual(PUNCH_TYPES.get(99, "IN"), "IN")
+
+    def test_name_sanity(self):
+        self.assertTrue(name_sanity("Vimukthi", "Vimukthi Perera Vimukthi Perera"))
+        self.assertTrue(name_sanity("K. PERERA", "Kamal K Perera"))
+        self.assertFalse(name_sanity("Ann", "Joanne Silva"))  # whole words only
+        self.assertFalse(name_sanity("NN-575", "Nimal Silva"))
+        self.assertFalse(name_sanity("", "Nimal Silva"))
+        self.assertFalse(name_sanity(None, "Nimal Silva"))
+
+    def test_outcome(self):
+        c = frappe._dict
+        self.assertEqual(outcome(c(result="match", sane=True)), (True, None))
+        self.assertEqual(outcome(c(result="match", sane=False)), (False, "name_mismatch"))
+        self.assertEqual(outcome(c(result="ambiguous", sane=False)), (False, "ambiguous"))
+        self.assertEqual(outcome(c(result="conflict", sane=True)), (False, "conflict"))
+        self.assertEqual(outcome(c(result="none", sane=False)), (False, None))

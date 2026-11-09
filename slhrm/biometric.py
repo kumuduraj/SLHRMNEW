@@ -4,7 +4,10 @@ Every raw device record is stored exactly once:
 - punch_key = "<device serial>|<device user id>|<YYYY-MM-DD HH:MM:SS device time>", unique DB index;
 - per-record result: inserted / duplicate / unknown_employee (stored, status Unmatched) / error;
 - one bad record never rolls back the others (savepoint per record);
-- device user ids are matched to Employee.slhrm_biometric_device_id (preferring the device's branch);
+- device user ids are matched (a) to Employee.slhrm_biometric_device_id (preferring the device's branch),
+  else (b) if SLHRM Settings "Match Device User by Employee Number" is on: to the one Active employee of the
+  device's branch whose employee_number equals the id and whose name contains the name on the device; (b)
+  then saves the id on the Employee, so the link is explicit from then on (classify_by_number);
   unmatched records are re-matched when the mapping is set on the Employee (doc_events on_update).
 IN/OUT pairing and OT are NOT decided here (Attendance Marker / slhrm.overtime).
 
@@ -27,6 +30,8 @@ MAP_ROLES = ("HR Manager", "HR User", "System Manager")
 TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 MAX_BATCH = 500
 FUTURE_TOLERANCE = timedelta(minutes=10)
+SETTINGS = "SLHRM Settings"
+NUMBER_SETTING = "match_device_user_by_employee_number"
 
 # ZKTeco punch state → Biometric Punch Log.punch_type (the raw state is kept in device_punch_state)
 PUNCH_TYPES = {0: "IN", 1: "OUT", 2: "BREAK", 3: "RETURN", 4: "IN", 5: "OUT"}
@@ -93,7 +98,7 @@ def ingest(serial, punches, agent=None):
         frappe.throw(_("At most {0} punches per request.").format(MAX_BATCH))
 
     site_tz = get_system_timezone()
-    cache = {}
+    cache = {"by_number": number_matching_enabled()}
     results = [_ingest_one(device, p, site_tz, cstr(agent)[:140], cache) for p in punches]
     counts = {}
     for r in results:
@@ -117,7 +122,9 @@ def _ingest_one(device, p, site_tz, agent, cache):
             return dict(out, result="duplicate", name=existing)
 
         site_time = to_site_time(device_time, device.timezone, site_tz)
-        emp = resolve_employee(uid, device.branch, cache)
+        emp, reason = resolve_employee(uid, device.branch, cache), None
+        if not emp and cache.get("by_number"):
+            emp, reason = match_by_number(device.name, device.branch, uid, cache)
         state = p.get("punch_state")
         state = None if state in (None, "") else cint(state)
         verify = p.get("verify_mode")
@@ -130,6 +137,7 @@ def _ingest_one(device, p, site_tz, agent, cache):
             "punch_time": site_time,
             "punch_type": PUNCH_TYPES.get(state, "IN"),
             "processing_status": "Pending" if emp else "Unmatched",
+            "match_reason": None if emp else reason,
             "source_device": device.name,
             "device_serial": device.name,
             "device_user_id": uid,
@@ -178,28 +186,189 @@ def heartbeat(serial, info, agent=None):
     return {"ok": True}
 
 
-def rematch(device_user_id=None):
-    """Match Unmatched device records (optionally one device user id) to employees. Returns the count."""
+def rematch(device_user_id=None, by_number=None):
+    """Match Unmatched device records (optionally one device user id) to employees: (a) explicit
+    slhrm_biometric_device_id, else (b) employee number (setting; by_number overrides it). Records left
+    Unmatched get match_reason. Returns the number of records matched."""
     filters = {"processing_status": "Unmatched", "device_user_id": ["is", "set"]}
     if device_user_id:
         filters["device_user_id"] = device_user_id
+    by_number = number_matching_enabled() if by_number is None else cint(by_number)
     branches = {d.name: d.branch for d in frappe.get_all(DEVICE, fields=["name", "branch"])}
+    groups = {}
+    for r in frappe.get_all(PUNCH, filters=filters, fields=["name", "device_serial", "device_user_id", "match_reason"]):
+        groups.setdefault((r.device_serial, r.device_user_id), []).append(r)
     cache, matched = {}, 0
-    for r in frappe.get_all(PUNCH, filters=filters, fields=["name", "device_serial", "device_user_id"]):
-        emp = resolve_employee(r.device_user_id, branches.get(r.device_serial), cache)
-        if emp:
-            frappe.db.set_value(PUNCH, r.name, {
-                "employee": emp.name, "employee_name": emp.employee_name,
-                "employee_number": emp.employee_number, "processing_status": "Pending",
-            })
-            matched += 1
+    for (serial, uid), rows in groups.items():
+        emp, reason = resolve_employee(uid, branches.get(serial), cache), None
+        if not emp and by_number:
+            emp, reason = match_by_number(serial, branches.get(serial), uid, cache)
+            if emp:  # the id is now on the Employee; its on_update re-matched these records
+                matched += sum(1 for r in rows if frappe.db.get_value(PUNCH, r.name, "employee") == emp.name)
+                continue
+        for r in rows:
+            if emp:
+                frappe.db.set_value(PUNCH, r.name, {
+                    "employee": emp.name, "employee_name": emp.employee_name, "match_reason": None,
+                    "employee_number": emp.employee_number, "processing_status": "Pending",
+                })
+                matched += 1
+            elif cstr(r.match_reason) != cstr(reason):
+                frappe.db.set_value(PUNCH, r.name, "match_reason", reason, update_modified=False)
     return matched
 
 
 def on_employee_update(doc, method=None):
-    """doc_events Employee.on_update: a new/changed device user id picks up its Unmatched records."""
+    """doc_events Employee.on_update: a new/changed device user id picks up its Unmatched records
+    (explicit id only — never links another employee from inside this save)."""
     if doc.get("slhrm_biometric_device_id") and doc.has_value_changed("slhrm_biometric_device_id"):
-        rematch(cstr(doc.slhrm_biometric_device_id).strip())
+        rematch(cstr(doc.slhrm_biometric_device_id).strip(), by_number=0)
+
+
+# ── (b) match by Employee Number ────────────────────────────────
+
+
+def number_matching_enabled():
+    return cint(frappe.db.get_single_value(SETTINGS, NUMBER_SETTING))
+
+
+def _norm_name(text):
+    return " ".join(re.sub(r"[^0-9a-z]+", " ", cstr(text).lower()).split())
+
+
+def name_sanity(device_name, employee_name):
+    """The name stored on the device appears (whole words, case/punctuation-insensitive) in the
+    employee's name. No name on the device → False."""
+    dn = _norm_name(device_name)
+    return bool(dn) and f" {dn} " in f" {_norm_name(employee_name)} "
+
+
+def _number_index(cache):
+    if cache is not None and "_number_index" in cache:
+        return cache["_number_index"]
+    by_number, by_id = {}, {}
+    for e in frappe.get_all("Employee", filters={"status": "Active"},
+                            fields=["name", "employee_name", "employee_number", "branch", "slhrm_biometric_device_id"]):
+        num = cstr(e.employee_number).strip().lower()
+        if num and e.branch:
+            by_number.setdefault((e.branch, num), []).append(e)
+        did = cstr(e.slhrm_biometric_device_id).strip()
+        if did:
+            by_id.setdefault(did, []).append(e)
+    idx = (by_number, by_id)
+    if cache is not None:
+        cache["_number_index"] = idx
+    return idx
+
+
+def device_user_name(serial, device_user_id):
+    return frappe.db.get_value(DEVICE_USER, {"device": serial, "device_user_id": device_user_id}, "user_name")
+
+
+def classify_by_number(device_user_id, branch, device_name, cache=None):
+    """Rule (b) without writing. Returns {result: match|ambiguous|conflict|none, employee (row or None),
+    sane (name check), detail}. Hit = Active employee, same branch as the device, employee_number ==
+    device user id (trimmed, case-insensitive). Conflict: the id is already used by another active
+    employee, or the hit already has a different device id (explicit mapping wins)."""
+    uid = cstr(device_user_id).strip()
+    by_number, by_id = _number_index(cache)
+    hits = by_number.get((branch, uid.lower()), []) if branch and uid else []
+    if not hits:
+        return frappe._dict(result="none", employee=None, sane=False, detail="")
+    if len(hits) > 1:
+        return frappe._dict(result="ambiguous", employee=None, sane=False,
+                            detail=", ".join(h.name for h in hits))
+    e = hits[0]
+    sane = name_sanity(device_name, e.employee_name)
+    others = [o for o in by_id.get(uid, []) if o.name != e.name]
+    if others:
+        return frappe._dict(result="conflict", employee=e, sane=sane,
+                            detail=f"id {uid} used by {others[0].name} ({others[0].employee_name})")
+    current = cstr(e.slhrm_biometric_device_id).strip()
+    if current and current != uid:
+        return frappe._dict(result="conflict", employee=e, sane=sane, detail=f"{e.name} already has device id {current}")
+    return frappe._dict(result="match", employee=e, sane=sane, detail="")
+
+
+def outcome(c):
+    """What (b) does with a classification: (link employee?, match_reason for the punches)."""
+    if c.result == "match":
+        return (True, None) if c.sane else (False, "name_mismatch")
+    return False, (c.result if c.result in ("ambiguous", "conflict") else None)
+
+
+def link_by_number(employee, device_user_id, cache=None):
+    """Save the device id on the Employee (Version + normal hooks; on_update re-matches its records)."""
+    emp = frappe.get_doc("Employee", employee)
+    emp.slhrm_biometric_device_id = device_user_id
+    emp.flags.ignore_permissions = True
+    emp.save(ignore_permissions=True)
+    if cache is not None:  # the index / resolve cache now know a different state
+        for k in [k for k in cache if isinstance(k, tuple) and k[0] == device_user_id] + ["_number_index"]:
+            cache.pop(k, None)
+    return frappe._dict(name=emp.name, employee_name=emp.employee_name, employee_number=emp.employee_number,
+                        branch=emp.branch)
+
+
+def match_by_number(serial, branch, device_user_id, cache=None):
+    """Rule (b) with writes: (employee row, None) when linked, else (None, match_reason)."""
+    c = classify_by_number(device_user_id, branch, device_user_name(serial, device_user_id), cache)
+    link, reason = outcome(c)
+    if not link:
+        return None, reason
+    frappe.db.savepoint("slhrm_link")
+    try:
+        return link_by_number(c.employee.name, cstr(device_user_id).strip(), cache), None
+    except Exception:
+        frappe.db.rollback(save_point="slhrm_link")
+        frappe.log_error(title=f"SLHRM: link device user {device_user_id} to {c.employee.name}")
+        return None, None
+
+
+def employee_number_matching(device=None, dry_run=1, since="2026-10-01"):
+    """Bench execute only (review, then apply): every Unmatched device user, classified by rule (b).
+    dry_run=1 writes nothing. dry_run=0 links matches whose name check passes (re-matching their punches)
+    and stores match_reason on the rest. Returns {"rows": [...], "totals": {...}, "matched": {emp: n}}."""
+    cond, values = "", {"since": since}
+    if device:
+        values["serial"] = frappe.db.get_value(DEVICE, {"device_name": device}, "name") or device
+        cond = "and device_serial = %(serial)s"
+    groups = frappe.db.sql(f"""
+        select device_serial, device_user_id, count(*) as punches,
+               sum(case when punch_time >= %(since)s then 1 else 0 end) as recent
+        from `tab{PUNCH}`
+        where processing_status = 'Unmatched' and ifnull(device_user_id, '') != '' {cond}
+        group by device_serial, device_user_id
+        order by device_serial, cast(device_user_id as unsigned), device_user_id""", values, as_dict=True)
+    devices = {d.name: d for d in frappe.get_all(DEVICE, fields=["name", "device_name", "branch"])}
+    cache, rows, totals, matched = {}, [], {}, {}
+    for g in groups:
+        d = devices.get(g.device_serial) or frappe._dict()
+        dn = device_user_name(g.device_serial, g.device_user_id)
+        c = classify_by_number(g.device_user_id, d.branch, dn, cache)
+        link, reason = outcome(c)
+        key = c.result if c.result != "match" else ("match" if c.sane else "match, name check no")
+        totals[key] = totals.get(key, 0) + 1
+        row = frappe._dict(device=d.device_name, device_user_id=g.device_user_id, device_name=dn,
+                           employee=c.employee.name if c.employee else None,
+                           employee_name=c.employee.employee_name if c.employee else None,
+                           branch=c.employee.branch if c.employee else d.branch,
+                           punches=cint(g.punches), recent=cint(g.recent), result=c.result,
+                           name_sanity="yes" if c.sane else "no", detail=c.detail, applied=False)
+        rows.append(row)
+        if cint(dry_run):
+            continue
+        if link:
+            emp, _r = match_by_number(g.device_serial, d.branch, g.device_user_id, cache)
+            if emp:
+                row.applied = True
+                matched[emp.name] = frappe.db.count(PUNCH, {"device_user_id": g.device_user_id, "employee": emp.name})
+                continue
+        frappe.db.set_value(PUNCH, {"device_serial": g.device_serial, "device_user_id": g.device_user_id,
+                                    "processing_status": "Unmatched"}, "match_reason", reason, update_modified=False)
+    if not cint(dry_run):
+        frappe.db.commit()
+    return {"rows": rows, "totals": totals, "matched": matched}
 
 
 # ── device users (names for the mapping screen) ─────────────────

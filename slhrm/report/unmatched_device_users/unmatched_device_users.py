@@ -1,9 +1,11 @@
 # Unmatched Device Users: device user ids whose punches have no Employee yet, newest activity first.
+# Employee No. Hit / Reason = rule (b) of slhrm.biometric (classify_by_number), evaluated live.
 import frappe
 from frappe import _
 from frappe.utils import add_months, get_first_day, today
 
-from slhrm.biometric import DEVICE, DEVICE_USER, PUNCH, mapping_candidates, suggest_employee
+from slhrm.biometric import (DEVICE, DEVICE_USER, PUNCH, classify_by_number, mapping_candidates, number_matching_enabled,
+                             suggest_employee)
 
 
 def execute(filters=None):
@@ -26,6 +28,7 @@ def execute(filters=None):
     names = {(u.device, u.device_user_id): u for u in frappe.get_all(
         DEVICE_USER, fields=["device", "device_user_id", "user_name", "on_device"])}
     employees = mapping_candidates()
+    cache, by_number = {}, number_matching_enabled()
     for r in rows:
         d = devices.get(r.device_serial) or frappe._dict()
         u = names.get((r.device_serial, r.device_user_id)) or frappe._dict()
@@ -37,8 +40,24 @@ def execute(filters=None):
         r.suggested_employee = emp.name if emp else None
         r.suggested_name = emp.employee_name if emp else None
         r.confidence = conf
+        c = classify_by_number(r.device_user_id, d.branch, u.user_name, cache)
+        r.number_hit = c.employee.name if c.employee else None
+        r.number_hit_name = c.employee.employee_name if c.employee else None
+        r.reason = reason_text(c, by_number)
         r.action = ""
     return columns(since), rows
+
+
+def reason_text(c, by_number):
+    if c.result == "match":
+        if not c.sane:
+            return _("name check failed — confirm")
+        return _("match — linked on next punch") if by_number else _("match (setting off)")
+    if c.result == "ambiguous":
+        return _("ambiguous: {0}").format(c.detail)
+    if c.result == "conflict":
+        return _("conflict: {0}").format(c.detail)
+    return _("no employee number hit")
 
 
 def columns(since):
@@ -54,6 +73,9 @@ def columns(since):
         {"fieldname": "suggested_employee", "label": _("Suggested Employee"), "fieldtype": "Link", "options": "Employee", "width": 130},
         {"fieldname": "suggested_name", "label": _("Suggested Name"), "fieldtype": "Data", "width": 180},
         {"fieldname": "confidence", "label": _("Confidence"), "fieldtype": "Data", "width": 150},
+        {"fieldname": "number_hit", "label": _("Employee No. Hit"), "fieldtype": "Link", "options": "Employee", "width": 130},
+        {"fieldname": "number_hit_name", "label": _("Hit Name"), "fieldtype": "Data", "width": 170},
+        {"fieldname": "reason", "label": _("Reason"), "fieldtype": "Data", "width": 220},
         {"fieldname": "action", "label": _("Action"), "fieldtype": "Data", "width": 140},
         {"fieldname": "device_serial", "label": _("Device Serial"), "fieldtype": "Data", "width": 130},
         {"fieldname": "on_device", "label": _("Still on Device"), "fieldtype": "Check", "width": 90},

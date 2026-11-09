@@ -70,6 +70,14 @@
             "in_list_view": 1
         },
         {
+            "fieldname": "match_reason",
+            "fieldtype": "Select",
+            "label": "Match Reason",
+            "options": "\nambiguous\nconflict\nname_mismatch",
+            "read_only": 1,
+            "description": "Why an Unmatched record was not matched by employee number."
+        },
+        {
             "fieldname": "column_break_2",
             "fieldtype": "Column Break"
         },
@@ -191,5 +199,5 @@
             "report": 1
         }
     ],
-    "modified": "2026-11-09 11:30:00.000000"
+    "modified": "2026-11-09 14:00:00.000000"
 }

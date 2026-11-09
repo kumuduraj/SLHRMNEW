@@ -243,8 +243,14 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   (`slhrm.biometric.ingest`: inserted / duplicate / unknown_employee / error; savepoint per record).
 - Unknown device users are STORED (`employee` empty, status Unmatched) and re-matched when
   `Employee.slhrm_biometric_device_id` is set (doc_events `on_update` → `slhrm.biometric.rematch`).
-  Matching: the employee with that id in the device's branch, else the only one anywhere; ambiguous → Unmatched.
-  Never by Employee name / employee_number.
+  Matching (v0.0.13): (a) explicit `slhrm_biometric_device_id` — the employee with that id in the device's branch,
+  else the only one anywhere; (b) only if SLHRM Settings `match_device_user_by_employee_number`: the ONE Active
+  employee of the device's branch whose `employee_number` == device user id (trimmed, case-insensitive) AND whose
+  name contains the name on the device (`name_sanity`, whole words) → the id is saved on that Employee
+  (`link_by_number`, Employee.save → Version). Not linked → Unmatched with `match_reason` ambiguous / conflict
+  (id used by another active employee, or the hit already has a different id) / name_mismatch.
+  `classify_by_number` is the only implementation (ingest, rematch, report, `employee_number_matching` review/apply,
+  bench execute only). Never match by Employee name alone.
 - `Biometric Device` (name = serial): branch, ip, timezone (punch times converted to the site tz), health
   from `device_heartbeat`. Ingest refuses unknown or disabled serials.
 - IN/OUT pairing and OT are NOT decided at ingest (Attendance Marker / `slhrm.overtime`); the marker reads
@@ -254,7 +260,8 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   Rotate: generate `secrets.token_urlsafe(32)` in one process → save on SLHRM Settings (device_api_enabled = 1) →
   write the config → verify no key 403 / wrong key 403 / agent heartbeat 200 (show only length + first 4 chars).
 - Mapping screen: Script Report "Unmatched Device Users" (`slhrm/report/`, module symlink `slhrm/slhrm/report`);
-  "Map to Employee" = `slhrm.biometric.map_device_user` (refuses an id used by another active employee).
+  "Map to Employee" = `slhrm.biometric.map_device_user` (refuses an id used by another active employee);
+  columns Employee No. Hit / Reason show rule (b) live; the dialog pre-fills the number hit.
 - Agent scheduler (2026-11-09): rajerp crontab `*/5 … slhrm_agent.py --config ~/slhrm-agent/config.json run` (log
   `~/slhrm-agent/agent.log`); only devices with `enabled: true` in the config are read (DUTCHPUB). DUTCHPUB backfilled
   (27 975 records from 2025-11-04; re-send = all duplicate). `backfill --device N [--resend]` for new devices. Unit tests: `python3 -m unittest discover -s

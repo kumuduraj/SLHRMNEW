@@ -10,7 +10,7 @@ frappe.query_reports["Unmatched Device Users"] = {
 			const esc = frappe.utils.escape_html;
 			return `<button class="btn btn-xs btn-primary slhrm-map-btn"
 				data-serial="${esc(data.device_serial)}" data-uid="${esc(data.device_user_id)}"
-				data-name="${esc(data.user_name || "")}" data-emp="${esc(data.suggested_employee || "")}"
+				data-name="${esc(data.user_name || "")}" data-emp="${esc(data.number_hit || data.suggested_employee || "")}"
 				data-device="${esc(data.device_name || "")}">${__("Map to Employee")}</button>`;
 		}
 		return default_formatter(value, row, column, data);
