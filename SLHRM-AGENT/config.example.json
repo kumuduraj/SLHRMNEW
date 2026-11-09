@@ -1,0 +1,16 @@
+{
+ "server_url": "https://hrm.gillsinternational.com",
+ "api_key": "",
+ "agent_name": "vps-gillshr",
+ "db_path": "/home/rajerp/slhrm-agent/queue.sqlite",
+ "lock_path": "/home/rajerp/slhrm-agent/agent.lock",
+ "log_file": "/home/rajerp/slhrm-agent/agent.log",
+ "batch_size": 200,
+ "timeout_seconds": 10,
+ "drift_alert_seconds": 120,
+ "plausible_from": "2020-01-01",
+ "devices": [
+  {"name": "EXAMPLE", "serial": "", "branch": "", "ip": "192.0.2.10", "port": 4370,
+   "password": 0, "transport": "tcp", "timezone": "Asia/Colombo", "enabled": true}
+ ]
+}

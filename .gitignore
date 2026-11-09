@@ -50,3 +50,7 @@ slhrm/slhrm/slhrm/
 
 # tools/check.sh scratch
 /.check_import_status
+
+# SLHRM agent local files (config with secrets, queue) never in the repo
+/SLHRM-AGENT/config.json
+/SLHRM-AGENT/*.sqlite*
