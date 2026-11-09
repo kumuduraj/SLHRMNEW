@@ -166,12 +166,19 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   (`make_employer_contribution_jv_entry`, needs per-component expense/liability accounts).
 
 ## DEMO data (`slhrm/demo/data.py`, bench execute only — never whitelisted)
-- `bench --site hrm.gillsinternational.com execute slhrm.demo.data.create` (idempotent; refuses if
-  non-DEMO Employees exist), `...report`, `...preview_payroll`, `...remove`.
+- **Removed from production (hrm.gillsinternational.com) on 2026-11-09** (v0.0.11). The code stays for
+  dev / test sites: `create()` refuses unless site_config has `"slhrm_allow_demo": 1` (absent = refused;
+  never set it on production) and also refuses if non-DEMO Employees exist.
+- **Tests on production use throwaway data only**: create the minimum records, run the check, delete
+  them and print proof that each one is gone (plus no Error Log rows left behind).
+- `...create`, `...report`, `...preview_payroll`, `...remove` (`--kwargs '{"dry_run": 1}'` lists every
+  record, counts per doctype, and every record OUTSIDE the set that links into it).
 - Every created doc is listed in the private File `slhrm_demo_manifest.json`; `remove()` deletes those
-  plus records hooks/testing create for DEMO employees or DEMO branches, and restores SLHRM Settings.
-- Never run `create()` on a site with real employees; remove the demo before go-live.
-- **Expected DEMO payroll, Oct 2026 (v0.0.9, confirmed by Raj 2026-11-08)** — any change needs an explanation:
+  plus records hooks/testing create for DEMO employees, DEMO branches or DEMO users (incl. HRMS PWA
+  Notifications), and restores SLHRM Settings. `remove()` deletes with `force=1` (no link check) — run the
+  dry run first.
+- **Expected DEMO payroll, Oct 2026 (v0.0.9, confirmed by Raj 2026-11-08)** — reference for a dev site with
+  the DEMO data; any change needs an explanation:
 
   | Emp | Pay days | Gross | EPF 8% | Employer 12% / 3% | Net |
   |---|---|---|---|---|---|
@@ -190,6 +197,34 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 
   E11 EPF = 8% of FINAL DEMO Basic + BRA (110000 + 3500). The pre-v0.0.9 9400 (formula on SSA base
   114000 + 3500) is obsolete.
+
+## Employee logins + forced password change (v0.0.11, `slhrm/user_setup.py`)
+- Employee `after_insert` → `user_setup.create_employee_user`. **Never a fixed password.** Outgoing email
+  deliverable (enabled outgoing Email Account or `mail_server`, emails not muted) → User with
+  `send_welcome_email=1` (Frappe set-password link). Otherwise → random 12-char password (`secrets`) +
+  `User.slhrm_must_change_password = 1`, shown ONCE to the session user (msgprint in the response only:
+  never Error Log / Comment / Version / log).
+- **Data Import never shows a password**: Frappe's importer keeps `message_log` across successful rows
+  and writes it into the Data Import Log of a later FAILED row. Imported employees get a random password
+  nobody sees; HR uses Employee → Actions → **Issue Temporary Password**
+  (`user_setup.issue_temporary_password`, HR Manager / System Manager, POST, only for users whose roles ⊆
+  Employee / Employee Self Service / Desk User; never self / Administrator).
+- No email on the employee → no user. Interactive: an alert. Data Import: ONE Info Comment on the Data
+  Import ("SLHRM user creation summary"), rebuilt from the DB per row — no Error Log per employee.
+- **Must change** = flag 1 AND `last_password_reset_date` empty. Frappe's own `update_password`
+  (/update-password page, PWA ChangePassword) sets that date, so a real change ends it and the flag is
+  cleared lazily. No core hook fires on a password change (it writes `__Auth` + `db.set_value`) — don't
+  look for one. `clear_must_change_password` can't clear without a real change.
+- Enforcement: `auth_hooks` → `enforce_password_change` (every request, AFTER cookie / token / API-key
+  auth; `before_request` runs before token auth): GET `/desk`, `/app`, `/slhrm` → 302 `/update-password`
+  (for `/slhrm` it sets Frappe's `redirect_after_login` so the user returns to the PWA); `/api/*` → 403
+  "Password change required" except `ALLOWED_METHODS` (login, logout, update_password,
+  test_password_strength, the two slhrm check/clear endpoints); `/private/files/*` → 403.
+  `on_session_creation` can't redirect (`set_user_info` overwrites `home_page` after it) — the 302 on
+  `/desk` does it. `extend_bootinfo` + `slhrm.js` redirect a Desk that booted anyway.
+- Cache: `slhrm_must_change_pw` hash caches only "no change needed" (0); flag set → `_forget(user)`;
+  User `on_update` → `_forget`.
+- Prod has NO outgoing Email Account (only "Jobs", outgoing off) → every new login gets a temporary password.
 
 ## App check-in
 - Allowed only when `Employee.slhrm_allow_app_checkin` and HR Settings
@@ -246,11 +281,9 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - (v0.0.9, 1.4a) A new worksheet opened on Month 01: Frappe's `create_new` pre-fills a required Select
   with its first option, which a stubbed Node harness did not do, so the harness passed while Desk failed
   → **form JS must be verified in a real browser (Playwright, `~/pwtest`, scripts in `~/pw/`, logged in as
-  a DEMO user), not a stubbed harness.** Reproduce the bug in the browser first, then fix.
+  a throwaway test user — the DEMO users are gone since v0.0.11), not a stubbed harness.** Reproduce the bug in the browser first, then fix.
 - (v0.0.9, 1.4b) The EMPLOYER toggle hid body cells but not the headers (header loops read `c.group`,
   which only `t.columns` carry) → misaligned columns; found only by measuring the rendered DOM.
 
 ## Known open items (not yet fixed)
 - `SLHRM Settings` fields never read by code: `auto_mark_attendance`, `auto_create_payroll_on_submit`.
-- `create_employee_user` sets default password `Abc@12345` and shows it in a msgprint;
-  `slhrm_must_change_password` is enforced only by the PWA router, not in Desk/API.
