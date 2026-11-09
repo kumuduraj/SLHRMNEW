@@ -1,3 +1,5 @@
+import json
+
 import frappe
 from frappe.utils import flt
 
@@ -27,6 +29,9 @@ def apply_salary_rules(slip):
 def apply_package_overrides(slip):
     """Apply Employee Salary Package override amounts to a Salary Slip (saved or in-memory).
 
+    Effective-dated: the amounts come from the snapshot (`slhrm_package_components`) stored on the
+    Salary Structure Assignment the slip uses (HRMS: latest submitted SSA with from_date <= the slip's
+    start date), so earlier periods keep their own amounts after a package change.
     Call apply_salary_rules(), not this directly: it does not re-total the slip (apply_epf does,
     with HRMS's own get_component_totals / set_net_pay).
     Returns True if any override was applied.
@@ -34,16 +39,13 @@ def apply_package_overrides(slip):
     if not slip.employee:
         return False
 
-    package_name = frappe.db.exists("Employee Salary Package", slip.employee)
-    if not package_name:
-        return False
-
-    package = frappe.get_doc("Employee Salary Package", package_name)
-    if not package.components:
+    rows = _package_rows_for_slip(slip)
+    if not rows:
         return False
 
     override_map = {}
-    for row in package.components:
+    for row in rows:
+        row = frappe._dict(row)
         if row.override and flt(row.amount) >= 0:
             override_map[row.salary_component] = {
                 "amount": flt(row.amount),
@@ -68,3 +70,36 @@ def apply_package_overrides(slip):
             else:
                 slip_row.amount = amount
     return True
+
+
+def _slip_ssa(slip):
+    """The SSA HRMS uses for this slip (same rule as SalarySlip.set_salary_structure_assignment)."""
+    ssa = getattr(slip, "_salary_structure_assignment", None)
+    if ssa and ssa.get("name"):
+        return frappe.db.get_value("Salary Structure Assignment", ssa.get("name"),
+                                   ["name", "slhrm_managed", "slhrm_package_components"], as_dict=True)
+    start = slip.get("actual_start_date") or slip.get("start_date")
+    if not (slip.get("salary_structure") and start):
+        return None
+    return frappe.db.get_value(
+        "Salary Structure Assignment",
+        {"employee": slip.employee, "salary_structure": slip.salary_structure,
+         "from_date": ("<=", start), "docstatus": 1},
+        ["name", "slhrm_managed", "slhrm_package_components"], as_dict=True, order_by="from_date desc",
+    )
+
+
+def _package_rows_for_slip(slip):
+    """Package rows in force for the slip's period: the SSA's snapshot. A non-package SSA -> none.
+    Legacy package SSA without a snapshot -> the package's current rows (patch v0_0_10 backfills)."""
+    ssa = _slip_ssa(slip)
+    if not ssa or not ssa.slhrm_managed:
+        return []
+    if ssa.slhrm_package_components:
+        try:
+            return json.loads(ssa.slhrm_package_components)
+        except ValueError:
+            frappe.log_error(title=f"SLHRM: bad package snapshot on {ssa.name}")
+            return []
+    package = frappe.db.exists("Employee Salary Package", slip.employee)
+    return [r.as_dict() for r in frappe.get_doc("Employee Salary Package", package).components] if package else []

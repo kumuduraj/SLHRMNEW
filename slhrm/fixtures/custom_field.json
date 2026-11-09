@@ -124,5 +124,19 @@
     "depends_on": "eval:doc.type=='Deduction' || doc.statistical_component",
     "description": "SLHRM: amount = EPF/ETF base x rate / 100, replacing the structure formula value. Statistical components are shown as employer lines (never in totals).",
     "name": "Salary Component-slhrm_epf_rate"
+  },
+  {
+    "doctype": "Custom Field",
+    "dt": "Salary Structure Assignment",
+    "module": "SLHRM",
+    "fieldname": "slhrm_package_components",
+    "fieldtype": "Code",
+    "options": "JSON",
+    "label": "Package components (snapshot)",
+    "insert_after": "slhrm_package_link",
+    "read_only": 1,
+    "depends_on": "eval:doc.slhrm_managed",
+    "description": "SLHRM: Employee Salary Package rows in force from this assignment's From Date. Salary Slips of periods using this assignment apply these amounts.",
+    "name": "Salary Structure Assignment-slhrm_package_components"
   }
 ]
