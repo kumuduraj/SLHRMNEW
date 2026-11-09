@@ -242,6 +242,16 @@ def device_ingest(serial, punches, agent=None):
 
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
+def device_users(serial, users, agent=None):
+    """SLHRM agent → device user list (user_id, name, privilege; never PINs / cards / templates).
+    Header: X-Device-Key."""
+    _validate_device_api_key(header_only=True)
+    from slhrm.biometric import sync_users
+
+    return sync_users(serial, users)
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
 def device_heartbeat(serial, info, agent=None):
     """SLHRM agent → device health (slhrm.biometric.heartbeat). Header: X-Device-Key."""
     _validate_device_api_key(header_only=True)

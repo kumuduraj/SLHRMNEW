@@ -249,6 +249,12 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   from `device_heartbeat`. Ingest refuses unknown or disabled serials.
 - IN/OUT pairing and OT are NOT decided at ingest (Attendance Marker / `slhrm.overtime`); the marker reads
   only rows with an employee. `punch_type` comes from the device punch state; the raw state is kept.
+- **Device API key** lives ONLY in SLHRM Settings `device_api_key` (encrypted Password) and `~/slhrm-agent/config.json`
+  `device_key` (chmod 600, owner rajerp). Never print it or put it in logs, the audit file, CLAUDE.md, git or ~/cc-tmp.
+  Rotate: generate `secrets.token_urlsafe(32)` in one process → save on SLHRM Settings (device_api_enabled = 1) →
+  write the config → verify no key 403 / wrong key 403 / agent heartbeat 200 (show only length + first 4 chars).
+- Mapping screen: Script Report "Unmatched Device Users" (`slhrm/report/`, module symlink `slhrm/slhrm/report`);
+  "Map to Employee" = `slhrm.biometric.map_device_user` (refuses an id used by another active employee).
 - Agent scheduler stays OFF until Raj approves the backfill. Unit tests: `python3 -m unittest discover -s
   SLHRM-AGENT/tests`; server pure functions: `slhrm.tests.test_biometric`.
 - The old sync tool for hr.gillsinternational.com (`~/frappe-bench/biometric-attendance-sync-tool`) is NOT

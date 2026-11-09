@@ -39,6 +39,22 @@
    "type": "Link"
   },
   {
+   "label": "Biometric Device",
+   "link_to": "Biometric Device",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "label": "Unmatched Device Users",
+   "link_to": "Unmatched Device Users",
+   "link_type": "Report",
+   "is_query_report": 1,
+   "report_ref_doctype": "Biometric Punch Log",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
    "label": "Attendance Marker",
    "link_to": "Attendance Marker",
    "link_type": "DocType",
@@ -317,7 +333,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-11-08 13:00:00.000000",
+ "modified": "2026-11-09 11:30:00.000000",
  "modified_by": "Administrator",
  "module": "SLHRM",
  "name": "SLHRM",

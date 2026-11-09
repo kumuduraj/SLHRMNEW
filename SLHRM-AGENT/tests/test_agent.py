@@ -92,13 +92,19 @@ class FakeServer:
         self.calls = 0
         self.down = False
         self.crash_after_store = False
+        self.payloads = []
+        self.users_calls = 0
 
     def post(self, cfg, method, payload):
         self.calls += 1
         if self.down:
             raise A.AgentError("HTTP 502 device_ingest: Bad Gateway")
+        if method == "slhrm.api.device_users":
+            self.users_calls += 1
+            return {"users": len(payload["users"])}
         if method != "slhrm.api.device_ingest":
             return {"ok": True}
+        self.payloads.append(payload)
         results = []
         for p in payload["punches"]:
             key = f"{payload['serial']}|{p['device_user_id']}|{p['timestamp']}"
@@ -312,6 +318,43 @@ class TestPerUser(Base):
         self.assertEqual(a["1"]["since"], 1)
         self.assertEqual(a["1"]["last"], T0 + timedelta(days=40))
         self.assertEqual(a["2"]["since"], 0)
+
+
+class TestPhase21(Base):
+    def test_drift_stored_on_new_rows_and_sent(self):
+        A.enqueue(self.db, "SER1", [{"user_id": "1", "timestamp": T0}], drift=-670.2)
+        A.enqueue(self.db, "SER1", [{"user_id": "1", "timestamp": T0}], drift=5.0)  # existing row keeps its first drift
+        self.assertEqual(self.db.execute("SELECT drift_seconds FROM punch").fetchone()[0], -670.2)
+        srv = FakeServer()
+        A.push(self.db, self.cfg, post=srv.post)
+        self.assertEqual(srv.payloads[0]["punches"][0]["clock_drift_seconds"], -670.2)
+
+    def test_backfill_then_resend_is_all_duplicate(self):
+        conn = FakeConn([rec("1", T0), rec("2", T0), rec("3", T0 + timedelta(days=1))],
+                        users=[SimpleNamespace(user_id="1", name="A", privilege=0)])
+        srv = FakeServer()
+        r1 = A.cmd_backfill(self.cfg, "D1", factory=lambda *a: conn, post=srv.post)
+        self.assertEqual(r1["push"]["inserted"], 3)
+        r2 = A.cmd_backfill(self.cfg, "D1", factory=lambda *a: conn, post=srv.post)
+        self.assertEqual((r2["new_in_queue"], r2["push"].get("sent", 0)), (0, 0))
+        r3 = A.cmd_backfill(self.cfg, "D1", resend=True, factory=lambda *a: conn, post=srv.post)
+        self.assertEqual(r3["push"].get("inserted", 0), 0)
+        self.assertEqual(r3["push"]["duplicate"], 3)
+        self.assertEqual(srv.users_calls, 1)  # user list unchanged after the first sync
+
+    def test_device_key_preferred_and_api_key_fallback(self):
+        self.assertEqual(A.device_key({"device_key": "a", "api_key": "b"}), "a")
+        self.assertEqual(A.device_key({"api_key": "b"}), "b")
+        self.assertEqual(A.device_key({}), "")
+
+    def test_old_queue_schema_is_migrated(self):
+        import sqlite3
+        p = os.path.join(self.dir, "old.sqlite")
+        old = sqlite3.connect(p)
+        old.executescript(A.SCHEMA.replace("    drift_seconds REAL,                         -- device clock drift measured at the pull that first read it\n", ""))
+        old.close()
+        db = A.db_open(p)
+        self.assertIn("drift_seconds", {r[1] for r in db.execute("PRAGMA table_info(punch)")})
 
 
 class TestConfig(Base):

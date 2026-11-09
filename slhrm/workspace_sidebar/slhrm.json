@@ -53,6 +53,30 @@
   {
    "child": 1,
    "collapsible": 0,
+   "icon": "fingerprint",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Biometric Device",
+   "link_to": "Biometric Device",
+   "link_type": "DocType",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 0,
+   "icon": "users",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Unmatched Device Users",
+   "link_to": "Unmatched Device Users",
+   "link_type": "Report",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 0,
    "icon": "square-check",
    "indent": 0,
    "keep_closed": 0,
@@ -539,7 +563,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-11-08 13:00:00.000000",
+ "modified": "2026-11-09 11:30:00.000000",
  "modified_by": "Administrator",
  "module": "SLHRM",
  "name": "SLHRM",

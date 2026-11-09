@@ -11,7 +11,9 @@ IN/OUT pairing and OT are NOT decided here (Attendance Marker / slhrm.overtime).
 Whitelisted wrappers (API key, fail closed) live in slhrm.api: device_ingest, device_heartbeat.
 """
 import json
+import re
 from datetime import datetime, timedelta
+from difflib import SequenceMatcher
 from zoneinfo import ZoneInfo
 
 import frappe
@@ -20,6 +22,8 @@ from frappe.utils import cint, cstr, flt, get_system_timezone, now_datetime
 
 PUNCH = "Biometric Punch Log"
 DEVICE = "Biometric Device"
+DEVICE_USER = "Biometric Device User"
+MAP_ROLES = ("HR Manager", "HR User", "System Manager")
 TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 MAX_BATCH = 500
 FUTURE_TOLERANCE = timedelta(minutes=10)
@@ -117,6 +121,7 @@ def _ingest_one(device, p, site_tz, agent, cache):
         state = p.get("punch_state")
         state = None if state in (None, "") else cint(state)
         verify = p.get("verify_mode")
+        drift = p.get("clock_drift_seconds")
         doc = frappe.get_doc({
             "doctype": PUNCH,
             "employee": emp.name if emp else None,
@@ -133,6 +138,7 @@ def _ingest_one(device, p, site_tz, agent, cache):
             "punch_key": key,
             "device_punch_state": state,
             "verify_mode": None if verify in (None, "") else cint(verify),
+            "clock_drift_seconds": None if drift in (None, "") else flt(drift),
             "received_at": now_datetime(),
             "agent": agent,
             "raw_data": json.dumps(p, sort_keys=True, default=str)[:1000],
@@ -194,3 +200,119 @@ def on_employee_update(doc, method=None):
     """doc_events Employee.on_update: a new/changed device user id picks up its Unmatched records."""
     if doc.get("slhrm_biometric_device_id") and doc.has_value_changed("slhrm_biometric_device_id"):
         rematch(cstr(doc.slhrm_biometric_device_id).strip())
+
+
+# ── device users (names for the mapping screen) ─────────────────
+
+
+def sync_users(serial, users):
+    """Upsert the device's user list (user_id, name, privilege). Users missing from the list are kept
+    with on_device = 0. Returns counts."""
+    device = get_device(serial)
+    if isinstance(users, str):
+        users = json.loads(users)
+    if not isinstance(users, list):
+        frappe.throw(_("users must be a list."))
+    now = now_datetime()
+    seen, created, updated = set(), 0, 0
+    existing = {r.device_user_id: r for r in frappe.get_all(
+        DEVICE_USER, filters={"device": device.name}, fields=["name", "device_user_id", "user_name", "privilege", "on_device"])}
+    for u in users:
+        uid = cstr((u or {}).get("user_id")).strip()
+        if not uid or "|" in uid:
+            continue
+        seen.add(uid)
+        name, priv = cstr(u.get("name")).strip()[:140], cint(u.get("privilege"))
+        row = existing.get(uid)
+        if not row:
+            frappe.get_doc({"doctype": DEVICE_USER, "user_key": f"{device.name}|{uid}", "device": device.name,
+                            "device_user_id": uid, "user_name": name, "privilege": priv, "on_device": 1,
+                            "last_synced": now}).insert(ignore_permissions=True)
+            created += 1
+        elif (row.user_name, cint(row.privilege), cint(row.on_device)) != (name, priv, 1):
+            frappe.db.set_value(DEVICE_USER, row.name, {"user_name": name, "privilege": priv, "on_device": 1, "last_synced": now})
+            updated += 1
+    gone = [r.name for uid, r in existing.items() if uid not in seen and cint(r.on_device)]
+    for n in gone:
+        frappe.db.set_value(DEVICE_USER, n, {"on_device": 0, "last_synced": now})
+    return {"users": len(seen), "created": created, "updated": updated, "no_longer_on_device": len(gone)}
+
+
+# ── mapping suggestions + Map to Employee ───────────────────────
+
+
+def _tokens(text):
+    return re.sub(r"[^a-z ]", " ", cstr(text).lower()).split()
+
+
+def mapping_candidates():
+    """Active employees without a device id, with name tokens (for suggest_employee)."""
+    rows = frappe.get_all("Employee", filters={"status": "Active", "slhrm_biometric_device_id": ["in", ["", None]]},
+                          fields=["name", "employee_name", "first_name", "middle_name", "last_name", "branch"])
+    for e in rows:
+        e.tokens = set(_tokens(e.employee_name)) | set(_tokens(e.first_name)) | set(_tokens(e.middle_name)) | set(_tokens(e.last_name))
+        e.full = " ".join(_tokens(e.employee_name))
+    return rows
+
+
+def suggest_employee(device_name, branch, employees):
+    """(employee, confidence) for a name stored on a device — same rules as the review CSV:
+    exact full name / all name tokens (high), first-name only (medium) within the device's branch;
+    other branch, similar spelling or several candidates → low / ambiguous; else (None, "none")."""
+    dn = " ".join(_tokens(device_name))
+    dtok = set(dn.split())
+    if not dn:
+        return None, "none"
+    cands = [(e, "exact") if dn == e.full else (e, "tokens") for e in employees if dn == e.full or dtok <= e.tokens]
+    if not cands:
+        scored = []
+        for e in employees:
+            r = max([SequenceMatcher(None, dn, t).ratio() for t in e.tokens] + [SequenceMatcher(None, dn, e.full).ratio()])
+            if r >= 0.85:
+                scored.append((r, e))
+        cands = [(e, "similar") for r, e in sorted(scored, key=lambda x: -x[0])]
+    in_branch = [c for c in cands if branch and c[0].branch == branch]
+    if len(in_branch) == 1:
+        e, how = in_branch[0]
+        if how == "similar":
+            return e, "low (similar name)"
+        if how == "exact" or len(dtok) > 1:
+            return e, "high"
+        return e, "medium (first name)"
+    if len(in_branch) > 1:
+        return in_branch[0][0], f"ambiguous ({len(in_branch)} in branch)"
+    if len(cands) == 1:
+        return cands[0][0], f"low (other branch: {cands[0][0].branch})"
+    if len(cands) > 1:
+        return cands[0][0], f"ambiguous ({len(cands)} candidates)"
+    return None, "none"
+
+
+@frappe.whitelist(methods=["POST"])
+def map_device_user(device_serial, device_user_id, employee, replace=0):
+    """Desk "Map to Employee": set Employee.slhrm_biometric_device_id; its Unmatched punches re-match
+    (Employee on_update). Refused when another active employee already uses the id. If the employee
+    already has a different id, returns {"confirm": ...} unless replace=1."""
+    frappe.only_for(MAP_ROLES)
+    device_user_id = cstr(device_user_id).strip()
+    device = get_device(device_serial)
+    if not device_user_id or not frappe.db.exists(PUNCH, {"device_serial": device.name, "device_user_id": device_user_id}):
+        frappe.throw(_("No punches of device user {0} on {1}.").format(device_user_id, device.name))
+    emp = frappe.get_doc("Employee", employee)
+    emp.check_permission("write")
+    if emp.status != "Active":
+        frappe.throw(_("Employee {0} is not active.").format(emp.name))
+    other = frappe.db.get_value("Employee", {"slhrm_biometric_device_id": device_user_id, "status": "Active",
+                                             "name": ["!=", emp.name]}, ["name", "employee_name"], as_dict=True)
+    if other:
+        frappe.throw(_("Device user id {0} is already used by {1} ({2}).").format(device_user_id, other.name, other.employee_name))
+    current = cstr(emp.slhrm_biometric_device_id).strip()
+    if current == device_user_id:
+        return {"matched": rematch(device_user_id), "employee": emp.name, "unchanged": True}
+    if current and not cint(replace):
+        return {"confirm": _("{0} already has device user id {1}. Replace it with {2}? Punches already matched to {1} stay matched.")
+                .format(emp.employee_name, current, device_user_id)}
+    emp.slhrm_biometric_device_id = device_user_id
+    emp.save()  # on_update → rematch(device_user_id)
+    matched = frappe.db.count(PUNCH, {"device_user_id": device_user_id, "employee": emp.name})
+    return {"matched": matched, "employee": emp.name}

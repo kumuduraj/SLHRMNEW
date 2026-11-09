@@ -1,0 +1,102 @@
+{
+ "name": "Biometric Device User",
+ "module": "SLHRM",
+ "doctype": "DocType",
+ "document_type": "Setup",
+ "issingle": 0,
+ "istable": 0,
+ "track_changes": 0,
+ "autoname": "field:user_key",
+ "naming_rule": "By fieldname",
+ "title_field": "user_name",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "modified": "2026-11-09 11:30:00.000000",
+ "fields": [
+  {
+   "fieldname": "user_key",
+   "fieldtype": "Data",
+   "label": "Key",
+   "reqd": 1,
+   "unique": 1,
+   "read_only": 1,
+   "description": "device serial | device user id"
+  },
+  {
+   "fieldname": "device",
+   "fieldtype": "Link",
+   "label": "Biometric Device",
+   "options": "Biometric Device",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "device_user_id",
+   "fieldtype": "Data",
+   "label": "Device User ID",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "search_index": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "user_name",
+   "fieldtype": "Data",
+   "label": "Name on Device",
+   "in_list_view": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "privilege",
+   "fieldtype": "Int",
+   "label": "Privilege",
+   "description": "14 = device administrator",
+   "read_only": 1
+  },
+  {
+   "fieldname": "on_device",
+   "fieldtype": "Check",
+   "label": "On Device",
+   "default": "1",
+   "in_list_view": 1,
+   "description": "Unticked when the user is no longer in the device's user list (never deleted).",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_synced",
+   "fieldtype": "Datetime",
+   "label": "Last Synced",
+   "read_only": 1
+  }
+ ],
+ "permissions": [
+  {
+   "role": "System Manager",
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1
+  },
+  {
+   "role": "HR Manager",
+   "read": 1,
+   "report": 1,
+   "export": 1
+  },
+  {
+   "role": "HR User",
+   "read": 1,
+   "report": 1
+  }
+ ]
+}

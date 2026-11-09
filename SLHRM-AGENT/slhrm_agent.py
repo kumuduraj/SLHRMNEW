@@ -21,12 +21,15 @@ Commands (all need --config, a chmod-600 JSON file):
   pull  --device NAME --dry-run    attendance statistics only; nothing stored or sent
   pull  [--device NAME]            read device(s) into the local queue
   push  [--retry-held]             send queued records to SLHRM
-  run                              lock; every enabled device: pull + heartbeat; then push
+  backfill --device NAME [--resend] lock; read the whole device log, push it, report server results
+                                   (--resend: send already-confirmed records again → all duplicate)
+  run                              lock; every enabled device: pull + users + heartbeat; then push
   status                           queue counts per device and state
 """
 import argparse
 import csv
 import fcntl
+import hashlib
 import json
 import logging
 import logging.handlers
@@ -41,7 +44,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-AGENT_VERSION = "0.1.0"
+AGENT_VERSION = "0.2.0"
 TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 ALLOWED_DEVICE_CALLS = frozenset({
     "connect", "get_serialnumber", "get_firmware_version", "get_device_name", "get_platform", "get_mac",
@@ -88,6 +91,11 @@ def load_config(path):
         d.setdefault("transport", "tcp")
         d.setdefault("enabled", True)
     return cfg
+
+
+def device_key(cfg):
+    """SLHRM Settings device_api_key, copied into the config as device_key (never logged)."""
+    return cfg.get("device_key") or cfg.get("api_key") or ""
 
 
 def get_device_cfg(cfg, name):
@@ -298,6 +306,7 @@ CREATE TABLE IF NOT EXISTS punch (
     ts TEXT NOT NULL,
     punch_state INTEGER,
     verify_mode INTEGER,
+    drift_seconds REAL,                         -- device clock drift measured at the pull that first read it
     fetched_at TEXT NOT NULL,
     state TEXT NOT NULL DEFAULT 'queued',      -- queued | failed | held | confirmed
     attempts INTEGER NOT NULL DEFAULT 0,
@@ -308,6 +317,7 @@ CREATE TABLE IF NOT EXISTS punch (
     confirmed_at TEXT
 );
 CREATE INDEX IF NOT EXISTS punch_state ON punch(state, serial, ts);
+CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
 CREATE TABLE IF NOT EXISTS device_pull (
     serial TEXT NOT NULL,
     pulled_at TEXT NOT NULL,
@@ -330,6 +340,10 @@ def db_open(path):
     db.execute("PRAGMA journal_mode=WAL")
     db.execute("PRAGMA synchronous=FULL")
     db.executescript(SCHEMA)
+    cols = {r[1] for r in db.execute("PRAGMA table_info(punch)")}
+    if "drift_seconds" not in cols:  # queue created by agent 0.1.0
+        with db:
+            db.execute("ALTER TABLE punch ADD COLUMN drift_seconds REAL")
     return db
 
 
@@ -337,16 +351,16 @@ def make_key(serial, user_id, ts):
     return f"{serial}|{user_id}|{ts.strftime(TIME_FORMAT)}"
 
 
-def enqueue(db, serial, records):
-    """INSERT OR IGNORE every record. Returns the number of NEW records."""
+def enqueue(db, serial, records, drift=None):
+    """INSERT OR IGNORE every record. Returns the number of NEW records. drift is stored on new rows only."""
     now = utcnow()
     rows = [(make_key(serial, r["user_id"], r["timestamp"]), serial, r["user_id"], r["timestamp"].strftime(TIME_FORMAT),
-             r.get("punch_state"), r.get("verify_mode"), now) for r in records]
+             r.get("punch_state"), r.get("verify_mode"), drift, now) for r in records]
     before = db.total_changes
     with db:
         db.executemany(
-            "INSERT OR IGNORE INTO punch (punch_key, serial, device_user_id, ts, punch_state, verify_mode, fetched_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?)", rows)
+            "INSERT OR IGNORE INTO punch (punch_key, serial, device_user_id, ts, punch_state, verify_mode, drift_seconds,"
+            " fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", rows)
     return db.total_changes - before
 
 
@@ -363,7 +377,7 @@ def http_post(cfg, method, payload):
     req = urllib.request.Request(
         url, data=json.dumps(payload).encode(), method="POST",
         headers={"Content-Type": "application/json", "Accept": "application/json",
-                 "X-Device-Key": cfg.get("api_key") or "", "User-Agent": f"slhrm-agent/{AGENT_VERSION}"})
+                 "X-Device-Key": device_key(cfg), "User-Agent": f"slhrm-agent/{AGENT_VERSION}"})
     try:
         with urllib.request.urlopen(req, timeout=cfg["http_timeout_seconds"]) as r:
             return json.loads(r.read().decode()).get("message")
@@ -374,17 +388,18 @@ def http_post(cfg, method, payload):
         raise AgentError(f"{method}: {type(e).__name__}: {e}") from e
 
 
-def push(db, cfg, retry_held=False, post=http_post):
+def push(db, cfg, retry_held=False, post=http_post, serial=None):
     """Send pending records; confirm each only from its server result. Each record at most once per call."""
-    if not cfg.get("api_key"):
-        log.warning("push: api_key not configured — nothing sent (records stay queued)")
-        return {"sent": 0, "confirmed": 0, "failed": 0, "skipped": "no api_key"}
+    if not device_key(cfg):
+        log.warning("push: device_key not configured — nothing sent (records stay queued)")
+        return {"sent": 0, "confirmed": 0, "failed": 0, "skipped": "no device_key"}
     if retry_held:
         with db:
             db.execute("UPDATE punch SET state = 'failed', attempts = 0 WHERE state = 'held'")
     pending = db.execute(
-        "SELECT punch_key, serial, device_user_id, ts, punch_state, verify_mode, attempts FROM punch"
-        " WHERE state IN ('queued', 'failed') ORDER BY serial, ts").fetchall()
+        "SELECT punch_key, serial, device_user_id, ts, punch_state, verify_mode, drift_seconds, attempts FROM punch"
+        " WHERE state IN ('queued', 'failed')" + (" AND serial = ?" if serial else "") + " ORDER BY serial, ts",
+        (serial,) if serial else ()).fetchall()
     by_serial = {}
     for r in pending:
         by_serial.setdefault(r["serial"], []).append(r)
@@ -393,8 +408,8 @@ def push(db, cfg, retry_held=False, post=http_post):
         for i in range(0, len(rows), int(cfg["batch_size"])):
             batch = rows[i:i + int(cfg["batch_size"])]
             payload = {"serial": serial, "agent": cfg["agent_name"], "punches": [
-                {"device_user_id": r["device_user_id"], "timestamp": r["ts"],
-                 "punch_state": r["punch_state"], "verify_mode": r["verify_mode"]} for r in batch]}
+                {"device_user_id": r["device_user_id"], "timestamp": r["ts"], "punch_state": r["punch_state"],
+                 "verify_mode": r["verify_mode"], "clock_drift_seconds": r["drift_seconds"]} for r in batch]}
             now = utcnow()
             try:
                 resp = post(cfg, "slhrm.api.device_ingest", payload)
@@ -460,8 +475,8 @@ def pull_device(db, dev, cfg, factory=_zk):
     serial = dev.get("serial")
     if not serial:
         raise AgentError(f"device {dev['name']}: serial missing in config (run info first)")
-    data = read_device(dev, cfg, factory)
-    new = enqueue(db, serial, data["records"])
+    data = read_device(dev, cfg, factory, with_users=True)
+    new = enqueue(db, serial, data["records"], data["drift"])
     with db:
         db.execute("INSERT INTO device_pull (serial, pulled_at, ok, record_count, new_records, drift_seconds)"
                    " VALUES (?, ?, 1, ?, ?, ?)", (serial, utcnow(), len(data["records"]), new, data["drift"]))
@@ -472,8 +487,28 @@ def pull_device(db, dev, cfg, factory=_zk):
     return data, new
 
 
+def sync_users(db, cfg, dev, users, post=http_post):
+    """Send the device user list (id, name, privilege) when it changed since the last successful sync."""
+    if users is None or not device_key(cfg):
+        return None
+    digest = hashlib.sha256(json.dumps(sorted((u["user_id"], u["name"], u["privilege"]) for u in users)).encode()).hexdigest()
+    k = f"users_hash:{dev['serial']}"
+    row = db.execute("SELECT v FROM meta WHERE k = ?", (k,)).fetchone()
+    if row and row[0] == digest:
+        return "unchanged"
+    try:
+        res = post(cfg, "slhrm.api.device_users", {"serial": dev["serial"], "agent": cfg["agent_name"], "users": users})
+    except AgentError as e:
+        log.error("users %s: %s", dev["name"], e)
+        return None
+    with db:
+        db.execute("INSERT OR REPLACE INTO meta (k, v) VALUES (?, ?)", (k, digest))
+    log.info("users %s: %s", dev["name"], res)
+    return res
+
+
 def send_heartbeat(cfg, dev, payload, post=http_post):
-    if not cfg.get("api_key"):
+    if not device_key(cfg):
         return
     try:
         post(cfg, "slhrm.api.device_heartbeat", {"serial": dev["serial"], "agent": cfg["agent_name"], "info": payload})
@@ -500,6 +535,7 @@ def _run_locked(cfg, factory, post):
         hb = {"last_pull": utcnow(), "last_pull_tz": "UTC"}
         try:
             data, _new = pull_device(db, dev, cfg, factory)
+            sync_users(db, cfg, dev, data["users"], post)
             hb.update(data["info"])
             hb.update({k: v for k, v in data["sizes"].items() if k in ("user_count", "user_capacity", "record_count", "record_capacity")})
             hb.update({"last_pull_ok": 1, "clock_drift_seconds": data["drift"], "last_error": ""})
@@ -518,6 +554,32 @@ def _run_locked(cfg, factory, post):
         errors += 1
     db.close()
     return 1 if errors else 0
+
+
+def cmd_backfill(cfg, name, resend=False, factory=_zk, post=http_post):
+    """Whole device log → queue → server, under the run lock. Returns counts by server result."""
+    dev = get_device_cfg(cfg, name)
+    with open(cfg["lock_path"], "w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise AgentError("another run is in progress — try again")
+        db = db_open(cfg["db_path"])
+        data, new = pull_device(db, dev, cfg, factory)
+        users = sync_users(db, cfg, dev, data["users"], post)
+        if resend:
+            with db:
+                db.execute("UPDATE punch SET state = 'queued', attempts = 0 WHERE serial = ? AND state = 'confirmed'",
+                           (dev["serial"],))
+        result = push(db, cfg, post=post, serial=dev["serial"])
+        hb = dict(data["info"], last_pull=utcnow(), last_pull_tz="UTC", last_pull_ok=1, clock_drift_seconds=data["drift"],
+                  last_error="", queue_depth=queue_depth(db, dev["serial"]),
+                  **{k: v for k, v in data["sizes"].items() if k in ("user_count", "user_capacity", "record_count", "record_capacity")})
+        send_heartbeat(cfg, dev, hb, post)
+        states = dict(db.execute("SELECT state, COUNT(*) FROM punch WHERE serial = ? GROUP BY state", (dev["serial"],)).fetchall())
+        db.close()
+    return {"device": dev["name"], "records_on_device": len(data["records"]), "new_in_queue": new,
+            "drift_seconds": data["drift"], "users": users, "push": result, "queue_states": states}
 
 
 def _jsonable(o):
@@ -548,6 +610,9 @@ def main(argv=None):
     p.add_argument("--per-user", help="dry run: write per-user activity JSON here (chmod 600)")
     p = sub.add_parser("push")
     p.add_argument("--retry-held", action="store_true")
+    p = sub.add_parser("backfill")
+    p.add_argument("--device", required=True)
+    p.add_argument("--resend", action="store_true")
     sub.add_parser("run")
     sub.add_parser("status")
     a = ap.parse_args(argv)
@@ -607,6 +672,8 @@ def main(argv=None):
             out[dev["name"]] = {"new": new, "queue_depth": queue_depth(db, dev["serial"])}
     elif a.cmd == "push":
         out = push(db_open(cfg["db_path"]), cfg, retry_held=a.retry_held)
+    elif a.cmd == "backfill":
+        out = cmd_backfill(cfg, a.device, a.resend)
     elif a.cmd == "run":
         return cmd_run(cfg)
     elif a.cmd == "status":
