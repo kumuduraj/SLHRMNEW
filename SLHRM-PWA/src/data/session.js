@@ -25,8 +25,9 @@ function handleLogin(response) {
 		session.user = sessionUser()
 
 		// Check first: while a password change is pending every other API answers 403
-		call("slhrm.api.check_must_change_password").then((r) => {
-			if (r.message) {
+		// frappe-ui call() resolves to the method's `message` itself (here true / false)
+		call("slhrm.api.check_must_change_password").then((mustChange) => {
+			if (mustChange) {
 				session.mustChangePassword = true
 				router.replace({ path: "/change-password" })
 			} else {
