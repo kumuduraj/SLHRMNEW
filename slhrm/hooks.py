@@ -40,7 +40,10 @@ fixtures = [
 # Doc events
 doc_events = {
     "Employee": {
-        "after_insert": "slhrm.api.create_employee_user"
+        "after_insert": "slhrm.user_setup.create_employee_user"
+    },
+    "User": {
+        "on_update": "slhrm.user_setup.on_user_update",
     },
     "Salary Slip": {
         # same entry point on both: submit runs validate + before_submit, never before_save
@@ -52,6 +55,15 @@ doc_events = {
         "validate": "slhrm.overrides.employee_checkin.validate_update",
     },
 }
+
+# Forced password change (slhrm/user_setup.py): auth_hooks run on every request AFTER cookie /
+# token / API-key auth -> Desk + PWA pages redirect to /update-password, API calls get 403.
+auth_hooks = ["slhrm.user_setup.enforce_password_change"]
+on_session_creation = ["slhrm.user_setup.on_session_creation"]
+extend_bootinfo = ["slhrm.user_setup.extend_bootinfo"]
+
+# Employee form: "Issue Temporary Password" (HR Manager / System Manager)
+doctype_js = {"Employee": "public/js/employee.js"}
 
 # Desk registration — modern Frappe v16 approach
 add_to_apps_screen = [

@@ -68,8 +68,9 @@
     "default": "0",
     "read_only": 1,
     "hidden": 1,
-    "description": "Set to 1 when User is auto-created from Employee. Cleared after first password change in SLHRM PWA.",
-    "name": "User-slhrm_must_change_password"
+    "description": "Set when SLHRM gives the user a random temporary password. While set (and the user has not changed the password since), Desk/PWA redirect to /update-password and API calls return 403. Cleared automatically after a real password change.",
+    "name": "User-slhrm_must_change_password",
+    "modified": "2026-11-09 12:00:00"
   },
   {
     "doctype": "Custom Field",

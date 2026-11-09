@@ -1,6 +1,14 @@
 // slhrm/slhrm/public/js/slhrm.js
 // Frappe v16 desk fixes
 
+// 0. Forced password change: the server already redirects Desk (slhrm.user_setup.enforce_password_change);
+//    this covers a Desk that booted anyway (boot key from slhrm.user_setup.extend_bootinfo).
+(function () {
+    if (window.frappe && frappe.boot && frappe.boot.slhrm_must_change_password) {
+        window.location.replace("/update-password");
+    }
+})();
+
 // 1. Ensure sidebar_item_map exists
 (function () {
     if (localStorage.getItem("sidebar_item_map") === null) {
