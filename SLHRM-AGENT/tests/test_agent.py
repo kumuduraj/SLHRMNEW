@@ -94,6 +94,7 @@ class FakeServer:
         self.crash_after_store = False
         self.payloads = []
         self.users_calls = 0
+        self.start = None  # SLHRM Settings biometric_start_date ("YYYY-MM-DD 00:00:00")
 
     def post(self, cfg, method, payload):
         self.calls += 1
@@ -108,7 +109,9 @@ class FakeServer:
         results = []
         for p in payload["punches"]:
             key = f"{payload['serial']}|{p['device_user_id']}|{p['timestamp']}"
-            if p["device_user_id"] == "bad":
+            if self.start and p["timestamp"] < self.start:
+                results.append({"key": key, "result": "skipped_old"})
+            elif p["device_user_id"] == "bad":
                 results.append({"key": key, "result": "error", "error": "boom"})
             elif key in self.stored:
                 results.append({"key": key, "result": "duplicate", "name": self.stored[key]})
@@ -355,6 +358,74 @@ class TestPhase21(Base):
         old.close()
         db = A.db_open(p)
         self.assertIn("drift_seconds", {r[1] for r in db.execute("PRAGMA table_info(punch)")})
+
+
+class TestMinPunchDate(Base):
+    CUT = "2026-10-02"
+
+    def conn(self):
+        return FakeConn([rec("1", T0), rec("2", T0 + timedelta(hours=10)), rec("1", T0 + timedelta(days=1)),
+                         rec("2", T0 + timedelta(days=1, hours=9))])
+
+    def test_split_old(self):
+        recs = [{"user_id": "1", "timestamp": T0}, {"user_id": "1", "timestamp": T0 + timedelta(days=1)}]
+        self.assertEqual(A.split_old(recs, None), (recs, 0))
+        keep, skipped = A.split_old(recs, self.CUT)
+        self.assertEqual((len(keep), skipped), (1, 1))
+        self.assertEqual(A.split_old(recs, "2026-10-01")[1], 0)  # 00:00 boundary is inclusive
+
+    def test_old_records_never_queued_or_sent_and_counted(self):
+        self.cfg["devices"][0]["min_punch_date"] = self.CUT
+        srv = FakeServer()
+        self.assertEqual(A.cmd_run(self.cfg, factory=lambda *a: self.conn(), post=srv.post), 0)
+        self.assertEqual(self.states(), {"confirmed": 2})
+        sent = [p["timestamp"] for pl in srv.payloads for p in pl["punches"]]
+        self.assertTrue(all(t >= self.CUT for t in sent), sent)
+        row = self.db.execute("SELECT record_count, new_records, skipped_old FROM device_pull ORDER BY rowid DESC").fetchone()
+        self.assertEqual(tuple(row), (4, 2, 2))
+
+    def test_existing_confirmed_kept_unconfirmed_old_not_sent(self):
+        A.enqueue(self.db, "SER1", [{"user_id": "1", "timestamp": T0}, {"user_id": "2", "timestamp": T0}])
+        with self.db:
+            self.db.execute("UPDATE punch SET state = 'confirmed' WHERE device_user_id = '1'")
+        self.cfg["devices"][0]["min_punch_date"] = self.CUT
+        srv = FakeServer()
+        A.push(self.db, self.cfg, post=srv.post)
+        self.assertEqual(srv.calls, 0)
+        self.assertEqual(self.states(), {"confirmed": 1, "skipped_old": 1})
+
+    def test_server_skipped_old_is_confirmed(self):
+        srv = FakeServer()
+        srv.start = self.CUT + " 00:00:00"
+        A.cmd_run(self.cfg, factory=lambda *a: self.conn(), post=srv.post)  # agent without min date
+        self.assertEqual(self.states(), {"confirmed": 4})
+        res = dict(self.db.execute("SELECT server_result, COUNT(*) FROM punch GROUP BY server_result").fetchall())
+        self.assertEqual(res, {"skipped_old": 2, "inserted": 2})
+
+    def test_resend_only_from_min_date(self):
+        srv = FakeServer()
+        A.cmd_backfill(self.cfg, "D1", factory=lambda *a: self.conn(), post=srv.post)
+        self.cfg["devices"][0]["min_punch_date"] = self.CUT
+        r = A.cmd_backfill(self.cfg, "D1", resend=True, factory=lambda *a: self.conn(), post=srv.post)
+        self.assertEqual((r["skipped_old"], r["push"]["duplicate"]), (2, 2))
+        self.assertEqual(self.states(), {"confirmed": 4})  # old confirmed keys stay
+
+    def test_device_pull_schema_is_migrated(self):
+        import sqlite3
+        p = os.path.join(self.dir, "old2.sqlite")
+        old = sqlite3.connect(p)
+        old.executescript(A.SCHEMA.replace(",\n    skipped_old INTEGER", ""))
+        old.close()
+        self.assertIn("skipped_old", {r[1] for r in A.db_open(p).execute("PRAGMA table_info(device_pull)")})
+
+    def test_config_default_applies_to_devices(self):
+        p = os.path.join(self.dir, "c2.json")
+        fd = os.open(p, os.O_WRONLY | os.O_CREAT, 0o600)
+        with os.fdopen(fd, "w") as f:
+            json.dump({"server_url": "x", "min_punch_date": "2026-11-01",
+                       "devices": [{"name": "A"}, {"name": "B", "min_punch_date": "2026-12-01"}]}, f)
+        cfg = A.load_config(p)
+        self.assertEqual([d["min_punch_date"] for d in cfg["devices"]], ["2026-11-01", "2026-12-01"])
 
 
 class TestConfig(Base):

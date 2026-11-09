@@ -135,6 +135,12 @@
    "description": "If a device user id has no explicit mapping, match it to the one Active employee of the device's branch whose Employee Number equals the id (and whose name contains the name on the device); the id is then saved on the Employee."
   },
   {
+   "fieldname": "biometric_start_date",
+   "fieldtype": "Date",
+   "label": "Biometric Start Date",
+   "description": "Device records before this date are not stored (device_ingest returns skipped_old). The agent's min_punch_date should match."
+  },
+  {
    "fieldname": "section_break_pwa",
    "fieldtype": "Section Break",
    "label": "Mobile App"
@@ -173,5 +179,5 @@
    "write": 1
   }
  ],
- "modified": "2026-11-09 14:00:00.000000"
+ "modified": "2026-11-09 16:00:00.000000"
 }

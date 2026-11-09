@@ -41,6 +41,7 @@ fixtures = [
 doc_events = {
     "Employee": {
         "after_insert": "slhrm.user_setup.create_employee_user",
+        "validate": "slhrm.biometric.on_employee_validate",
         "on_update": "slhrm.biometric.on_employee_update",
     },
     "User": {

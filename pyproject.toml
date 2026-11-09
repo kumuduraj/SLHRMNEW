@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "slhrm"
-version = "0.0.13"
+version = "0.0.14"
 description = "Biometric fingerprint attendance for ERPNext v16"
 requires-python = ">=3.10"
 

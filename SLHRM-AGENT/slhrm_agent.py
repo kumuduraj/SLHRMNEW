@@ -11,7 +11,10 @@ Zero loss / zero duplicates:
   (INSERT OR IGNORE of the WHOLE device log on every pull: the overlap window is the full log, so clock
   corrections, same-second punches and late records can never be skipped);
 - a record is "confirmed" only by the server's per-record result (inserted / duplicate /
-  unknown_employee); errors stay queued and are retried on the next run; nothing is ever dropped.
+  unknown_employee / skipped_old); errors stay queued and are retried on the next run; nothing is ever dropped.
+- min_punch_date (config, default for all devices; a device may override it): records dated before it
+  are never queued or sent — counted as skipped_old per pull (log, device_pull, status). Rows already
+  in the queue are kept; unconfirmed old ones are set to state skipped_old instead of being sent.
 
 Commands (all need --config, a chmod-600 JSON file):
   tcpcheck                         TCP connect test to every configured device (no device protocol)
@@ -44,7 +47,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-AGENT_VERSION = "0.2.0"
+AGENT_VERSION = "0.3.0"
 TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 ALLOWED_DEVICE_CALLS = frozenset({
     "connect", "get_serialnumber", "get_firmware_version", "get_device_name", "get_platform", "get_mac",
@@ -52,7 +55,7 @@ ALLOWED_DEVICE_CALLS = frozenset({
 })
 DEFAULT_PASSWORDS = (0, 111111)
 MAX_CONNECT_ATTEMPTS = 2
-CONFIRMED_RESULTS = frozenset({"inserted", "duplicate", "unknown_employee"})
+CONFIRMED_RESULTS = frozenset({"inserted", "duplicate", "unknown_employee", "skipped_old"})
 MAX_ATTEMPTS = 20  # per record; then "held" (kept, reported; push --retry-held)
 FUTURE_TOLERANCE = timedelta(minutes=10)
 
@@ -81,6 +84,9 @@ def load_config(path):
     cfg.setdefault("timeout_seconds", 10)
     cfg.setdefault("http_timeout_seconds", 60)
     cfg.setdefault("plausible_from", "2020-01-01")
+    cfg.setdefault("min_punch_date", None)
+    if cfg["min_punch_date"]:
+        datetime.strptime(cfg["min_punch_date"], "%Y-%m-%d")  # fail early on a bad date
     base = os.path.dirname(os.path.abspath(path))
     cfg.setdefault("db_path", os.path.join(base, "queue.sqlite"))
     cfg.setdefault("lock_path", os.path.join(base, "agent.lock"))
@@ -90,7 +96,22 @@ def load_config(path):
         d.setdefault("timezone", "Asia/Colombo")
         d.setdefault("transport", "tcp")
         d.setdefault("enabled", True)
+        d.setdefault("min_punch_date", cfg["min_punch_date"])
     return cfg
+
+
+def min_ts(min_punch_date):
+    """'YYYY-MM-DD' → the first allowed record timestamp ('YYYY-MM-DD 00:00:00'), or None."""
+    return f"{min_punch_date} 00:00:00" if min_punch_date else None
+
+
+def split_old(records, min_punch_date):
+    """(records to keep, number skipped as older than min_punch_date). Device time is compared."""
+    if not min_punch_date:
+        return list(records), 0
+    start = datetime.strptime(min_punch_date, "%Y-%m-%d")
+    keep = [r for r in records if r["timestamp"] >= start]
+    return keep, len(records) - len(keep)
 
 
 def device_key(cfg):
@@ -325,7 +346,8 @@ CREATE TABLE IF NOT EXISTS device_pull (
     record_count INTEGER,
     new_records INTEGER,
     drift_seconds REAL,
-    error TEXT
+    error TEXT,
+    skipped_old INTEGER
 );
 """
 
@@ -344,6 +366,9 @@ def db_open(path):
     if "drift_seconds" not in cols:  # queue created by agent 0.1.0
         with db:
             db.execute("ALTER TABLE punch ADD COLUMN drift_seconds REAL")
+    if "skipped_old" not in {r[1] for r in db.execute("PRAGMA table_info(device_pull)")}:  # agent <= 0.2.0
+        with db:
+            db.execute("ALTER TABLE device_pull ADD COLUMN skipped_old INTEGER")
     return db
 
 
@@ -396,6 +421,11 @@ def push(db, cfg, retry_held=False, post=http_post, serial=None):
     if retry_held:
         with db:
             db.execute("UPDATE punch SET state = 'failed', attempts = 0 WHERE state = 'held'")
+    for dev in cfg["devices"]:  # unconfirmed rows older than min_punch_date are never sent
+        if dev.get("serial") and min_ts(dev.get("min_punch_date")):
+            with db:
+                db.execute("UPDATE punch SET state = 'skipped_old' WHERE serial = ? AND ts < ? AND state IN"
+                           " ('queued', 'failed', 'held')", (dev["serial"], min_ts(dev["min_punch_date"])))
     pending = db.execute(
         "SELECT punch_key, serial, device_user_id, ts, punch_state, verify_mode, drift_seconds, attempts FROM punch"
         " WHERE state IN ('queued', 'failed')" + (" AND serial = ?" if serial else "") + " ORDER BY serial, ts",
@@ -476,12 +506,14 @@ def pull_device(db, dev, cfg, factory=_zk):
     if not serial:
         raise AgentError(f"device {dev['name']}: serial missing in config (run info first)")
     data = read_device(dev, cfg, factory, with_users=True)
-    new = enqueue(db, serial, data["records"], data["drift"])
+    keep, skipped = split_old(data["records"], dev.get("min_punch_date"))
+    new = enqueue(db, serial, keep, data["drift"])
+    data["skipped_old"] = skipped
     with db:
-        db.execute("INSERT INTO device_pull (serial, pulled_at, ok, record_count, new_records, drift_seconds)"
-                   " VALUES (?, ?, 1, ?, ?, ?)", (serial, utcnow(), len(data["records"]), new, data["drift"]))
-    log.info("pull %s (%s): %d records on device, %d new, drift %+.1fs", dev["name"], serial,
-             len(data["records"]), new, data["drift"])
+        db.execute("INSERT INTO device_pull (serial, pulled_at, ok, record_count, new_records, drift_seconds, skipped_old)"
+                   " VALUES (?, ?, 1, ?, ?, ?, ?)", (serial, utcnow(), len(data["records"]), new, data["drift"], skipped))
+    log.info("pull %s (%s): %d records on device, %d new, %d skipped_old (< %s), drift %+.1fs", dev["name"], serial,
+             len(data["records"]), new, skipped, dev.get("min_punch_date") or "-", data["drift"])
     if abs(data["drift"]) > cfg.get("drift_alert_seconds", 120):
         log.warning("pull %s: device clock drift %+.1fs", dev["name"], data["drift"])
     return data, new
@@ -569,8 +601,8 @@ def cmd_backfill(cfg, name, resend=False, factory=_zk, post=http_post):
         users = sync_users(db, cfg, dev, data["users"], post)
         if resend:
             with db:
-                db.execute("UPDATE punch SET state = 'queued', attempts = 0 WHERE serial = ? AND state = 'confirmed'",
-                           (dev["serial"],))
+                db.execute("UPDATE punch SET state = 'queued', attempts = 0 WHERE serial = ? AND state = 'confirmed'"
+                           " AND ts >= ?", (dev["serial"], min_ts(dev.get("min_punch_date")) or ""))
         result = push(db, cfg, post=post, serial=dev["serial"])
         hb = dict(data["info"], last_pull=utcnow(), last_pull_tz="UTC", last_pull_ok=1, clock_drift_seconds=data["drift"],
                   last_error="", queue_depth=queue_depth(db, dev["serial"]),
@@ -579,6 +611,7 @@ def cmd_backfill(cfg, name, resend=False, factory=_zk, post=http_post):
         states = dict(db.execute("SELECT state, COUNT(*) FROM punch WHERE serial = ? GROUP BY state", (dev["serial"],)).fetchall())
         db.close()
     return {"device": dev["name"], "records_on_device": len(data["records"]), "new_in_queue": new,
+            "skipped_old": data["skipped_old"],
             "drift_seconds": data["drift"], "users": users, "push": result, "queue_states": states}
 
 
@@ -669,7 +702,7 @@ def main(argv=None):
         out = {}
         for dev in devs:
             _data, new = pull_device(db, dev, cfg)
-            out[dev["name"]] = {"new": new, "queue_depth": queue_depth(db, dev["serial"])}
+            out[dev["name"]] = {"new": new, "skipped_old": _data["skipped_old"], "queue_depth": queue_depth(db, dev["serial"])}
     elif a.cmd == "push":
         out = push(db_open(cfg["db_path"]), cfg, retry_held=a.retry_held)
     elif a.cmd == "backfill":
@@ -678,8 +711,13 @@ def main(argv=None):
         return cmd_run(cfg)
     elif a.cmd == "status":
         db = db_open(cfg["db_path"])
-        out = [dict(r) for r in db.execute("SELECT serial, state, COUNT(*) AS n, MIN(ts) AS first, MAX(ts) AS last"
-                                           " FROM punch GROUP BY serial, state ORDER BY serial, state")]
+        out = {"queue": [dict(r) for r in db.execute("SELECT serial, state, COUNT(*) AS n, MIN(ts) AS first, MAX(ts) AS last"
+                                                     " FROM punch GROUP BY serial, state ORDER BY serial, state")],
+               "min_punch_date": {d["name"]: d.get("min_punch_date") for d in cfg["devices"]},
+               "last_pull": [dict(r) for r in db.execute(
+                   "SELECT p.serial, p.pulled_at, p.ok, p.record_count, p.new_records, p.skipped_old, p.drift_seconds"
+                   " FROM device_pull p JOIN (SELECT serial, MAX(rowid) AS id FROM device_pull GROUP BY serial) m"
+                   " ON p.rowid = m.id ORDER BY p.serial")]}
     print(json.dumps(out, indent=1, default=_jsonable, ensure_ascii=False))
     return 0
 

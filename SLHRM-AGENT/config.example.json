@@ -9,6 +9,7 @@
  "timeout_seconds": 10,
  "drift_alert_seconds": 120,
  "plausible_from": "2020-01-01",
+ "min_punch_date": "2026-11-01",
  "devices": [
   {"name": "EXAMPLE", "serial": "", "branch": "", "ip": "192.0.2.10", "port": 4370,
    "password": 0, "transport": "tcp", "timezone": "Asia/Colombo", "enabled": true}

@@ -19,6 +19,10 @@ Reads ZKTeco devices **read-only** (pyzk) and delivers every raw attendance reco
 - A record is confirmed only by its server result (`inserted`, `duplicate`, `unknown_employee` — unknown
   users are stored server-side as Unmatched). Errors stay queued (`failed`, retried next run; `held` after
   20 attempts, `push --retry-held`). Server down → the run stops pushing; nothing is lost.
+- Cutoff: `min_punch_date` ("YYYY-MM-DD", config default for every device; a device entry may override it).
+  Older device records are never queued or sent; each pull logs and stores them as `skipped_old`
+  (`status` → `last_pull`). Rows already in the queue are kept; unconfirmed old rows become `skipped_old`.
+  The server's SLHRM Settings "Biometric Start Date" does the same on its side (result `skipped_old`, confirmed).
 - Serial check: a device whose serial differs from the config is not read (IP reassigned?).
 - Heartbeat per device → Biometric Device health (clock drift, sizes, queue depth, last error).
 
@@ -32,9 +36,8 @@ Reads ZKTeco devices **read-only** (pyzk) and delivers every raw attendance reco
 The config must be chmod 600 (the agent refuses otherwise). The device must exist in Biometric Device
 (name = serial) before records are accepted.
 
-## Scheduler (NOT enabled until Raj approves the backfill)
-    # crontab -e (rajerp):
-    # */5 * * * * /home/rajerp/slhrm-agent/venv/bin/python /home/rajerp/GILLSHR/apps/slhrm/SLHRM-AGENT/slhrm_agent.py --config /home/rajerp/slhrm-agent/config.json run >/dev/null 2>&1
+## Scheduler (enabled 2026-11-09, rajerp crontab)
+    */5 * * * * /home/rajerp/slhrm-agent/venv/bin/python /home/rajerp/GILLSHR/apps/slhrm/SLHRM-AGENT/slhrm_agent.py --config /home/rajerp/slhrm-agent/config.json run >/dev/null 2>&1
 
 ## Tests
     python3 -m unittest discover -s SLHRM-AGENT/tests -v
