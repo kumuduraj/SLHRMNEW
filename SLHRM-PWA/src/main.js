@@ -112,6 +112,12 @@ router.isReady().then(async () => {
 router.beforeEach(async (to, _, next) => {
 	let isLoggedIn = session.isLoggedIn
 
+	// Forced password change: every other API answers 403 until it is done, so don't load anything
+	// (a failed userResource.reload() below would look like a logout and bounce to Login)
+	if (isLoggedIn && session.mustChangePassword) {
+		return to.name === "ChangePassword" ? next() : next({ name: "ChangePassword" })
+	}
+
 	try {
 		if (isLoggedIn) await userResource.reload()
 	} catch (error) {

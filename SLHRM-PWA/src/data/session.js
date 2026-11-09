@@ -14,25 +14,29 @@ export function sessionUser() {
 	return _sessionUser
 }
 
+export function reloadSessionData() {
+	userResource.reload()
+	employeeResource.reload()
+	appPermissions.reload()
+}
+
 function handleLogin(response) {
 	if (response.message === "Logged In") {
-		userResource.reload()
-		employeeResource.reload()
-		appPermissions.reload()
-
 		session.user = sessionUser()
 
-		// Check if first login — must change password
+		// Check first: while a password change is pending every other API answers 403
 		call("slhrm.api.check_must_change_password").then((r) => {
 			if (r.message) {
 				session.mustChangePassword = true
 				router.replace({ path: "/change-password" })
 			} else {
 				session.mustChangePassword = false
+				reloadSessionData()
 				router.replace({ path: "/" })
 			}
 		}).catch(() => {
 			session.mustChangePassword = false
+			reloadSessionData()
 			router.replace({ path: "/" })
 		})
 	}

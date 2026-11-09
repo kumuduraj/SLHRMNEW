@@ -68,7 +68,7 @@ import { useRouter } from "vue-router"
 import { FeatherIcon, toast, createResource, Input, ErrorMessage, Button, call } from "frappe-ui"
 
 import { inject, ref } from "vue"
-import { session } from "@/data/session"
+import { session, reloadSessionData } from "@/data/session"
 
 const __ = inject("$translate")
 const router = useRouter()
@@ -81,12 +81,17 @@ const confirmPassword = ref("")
 const updatePasswordResource = createResource({
 	url: "frappe.core.doctype.user.user.update_password",
 	method: "POST",
-	onSuccess() {
-		// Clear the must-change-password flag if it was set
-		if (session.mustChangePassword) {
-			call("slhrm.api.clear_must_change_password").then(() => {
-				session.mustChangePassword = false
-			})
+	async onSuccess() {
+		// First login: clear the flag BEFORE routing (the router guard keeps a pending change on this page)
+		const forced = session.mustChangePassword
+		if (forced) {
+			try {
+				await call("slhrm.api.clear_must_change_password")
+			} catch (e) {
+				// update_password already ended the forced change on the server; the flag clears lazily
+			}
+			session.mustChangePassword = false
+			reloadSessionData()
 		}
 
 		toast({
@@ -99,7 +104,7 @@ const updatePasswordResource = createResource({
 		resetForm()
 
 		// If first login, go to Home (not back — there's nothing to go back to)
-		if (session.mustChangePassword) {
+		if (forced) {
 			router.replace({ path: "/" })
 		} else {
 			router.back()
