@@ -125,6 +125,26 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   preview re-runs HRMS's own `add_structure_component()` on a copy of the context to read them. They
   appear ONLY in the EMPLOYER group — never in Total Ded / Net.
 
+## Employee Salary Package (v0.0.10) — effective dating
+- Every amount change applies from **Effective From** (reqd; default first day of next month — the form
+  re-defaults it on the first amount change of an edit unless the user picked a date). On save the
+  package creates a NEW submitted SSA from that date with a snapshot of its rows
+  (`SSA.slhrm_package_components`, fixture). SSAs with an earlier from_date are never cancelled; only an
+  SSA with the exact same from_date is replaced. No change vs the SSA in force on that date → no new SSA.
+- **Overrides are dated**: `overrides.salary_slip.apply_package_overrides` applies the snapshot of the
+  SSA the slip uses (HRMS `set_salary_structure_assignment`: latest submitted SSA with
+  from_date <= the slip's START date — a mid-month Effective From therefore applies from the next
+  period). A non-package SSA → no overrides. Never read the package's live rows for a slip
+  (only legacy SSAs without a snapshot; patch v0_0_10 backfilled them).
+- Blocked (message names them) when a submitted Salary Slip or submitted Payroll Worksheet of the
+  employee ends on/after Effective From.
+- "Assignment history" on the form: all SSAs (from_date, base, in force / future / earlier / cancelled).
+- **Load Components never replaces amounts** (`plan_load_components`, no writes): keeps existing rows,
+  adds structure components missing from the package (amount = structure default; formula rows
+  override 0 = structure formula), lists rows not in the structure as "Remove?" for the user to tick.
+  The dialog lists kept / added / removable rows with amounts. Saving a package that zeroes or drops
+  an existing override shows an "Overrides removed or zeroed" message.
+
 ## EPF / ETF (v0.0.9, `slhrm/statutory.py`)
 - **One entry point:** `overrides.salary_slip.apply_salary_rules(slip)` = package overrides →
   `statutory.apply_epf`. Hooked on Salary Slip `before_save` AND `before_submit` (submit runs
