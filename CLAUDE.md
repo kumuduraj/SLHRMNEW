@@ -255,7 +255,9 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   write the config → verify no key 403 / wrong key 403 / agent heartbeat 200 (show only length + first 4 chars).
 - Mapping screen: Script Report "Unmatched Device Users" (`slhrm/report/`, module symlink `slhrm/slhrm/report`);
   "Map to Employee" = `slhrm.biometric.map_device_user` (refuses an id used by another active employee).
-- Agent scheduler stays OFF until Raj approves the backfill. Unit tests: `python3 -m unittest discover -s
+- Agent scheduler (2026-11-09): rajerp crontab `*/5 … slhrm_agent.py --config ~/slhrm-agent/config.json run` (log
+  `~/slhrm-agent/agent.log`); only devices with `enabled: true` in the config are read (DUTCHPUB). DUTCHPUB backfilled
+  (27 975 records from 2025-11-04; re-send = all duplicate). `backfill --device N [--resend]` for new devices. Unit tests: `python3 -m unittest discover -s
   SLHRM-AGENT/tests`; server pure functions: `slhrm.tests.test_biometric`.
 - The old sync tool for hr.gillsinternational.com (`~/frappe-bench/biometric-attendance-sync-tool`) is NOT
   ours: never touch it or its devices (katunayaka_1, wattala_1).
@@ -320,6 +322,11 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   a throwaway test user — the DEMO users are gone since v0.0.11), not a stubbed harness.** Reproduce the bug in the browser first, then fix.
 - (v0.0.9, 1.4b) The EMPLOYER toggle hid body cells but not the headers (header loops read `c.group`,
   which only `t.columns` carry) → misaligned columns; found only by measuring the rendered DOM.
+
+- (v0.0.12) PWA `call()` (frappe-ui) resolves to the method's `message` itself — `r.message` was always undefined, so the
+  PWA never saw a pending password change → read the resolved value; verify PWA flows in a real browser.
+- (v0.0.12) A deliberate `frappe.throw` in a Desk action is an HTTP 417 plus a server traceback in the user's console →
+  expected business refusals return a structured `{"refused": msg}`; only permission failures raise.
 
 ## Known open items (not yet fixed)
 - `SLHRM Settings` fields never read by code: `auto_mark_attendance`, `auto_create_payroll_on_submit`.
