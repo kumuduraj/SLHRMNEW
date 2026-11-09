@@ -1,12 +1,5 @@
-import { createDocumentResource } from "frappe-ui"
-
 import dayjs from "@/utils/dayjs"
-
-const settings = createDocumentResource({
-	doctype: "System Settings",
-	name: "System Settings",
-	auto: false,
-})
+import { bootFormats } from "@/data/formats"
 
 export const formatCurrency = (value, currency) => {
 	if (!currency) return value
@@ -14,7 +7,8 @@ export const formatCurrency = (value, currency) => {
 	// hack: if value contains a space, it is already formatted
 	if (value?.toString().trim().includes(" ")) return value
 
-	const locale = settings.doc?.country == "India" ? "en-IN" : settings.doc?.language
+	const { country, language } = bootFormats()
+	const locale = country == "India" ? "en-IN" : language
 
 	const formatter = Intl.NumberFormat(locale, {
 		style: "currency",

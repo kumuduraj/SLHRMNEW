@@ -248,8 +248,10 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   `createWebHistory("/slhrm")`.
 - Service worker: served by `slhrm.api.pwa_sw` with `Service-Worker-Allowed: /slhrm/`,
   registered with `scope: "/slhrm/"`; precache URLs are absolute (`modifyURLPrefix`).
-- `frappe.boot` keys the PWA reads: `push_relay_server_url`, `lang`, `__messages`
+- `frappe.boot` keys the PWA reads: `push_relay_server_url`, `lang`, `__messages`, `slhrm_formats`
   (`translations_hash` is optional). Add new keys in `slhrm/www/slhrm.py:get_boot`.
+- The Employee role may not read System Settings: number/currency formats come from boot
+  `slhrm_formats` (`get_formats`; PWA `data/formats.js` `bootFormats()`). Never fetch System Settings in the PWA.
 
 ## Lessons (Phase 0, v0.0.2)
 - Stale root copies of api/hooks/install/public diverged from `slhrm/` → only `slhrm/` is code; no root duplicates.

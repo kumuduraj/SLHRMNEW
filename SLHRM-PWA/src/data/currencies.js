@@ -1,4 +1,5 @@
 import { createResource } from "frappe-ui"
+import { bootFormats } from "./formats"
 
 const companyCurrency = createResource({
 	url: "hrms.api.get_company_currencies",
@@ -22,12 +23,9 @@ export function getCurrencySymbol(currency) {
 	return currencySymbols?.data?.[currency]
 }
 
-export const currencyPrecision = createResource({
-	url: "frappe.client.get_single_value",
-	params: {
-		doctype: "System Settings",
-		field: "currency_precision"
+// from the boot page: System Settings is not readable for the Employee role
+export const currencyPrecision = {
+	get data() {
+		return bootFormats().currency_precision
 	},
-	auto: true,
-	initialData: 2
-});
+}
