@@ -577,7 +577,7 @@ def remove(dry_run=0):
 
     print("=== remove log ===")
     for row in log:
-        print(" | ".join(row))
+        print(" | ".join(str(x) for x in row))
     print("=== proof ===")
     remaining = [(d, n) for d, n in all_docs if frappe.db.exists(d, n)]
     for d, n in all_docs:
