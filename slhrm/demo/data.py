@@ -1,9 +1,13 @@
 # slhrm/demo/data.py
-"""DEMO dataset for manual testing on a site WITHOUT real employees.
+"""DEMO dataset for manual testing on a DEV / TEST site WITHOUT real employees.
+
+create() refuses unless site_config.json has "slhrm_allow_demo": 1 (absent on production — the DEMO
+data was removed from hrm.gillsinternational.com on 2026-11-09).
 
     bench --site <site> execute slhrm.demo.data.create    # build (idempotent; skips existing)
     bench --site <site> execute slhrm.demo.data.report    # counts, OT totals, logins
     bench --site <site> execute slhrm.demo.data.preview_payroll --kwargs '{"branch": "DEMO Factory"}'
+    bench --site <site> execute slhrm.demo.data.remove --kwargs '{"dry_run": 1}'   # list only
     bench --site <site> execute slhrm.demo.data.remove    # delete everything it created
 
 Not whitelisted (bench execute only). Every record is named/prefixed "DEMO". Every created doc is
@@ -21,7 +25,7 @@ import random
 from datetime import date, datetime, timedelta
 
 import frappe
-from frappe.utils import flt, getdate, nowdate
+from frappe.utils import cint, flt, getdate, nowdate
 
 MANIFEST = "slhrm_demo_manifest.json"
 PASSWORD = "Demo@2026"
@@ -175,6 +179,9 @@ def _at(d, hh, mm, plus_minutes=0):
 
 
 def create():
+    if cint(frappe.conf.get("slhrm_allow_demo")) != 1:
+        frappe.throw('DEMO data is disabled on this site: set "slhrm_allow_demo": 1 in site_config.json '
+                     "(dev / test sites only, never production).")
     frappe.set_user("Administrator")
     real = frappe.db.sql_list("SELECT name FROM tabEmployee WHERE employee_name NOT LIKE 'DEMO%%'")
     if real:
@@ -470,7 +477,7 @@ def preview_payroll(branch=BR_FACTORY, payroll_month="10", payroll_year=2026):
 # ── remove ──────────────────────────────────────────────────────
 
 REMOVE_ORDER = [
-    "Salary Slip", "Payroll Entry", "Payroll Worksheet", "Additional Salary", "Leave Application",
+    "PWA Notification", "Salary Slip", "Payroll Entry", "Payroll Worksheet", "Additional Salary", "Leave Application",
     "Leave Allocation", "Leave Ledger Entry", "Attendance Marker", "Attendance", "Employee Checkin",
     "Biometric Punch Log", "Employee Salary Package", "Salary Structure Assignment", "Salary Structure",
     "Holiday List Assignment", "User Permission", "Employee", "Contact", "User", "Leave Type", "Shift Type",
@@ -478,14 +485,11 @@ REMOVE_ORDER = [
 ]
 
 
-def remove():
-    frappe.set_user("Administrator")
-    m = Manifest()
+def _removal_set(m):
+    """Manifest docs + records hooks / manual testing created for DEMO employees, branches and users."""
     docs = [tuple(x) for x in m.data["created"]]
     emps = list(m.data.get("employees", {}).values())
     branches = [BR_FACTORY, BR_OFFICE]
-
-    # sweep records created by hooks or by manual testing for DEMO employees / branches
     sweep = []
     if emps:
         for dt, field in (("Salary Slip", "employee"), ("Additional Salary", "employee"),
@@ -499,7 +503,51 @@ def remove():
         sweep += [(dt, n) for n in frappe.get_all(dt, filters={"branch": ["in", branches]}, pluck="name")]
     sweep += [("Contact", n) for n in frappe.get_all("Contact", filters={"email_id": ["like", "demo-%@demo.local"]}, pluck="name")]
     sweep += [("User Permission", n) for n in frappe.get_all("User Permission", filters={"user": ["like", "demo-%@demo.local"]}, pluck="name")]
-    all_docs = list(dict.fromkeys(docs + sweep))
+    if frappe.db.exists("DocType", "PWA Notification"):  # HRMS notifications from / to DEMO users
+        for field in ("from_user", "to_user"):
+            sweep += [("PWA Notification", n) for n in frappe.get_all(
+                "PWA Notification", filters={field: ["like", "demo-%@demo.local"]}, pluck="name")]
+    return emps, list(dict.fromkeys(docs + sweep))
+
+
+def _dry_run(m, emps, all_docs):
+    """Print what remove() would delete; prove nothing outside the set links into it."""
+    from collections import Counter
+
+    print("records:", len(all_docs))
+    print("per doctype:", json.dumps(dict(Counter(d for d, _n in all_docs)), indent=1))
+    real = frappe.get_all("Employee", filters={"name": ["not in", emps or [""]]}, pluck="name")
+    print("non-DEMO employees:", len(real), "| in the set:", [n for d, n in all_docs if d == "Employee" and n in set(real)])
+    targets, in_set, hits = {}, set(all_docs), []
+    for dt, n in all_docs:
+        targets.setdefault(dt, set()).add(n)
+    skip = {"Version", "Comment", "Activity Log", "Access Log", "Deleted Document", "Error Log", "Route History"}
+    for target, names in targets.items():
+        links = frappe.get_all("DocField", filters={"fieldtype": "Link", "options": target}, fields=["parent", "fieldname"]) + \
+            frappe.get_all("Custom Field", filters={"fieldtype": "Link", "options": target}, fields=["dt as parent", "fieldname"])
+        for f in links:
+            meta = frappe.get_meta(f.parent)
+            if meta.issingle or meta.is_virtual or f.parent in skip:
+                continue
+            for r in frappe.get_all(f.parent, filters={f.fieldname: ["in", list(names)]},
+                                    fields=["name", f.fieldname] + (["parent", "parenttype"] if meta.istable else [])):
+                owner = (r.parenttype, r.parent) if meta.istable else (f.parent, r.name)
+                if owner not in in_set and not (target == "User" and f.parent == "DocShare"):
+                    hits.append((target, r.get(f.fieldname), f.parent, f.fieldname, owner))
+    print("records OUTSIDE the set linking into it:", len(hits))
+    for h in hits:
+        print("   ", h)
+    print("settings to restore:", m.data.get("settings_before"))
+    return {"records": len(all_docs), "outside_links": len(hits)}
+
+
+def remove(dry_run=0):
+    """bench execute slhrm.demo.data.remove [--kwargs '{"dry_run": 1}']"""
+    frappe.set_user("Administrator")
+    m = Manifest()
+    emps, all_docs = _removal_set(m)
+    if cint(dry_run):
+        return _dry_run(m, emps, all_docs)
 
     log = []
     for dt in REMOVE_ORDER:
