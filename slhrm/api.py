@@ -632,3 +632,32 @@ def get_app_permissions():
         "app_checkin": app_checkin_allowed(emp),
         "ot_eligible": bool(emp and cint(emp.slhrm_ot_eligible)),
     }
+
+
+@frappe.whitelist()
+def get_my_holidays():
+    """Holidays (not weekly offs) of the session user's own active Employee, for the PWA.
+
+    HRMS's hrms.api.get_holidays_for_employee requires read permission on Holiday List, which the
+    Employee role does not have. The list is resolved by ERPNext/HRMS's own
+    get_holiday_list_for_employee; only the user's own employee is ever served (no parameter).
+    """
+    from erpnext.setup.doctype.employee.employee import get_holiday_list_for_employee
+    from frappe.utils import strip_html
+    from slhrm.overrides.employee_checkin import get_session_employee
+
+    emp = get_session_employee()
+    if not emp:
+        return []
+    holiday_list = get_holiday_list_for_employee(emp.name, raise_exception=False)
+    if not holiday_list:
+        return []
+    holidays = frappe.get_all(
+        "Holiday",
+        filters={"parenttype": "Holiday List", "parent": holiday_list, "weekly_off": 0},
+        fields=["name", "holiday_date", "description"],
+        order_by="holiday_date asc",
+    )
+    for h in holidays:
+        h["description"] = strip_html(h["description"] or "").strip()
+    return holidays

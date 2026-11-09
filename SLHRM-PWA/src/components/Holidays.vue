@@ -74,15 +74,12 @@ import { inject, computed } from "vue"
 import { IonModal } from "@ionic/vue"
 import { FeatherIcon, createResource } from "frappe-ui"
 
-const employee = inject("$employee")
 const dayjs = inject("$dayjs")
 const __ = inject("$translate")
 
 const holidays = createResource({
-	url: "hrms.api.get_holidays_for_employee",
-	params: {
-		employee: employee.data.name,
-	},
+	// own employee only; hrms.api.get_holidays_for_employee needs Holiday List read (not given to Employee)
+	url: "slhrm.api.get_my_holidays",
 	auto: true,
 	transform: (data) => {
 		return data.map((holiday) => {
