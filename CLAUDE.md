@@ -44,7 +44,7 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 
 ## Layout
 - The live Python package is `slhrm/`. The repo root holds only packaging files
-  (`pyproject.toml`, `setup.py`, `setup.cfg`, `requirements.txt`), `SLHRM-PWA/` and `slhrm/`.
+  (`pyproject.toml`, `setup.py`, `setup.cfg`, `requirements.txt`), `SLHRM-PWA/`, `SLHRM-AGENT/` and `slhrm/`.
   **Never recreate root-level duplicates** of `api.py`, `hooks.py`, `install.py`, `public/` etc.
 - Module folder `slhrm/slhrm/` (module "SLHRM") holds committed symlinks
   `doctype`, `fixtures`, `page`, `print_format`, `public`, `workspace`, `workspace_sidebar` → `../`.
@@ -65,8 +65,9 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - Remove old fields or doctypes with a patch, not ad-hoc code in hooks.
 - Every path in `app_include_js` / `app_include_css` must exist under `slhrm/public/`.
   Form scripts belong in the doctype folder, not in `public/js` (unless wired via `doctype_js`).
-- Device endpoints (`device_punch`, `device_punch_bulk`) are `allow_guest`; they must call
-  `_validate_device_api_key()` first, and that check must fail closed (disabled/unset/wrong → 403).
+- Device endpoints (`device_ingest`, `device_heartbeat`, legacy `device_punch`, `device_punch_bulk`) are
+  `allow_guest`; they must call `_validate_device_api_key()` first, and that check must fail closed
+  (disabled/unset/wrong → 403). New endpoints pass `header_only=True` (key only in `X-Device-Key`).
 - `install.execute` / `install.after_migrate` only ensure the SLHRM Module Def via the API. Keep them
   idempotent and API-based, on SLHRM-owned records only; no raw SQL, no file writes into the app.
 - Custom fields carry the `slhrm_` prefix (Employee: `slhrm_biometric_section`,
@@ -229,6 +230,29 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - Cache: `slhrm_must_change_pw` hash caches only "no change needed" (0); flag set → `_forget(user)`;
   User `on_update` → `_forget`.
 - Prod has NO outgoing Email Account (only "Jobs", outgoing off) → every new login gets a temporary password.
+
+## Biometric ingestion (Phase 2.0, v0.0.12)
+- **Devices are READ-ONLY, always.** Agent `SLHRM-AGENT/slhrm_agent.py` (runs outside the bench, own venv
+  `~/slhrm-agent/venv`, config `~/slhrm-agent/config.json` chmod 600 — never in the repo). Allowed pyzk calls
+  only (`ALLOWED_DEVICE_CALLS`): connect, get_serialnumber, get_firmware_version, get_device_name,
+  get_platform, get_mac, get_time, read_sizes, get_users, get_attendance, disconnect. Never clear / set_time /
+  disable / restart / live_capture / any write. Comm password unknown: 0 then 111111, max 2 attempts, then ask.
+- Every raw record stored once: `Biometric Punch Log.punch_key` = `serial|device user id|YYYY-MM-DD HH:MM:SS`
+  (device time), **unique DB index**; the agent's SQLite queue uses the same key and re-reads the whole
+  device log every pull (INSERT OR IGNORE). Confirmed only by the server's per-record result
+  (`slhrm.biometric.ingest`: inserted / duplicate / unknown_employee / error; savepoint per record).
+- Unknown device users are STORED (`employee` empty, status Unmatched) and re-matched when
+  `Employee.slhrm_biometric_device_id` is set (doc_events `on_update` → `slhrm.biometric.rematch`).
+  Matching: the employee with that id in the device's branch, else the only one anywhere; ambiguous → Unmatched.
+  Never by Employee name / employee_number.
+- `Biometric Device` (name = serial): branch, ip, timezone (punch times converted to the site tz), health
+  from `device_heartbeat`. Ingest refuses unknown or disabled serials.
+- IN/OUT pairing and OT are NOT decided at ingest (Attendance Marker / `slhrm.overtime`); the marker reads
+  only rows with an employee. `punch_type` comes from the device punch state; the raw state is kept.
+- Agent scheduler stays OFF until Raj approves the backfill. Unit tests: `python3 -m unittest discover -s
+  SLHRM-AGENT/tests`; server pure functions: `slhrm.tests.test_biometric`.
+- The old sync tool for hr.gillsinternational.com (`~/frappe-bench/biometric-attendance-sync-tool`) is NOT
+  ours: never touch it or its devices (katunayaka_1, wattala_1).
 
 ## App check-in
 - Allowed only when `Employee.slhrm_allow_app_checkin` and HR Settings
