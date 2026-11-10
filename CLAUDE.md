@@ -81,7 +81,8 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - `install.execute` / `install.after_migrate` only ensure the SLHRM Module Def via the API. Keep them
   idempotent and API-based, on SLHRM-owned records only; no raw SQL, no file writes into the app.
 - Custom fields carry the `slhrm_` prefix (Employee: `slhrm_biometric_section`,
-  `slhrm_biometric_device_id`, `slhrm_biometric_device_name`). Check that every `insert_after`
+  `slhrm_biometric_device_id`, `slhrm_biometric_device_name`, `slhrm_epf_no` = EPF No., after Employee
+  Number — HRMS v16 Employee has no EPF/provident-fund field). Check that every `insert_after`
   anchor exists in the current core JSON.
 
 ## Overtime (OT) flow

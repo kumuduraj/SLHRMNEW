@@ -139,5 +139,17 @@
     "depends_on": "eval:doc.slhrm_managed",
     "description": "SLHRM: Employee Salary Package rows in force from this assignment's From Date. Salary Slips of periods using this assignment apply these amounts.",
     "name": "Salary Structure Assignment-slhrm_package_components"
+  },
+  {
+    "doctype": "Custom Field",
+    "dt": "Employee",
+    "module": "SLHRM",
+    "fieldname": "slhrm_epf_no",
+    "fieldtype": "Data",
+    "label": "EPF No.",
+    "insert_after": "employee_number",
+    "in_standard_filter": 0,
+    "description": "SLHRM: Employees' Provident Fund member number (from HR).",
+    "name": "Employee-slhrm_epf_no"
   }
 ]
