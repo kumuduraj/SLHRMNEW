@@ -14,7 +14,7 @@
  "search_fields": "device_name,branch",
  "sort_field": "modified",
  "sort_order": "DESC",
- "modified": "2026-11-09 11:00:00.000000",
+ "modified": "2026-11-10 10:00:00.000000",
  "fields": [
   {
    "fieldname": "serial",
@@ -39,6 +39,13 @@
    "options": "Branch",
    "in_list_view": 1,
    "description": "Device user ids are matched to Employee.slhrm_biometric_device_id, preferring employees of this branch."
+  },
+  {
+   "fieldname": "served_branches",
+   "fieldtype": "Table",
+   "label": "Served Branches",
+   "options": "Biometric Device Branch",
+   "description": "Branches whose employees punch on this device (always includes the device's own Branch). Device user ids must be unique across these branches."
   },
   {
    "fieldname": "enabled",

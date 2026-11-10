@@ -5,7 +5,7 @@ from frappe import _
 from frappe.utils import add_months, get_first_day, today
 
 from slhrm.biometric import (DEVICE, DEVICE_USER, PUNCH, classify_by_number, mapping_candidates, number_matching_enabled,
-                             suggest_employee)
+                             served_branches, suggest_employee)
 
 
 def execute(filters=None):
@@ -25,6 +25,8 @@ def execute(filters=None):
         order by last_punch desc, punches desc""", values, as_dict=True)
 
     devices = {d.name: d for d in frappe.get_all(DEVICE, fields=["name", "device_name", "branch"])}
+    for d in devices.values():
+        d.branches = served_branches(d.name, d.branch)
     names = {(u.device, u.device_user_id): u for u in frappe.get_all(
         DEVICE_USER, fields=["device", "device_user_id", "user_name", "on_device"])}
     employees = mapping_candidates()
@@ -34,13 +36,14 @@ def execute(filters=None):
         u = names.get((r.device_serial, r.device_user_id)) or frappe._dict()
         r.device_name = d.device_name or r.device_serial
         r.branch = d.branch
+        r.served_branches = ", ".join(d.get("branches") or ())
         r.user_name = u.user_name
         r.on_device = 1 if u.get("on_device") else 0
-        emp, conf = suggest_employee(u.user_name, d.branch, employees) if u.user_name else (None, "none")
+        emp, conf = suggest_employee(u.user_name, d.get("branches"), employees) if u.user_name else (None, "none")
         r.suggested_employee = emp.name if emp else None
         r.suggested_name = emp.employee_name if emp else None
         r.confidence = conf
-        c = classify_by_number(r.device_user_id, d.branch, u.user_name, cache)
+        c = classify_by_number(r.device_user_id, d.get("branches"), u.user_name, cache)
         r.number_hit = c.employee.name if c.employee else None
         r.number_hit_name = c.employee.employee_name if c.employee else None
         r.reason = reason_text(c, by_number)
@@ -64,6 +67,7 @@ def columns(since):
     return [
         {"fieldname": "device_name", "label": _("Device"), "fieldtype": "Data", "width": 110},
         {"fieldname": "branch", "label": _("Branch"), "fieldtype": "Link", "options": "Branch", "width": 110},
+        {"fieldname": "served_branches", "label": _("Served Branches"), "fieldtype": "Data", "width": 170},
         {"fieldname": "device_user_id", "label": _("Device User ID"), "fieldtype": "Data", "width": 110},
         {"fieldname": "user_name", "label": _("Name on Device"), "fieldtype": "Data", "width": 140},
         {"fieldname": "punches", "label": _("Punches"), "fieldtype": "Int", "width": 80},

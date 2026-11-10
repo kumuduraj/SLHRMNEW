@@ -6,7 +6,7 @@ from frappe.tests import UnitTestCase
 
 import frappe
 
-from slhrm.biometric import PUNCH_TYPES, name_sanity, outcome, parse_device_time, punch_key, to_site_time
+from slhrm.biometric import PUNCH_TYPES, as_branches, name_sanity, outcome, parse_device_time, punch_key, to_site_time
 
 
 class TestBiometric(UnitTestCase):
@@ -50,3 +50,9 @@ class TestBiometric(UnitTestCase):
         self.assertEqual(outcome(c(result="ambiguous", sane=False)), (False, "ambiguous"))
         self.assertEqual(outcome(c(result="conflict", sane=True)), (False, "conflict"))
         self.assertEqual(outcome(c(result="none", sane=False)), (False, None))
+
+    def test_as_branches(self):
+        self.assertEqual(as_branches("DUTCHPUB"), ("DUTCHPUB",))
+        self.assertEqual(as_branches(["DUTCHPUB", "FORTFUSION", "DUTCHPUB", " ", None]), ("DUTCHPUB", "FORTFUSION"))
+        self.assertEqual(as_branches(None), ())
+        self.assertEqual(as_branches(""), ())

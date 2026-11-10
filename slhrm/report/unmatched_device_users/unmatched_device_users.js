@@ -11,7 +11,7 @@ frappe.query_reports["Unmatched Device Users"] = {
 			return `<button class="btn btn-xs btn-primary slhrm-map-btn"
 				data-serial="${esc(data.device_serial)}" data-uid="${esc(data.device_user_id)}"
 				data-name="${esc(data.user_name || "")}" data-emp="${esc(data.number_hit || data.suggested_employee || "")}"
-				data-device="${esc(data.device_name || "")}">${__("Map to Employee")}</button>`;
+				data-device="${esc(data.device_name || "")}" data-served="${esc(data.served_branches || "")}">${__("Map to Employee")}</button>`;
 		}
 		return default_formatter(value, row, column, data);
 	},
@@ -23,6 +23,7 @@ frappe.query_reports["Unmatched Device Users"] = {
 			const b = $(this).data();
 			slhrm_map_device_user(report, {
 				serial: String(b.serial), uid: String(b.uid), name: b.name, emp: b.emp, device: b.device,
+				served_branches: b.served ? String(b.served) : "",
 			});
 		});
 	},
@@ -34,11 +35,13 @@ function slhrm_map_device_user(report, row) {
 		fields: [
 			{
 				fieldtype: "HTML",
-				options: `<p class="text-muted">${__("Device")}: ${frappe.utils.escape_html(row.device)}</p>`,
+				options: `<p class="text-muted">${__("Device")}: ${frappe.utils.escape_html(row.device)}` +
+					(row.served_branches ? ` · ${__("serves")} ${frappe.utils.escape_html(row.served_branches)}` : "") + `</p>`,
 			},
 			{
 				fieldname: "employee", label: __("Employee"), fieldtype: "Link", options: "Employee", reqd: 1,
-				default: row.emp || undefined, get_query: () => ({ filters: { status: "Active" } }),
+				default: row.emp || undefined, get_query: () => ({ filters: Object.assign({ status: "Active" },
+					row.served_branches ? { branch: ["in", row.served_branches.split(", ")] } : {}) }),
 			},
 		],
 		primary_action_label: __("Map"),

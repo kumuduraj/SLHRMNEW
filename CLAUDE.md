@@ -258,16 +258,23 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   2026-11-01 were deleted on 2026-11-09 (backup `~/cc-tmp/punch_backup_pre_20261101.json.gz`, 600).
 - Unknown device users are STORED (`employee` empty, status Unmatched) and re-matched when
   `Employee.slhrm_biometric_device_id` is set (doc_events `on_update` → `slhrm.biometric.rematch`).
-  Matching: **(a) branch-scoped** (v0.0.14): the ONE Active employee of the DEVICE'S BRANCH whose
-  `slhrm_biometric_device_id` == device user id — no "anywhere" fallback; ids are unique per branch, not globally
-  (the same id 1 at DUTCHPUB and BRITISHPUB = two different people). Device without a branch → nothing matches.
+  **Matching scope = the device's SERVED BRANCHES** (v0.0.15): Biometric Device child table `served_branches`
+  (`Biometric Device Branch`; the device's own branch is always added on save; `slhrm.biometric.served_branches`).
+  DUTCHPUB device serves DUTCHPUB + FORTFUSION (2026-11-10; FORTFUSION has no device). No "anywhere" fallback:
+  ids are unique per device scope, not globally (the same id 1 at DUTCHPUB and BRITISHPUB = two different people).
+  Device without a branch → nothing matches.
+  (a) the ONE Active employee of the served branches whose `slhrm_biometric_device_id` == device user id.
   (b) only if SLHRM Settings `match_device_user_by_employee_number` (ON since 2026-11-09): the ONE Active
-  employee of the device's branch whose `employee_number` == device user id (trimmed, case-insensitive) AND whose
+  employee of the served branches whose `employee_number` == device user id (trimmed, case-insensitive) AND whose
   name contains the name on the device (`name_sanity`, whole words) → the id is saved on that Employee
   (`link_by_number`, Employee.save → Version). Not linked → Unmatched with `match_reason` ambiguous / conflict
-  (id held by another active employee OF THE BRANCH, or the hit already has a different id) / name_mismatch.
+  (id held by another active employee of the served branches, or the hit already has a different id) / name_mismatch.
+  **Uniqueness**: Employee `validate` refuses a device id already held by another Active employee in the served
+  branches of any device serving the employee's branch; saving a device whose served branches contain a duplicate
+  id is refused (list shown).
   **Branch transfer** (Employee `validate` → `on_employee_validate`): changing `branch` clears the device id with a
-  message to HR (unless the same save sets a new id); punches already matched keep their link.
+  message to HR (unless the same save sets a new id, or one device serves both branches — then the id stays);
+  punches already matched keep their link.
   `classify_by_number` is the only implementation (ingest, rematch, report, `employee_number_matching` review/apply,
   bench execute only). Never match by Employee name alone.
 - `Biometric Device` (name = serial): branch, ip, timezone (punch times converted to the site tz), health
@@ -279,14 +286,14 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   Rotate: generate `secrets.token_urlsafe(32)` in one process → save on SLHRM Settings (device_api_enabled = 1) →
   write the config → verify no key 403 / wrong key 403 / agent heartbeat 200 (show only length + first 4 chars).
 - Mapping screen: Script Report "Unmatched Device Users" (`slhrm/report/`, module symlink `slhrm/slhrm/report`);
-  "Map to Employee" = `slhrm.biometric.map_device_user` (refuses an employee of another branch, and an id held
-  by another active employee of the device's branch);
+  "Map to Employee" = `slhrm.biometric.map_device_user` (refuses an employee of a branch the device does not
+  serve, and an id held by another active employee of its served branches; the picker offers only served branches);
   columns Employee No. Hit / Reason show rule (b) live; the dialog pre-fills the number hit.
 - Agent scheduler (2026-11-09): rajerp crontab `*/5 … slhrm_agent.py --config ~/slhrm-agent/config.json run` (log
   `~/slhrm-agent/agent.log`); only devices with `enabled: true` in the config are read (DUTCHPUB). DUTCHPUB backfilled
   (27 975 records from 2025-11-04; re-send = all duplicate). `backfill --device N [--resend]` for new devices. Unit tests: `python3 -m unittest discover -s
   SLHRM-AGENT/tests`; server pure functions: `slhrm.tests.test_biometric`.
-- Throwaway biometric tests use ids like `T4-1`, never plain numbers: a test employee with id `1` in DUTCHPUB
+- Throwaway biometric tests use ids like `T4-1` (and throwaway devices / branches named `T23-…`), never plain numbers: a test employee with id `1` in DUTCHPUB
   would re-match real DUTCHPUB punches of device user 1.
 - The old sync tool for hr.gillsinternational.com (`~/frappe-bench/biometric-attendance-sync-tool`) is NOT
   ours: never touch it or its devices (katunayaka_1, wattala_1).
