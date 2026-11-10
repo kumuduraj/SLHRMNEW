@@ -28,7 +28,7 @@
     "doctype_or_field": "DocField",
     "field_name": "employee_number",
     "property": "description",
-    "value": "Unique employee number used for biometric device mapping and payroll",
+    "value": "HR employee number (payroll). Fallback only for biometric matching, in the device's branches; the device user number is Attendance Device ID (all devices).",
     "property_type": "Text",
     "name": "Employee-employee_number-desc"
   },
