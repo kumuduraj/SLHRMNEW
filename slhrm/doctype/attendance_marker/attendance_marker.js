@@ -29,7 +29,9 @@ function ensure_grid_style() {
 	if (document.getElementById("slhrm-marker-grid-style")) return;
 	$('<style id="slhrm-marker-grid-style">')
 		.text('[data-fieldname="attendance_details"] .grid-heading-row .grid-static-col .static-area' +
-			"{ white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.15; }")
+			"{ white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.15; }" +
+			'[data-fieldname="attendance_details"] .grid-heading-row .grid-static-col' +
+			"{ height: auto; min-height: 32px; }")
 		.appendTo("head");
 }
 
