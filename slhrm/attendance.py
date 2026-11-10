@@ -248,8 +248,10 @@ def fetch_punches(employees, range_start, range_end, device_id=None):
 def day_figures(shift_info, in_dt, out_dt, worked, ot_eligible, holiday_type, settings,
                 short_leave=0, short_leave_min=0):
     """Early/late minutes, short-leave excuses and calculated OT for one employee-day.
-    shift_info from get_shift_info (start/end None = no shift); in_dt / out_dt datetimes or None."""
-    mins = early_late_minutes(shift_info.start, shift_info.end, in_dt, out_dt) if shift_info.start else \
+    shift_info from get_shift_info (start/end None = no shift); in_dt / out_dt datetimes or None.
+    Holiday / weekly off: all worked hours are OT, so no early/late minutes (nothing counts as late)."""
+    working_day = holiday_type not in ("weekly_off", "holiday")
+    mins = early_late_minutes(shift_info.start, shift_info.end, in_dt, out_dt) if shift_info.start and working_day else \
         dict.fromkeys(("early_in_min", "late_in_min", "early_out_min", "late_out_min"), 0)
     late_ok, early_ok = excused(mins["late_in_min"], mins["early_out_min"], short_leave, short_leave_min)
     calc_ot = calculate_ot_hours({

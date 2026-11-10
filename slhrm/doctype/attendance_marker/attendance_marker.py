@@ -184,6 +184,8 @@ class AttendanceMarker(Document):
 
             if not is_eligible:
                 row.ot_hours = 0
+            elif not prev and row.get("ot_hours") in (None, ""):
+                row.ot_hours = fig["calc_ot"]  # new row without a value (API / import) -> calculated OT
             elif not can_edit_ot:
                 row.ot_hours = flt(prev.ot_hours) if prev and prev.ot_edited_by else fig["calc_ot"]
             elif flt(row.ot_hours) < 0:

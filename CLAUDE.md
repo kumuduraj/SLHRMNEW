@@ -444,7 +444,7 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 ## Single OT, early/late, short leave, Attendance Supervisor (v0.2.0)
 - ONE OT type everywhere ("OT"; component "Overtime"). `slhrm/overtime.py`: per row whole minutes early_in / late_in /
   early_out / late_out from shift start/end and IN/OUT (incl. OUT +1); OT = (early_in + late_out)/60 on a working day,
-  all worked hours on a holiday / weekly off, 0 without shift times, Minimum OT Hours still applies. One entry point
+  all worked hours on a holiday / weekly off (early/late minutes 0 that day), 0 without shift times, Minimum OT Hours still applies. One entry point
   `attendance.day_figures` (loader, `calc_attendance_times`, marker `_apply_overtime`). Patch v0_2_0.merge_double_ot
   added old double hours into OT and dropped the old columns.
 - Marker grid (10 cols): Employee Name 2, Shift, IN, OUT, OUT +1, Hrs, Late In, Early Out, OT. Late In / Early Out orange

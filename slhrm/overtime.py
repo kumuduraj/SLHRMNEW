@@ -9,7 +9,7 @@ Per employee-day (shift start S, shift end E, IN, OUT incl. "OUT +1"), whole min
     early_out_min = OUT before E       late_out_min  = OUT after E
 OT hours:
     working day            -> (early_in_min + late_out_min) / 60
-    holiday / weekly off   -> all worked hours
+    holiday / weekly off   -> all worked hours (early/late minutes are 0 that day: slhrm.attendance.day_figures)
     no shift times         -> 0 on a working day (nothing to compare with)
     not OT-eligible        -> 0
     below the minimum OT (SLHRM Settings overtime_threshold, hours) -> 0
