@@ -198,7 +198,9 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   Employee `slhrm_apit_exempt` → 0. `apply_salary_rules` = package overrides → apply_epf → **apply_apit** (real slip
   before_save / before_submit + preview). Worksheet: preview APIT excludes worksheet OT; row `apit_amount` =
   APIT(apit_taxable_base + Normal OT + Double OT) replaces it in total_deduction (`payroll_pay.compose_pay`,
-  `_recalculate_all`, `calc_worksheet_row`) → worksheet == final slip. Change slabs in SLHRM Settings, never in code.
+  `_recalculate_all`, `calc_worksheet_row`) → worksheet == final slip. Change slabs in SLHRM Settings, never in code. Slabs = annual table / 12 with EXACT thresholds
+  (150,000 / 233,333.33 / 275,000 / 316,666.67 / 358,333.33; Raj 2026-11-10) so each full band yields 5,000 / 7,500 /
+  10,000 / 12,500; reload with `salary_setup.replace_apit_slabs`.
 - Worksheet columns: Additional Salary lines have their own component column (no "Additional" bucket); fixed columns
   (shown even when empty) = `salary_setup.WORKSHEET_FIXED_EARNINGS` / `WORKSHEET_FIXED_DEDUCTIONS`, stored per row in
   components_json.fixed_columns; the APIT cell = row apit_amount. Python `payroll_table.build_table` and JS mirror.

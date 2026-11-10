@@ -63,8 +63,9 @@ REDUCES = {"No Pay": {"slhrm_reduces_epf_base": 1}}  # No Pay lowers the EPF bas
 
 SETTINGS_COMPONENTS = {"normal_ot_component": "Normal OT", "double_ot_component": "Double OT", "apit_component": "APIT"}
 APIT_EFFECTIVE_FROM = "2025-04-01"
-APIT_SLABS = [  # monthly: from, to (0 = no limit), rate %
-    (0, 150000, 0), (150000, 233334, 6), (233334, 275001, 18), (275001, 316668, 24), (316668, 358335, 30), (358335, 0, 36),
+APIT_SLABS = [  # monthly = annual table / 12 (exact thresholds; Raj 2026-11-10): from, to (0 = no limit), rate %
+    (0, 150000, 0), (150000, 233333.33, 6), (233333.33, 275000, 18), (275000, 316666.67, 24), (316666.67, 358333.33, 30),
+    (358333.33, 0, 36),
 ]
 
 STRUCTURE_ROWS = {
@@ -158,6 +159,26 @@ def _apply_settings(dry):
         s.save()
         frappe.db.commit()
     return out or "unchanged"
+
+
+def replace_apit_slabs(effective_from=APIT_EFFECTIVE_FROM):
+    """Replace the SLHRM Settings APIT slab rows of `effective_from` with APIT_SLABS (other dates kept).
+    bench --site … execute slhrm.salary_setup.replace_apit_slabs"""
+    frappe.set_user("Administrator")
+    s = frappe.get_single("SLHRM Settings")
+    keep = [r for r in s.get("apit_slabs") or [] if str(r.effective_from) != str(effective_from)]
+    old = [(flt(r.from_amount), flt(r.to_amount), flt(r.rate)) for r in s.get("apit_slabs") or [] if str(r.effective_from) == str(effective_from)]
+    s.set("apit_slabs", [])
+    for r in keep:
+        s.append("apit_slabs", {"from_amount": r.from_amount, "to_amount": r.to_amount, "rate": r.rate, "effective_from": r.effective_from})
+    for a, b, c in APIT_SLABS:
+        s.append("apit_slabs", {"from_amount": a, "to_amount": b, "rate": c, "effective_from": effective_from})
+    s.flags.ignore_permissions = True
+    s.save()
+    frappe.db.commit()
+    out = {"effective_from": effective_from, "old": old, "new": [(flt(a), flt(b), flt(c)) for a, b, c in APIT_SLABS], "kept_other_dates": len(keep)}
+    print(json.dumps(out, indent=1))
+    return out
 
 
 def _rows_differ(ss):

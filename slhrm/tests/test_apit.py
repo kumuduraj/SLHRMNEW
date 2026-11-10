@@ -4,8 +4,9 @@ from frappe.tests import UnitTestCase
 
 from slhrm.statutory import calc_apit
 
-# SLHRM Settings slabs as loaded by salary_setup (monthly, effective 2025-04-01); top band: no limit
-SLABS = [(0, 150000, 0), (150000, 233334, 6), (233334, 275001, 18), (275001, 316668, 24), (316668, 358335, 30), (358335, None, 36)]
+# SLHRM Settings slabs as loaded by salary_setup (monthly = annual / 12, exact thresholds, effective 2025-04-01)
+SLABS = [(0, 150000, 0), (150000, 233333.33, 6), (233333.33, 275000, 18), (275000, 316666.67, 24),
+         (316666.67, 358333.33, 30), (358333.33, None, 36)]
 
 
 class TestAPIT(UnitTestCase):
@@ -20,14 +21,14 @@ class TestAPIT(UnitTestCase):
         self.assertEqual([b["rate"] for b in bands], [0, 6])          # the 0% relief band is reported too
 
     def test_second_band(self):
-        self.assertEqual(calc_apit(250000, SLABS)[0], 7999.92)   # 6% x 83,334 + 18% x 16,666
-        self.assertEqual(calc_apit(240000, SLABS)[0], 6199.92)   # 6% x 83,334 + 18% x 6,666
+        self.assertEqual(calc_apit(250000, SLABS)[0], 8000.0)    # 6% x 83,333.33 + 18% x 16,666.67
+        self.assertEqual(calc_apit(240000, SLABS)[0], 6200.0)    # 6% x 83,333.33 + 18% x 6,666.67
 
     def test_top_band(self):
-        amount, bands = calc_apit(400000, SLABS)                 # 5,000.04 + 7,500.06 + 10,000.08 + 12,500.10 + 36% x 41,665
-        self.assertEqual(amount, 49999.68)
+        amount, bands = calc_apit(400000, SLABS)                 # ~5,000 + 7,500 + 10,000 + 12,500 + 36% x 41,666.67
+        self.assertEqual(amount, 50000.0)
         self.assertEqual([b["rate"] for b in bands], [0, 6, 18, 24, 30, 36])
 
     def test_band_edges_continuous(self):
-        for edge in (233334, 275001, 316668, 358335):
+        for edge in (233333.33, 275000, 316666.67, 358333.33):
             self.assertAlmostEqual(calc_apit(edge + 0.01, SLABS)[0] - calc_apit(edge, SLABS)[0], 0.0, delta=0.01)
