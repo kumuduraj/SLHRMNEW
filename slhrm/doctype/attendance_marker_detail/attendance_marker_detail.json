@@ -69,13 +69,15 @@
    "fieldname": "in_time",
    "fieldtype": "Time",
    "label": "IN Time",
-   "in_list_view": 1
+   "in_list_view": 1,
+   "columns": 1
   },
   {
    "fieldname": "out_time",
    "fieldtype": "Time",
    "label": "OUT Time",
-   "in_list_view": 1
+   "in_list_view": 1,
+   "columns": 1
   },
   {
    "fieldname": "out_next_day",
@@ -114,7 +116,8 @@
    "fieldtype": "Float",
    "label": "Worked Hours",
    "read_only": 1,
-   "in_list_view": 1
+   "in_list_view": 1,
+   "columns": 1
   },
   {
    "fieldname": "ot_eligible",
@@ -215,5 +218,5 @@
   }
  ],
  "permissions": [],
- "modified": "2026-11-10 13:00:00.000000"
+ "modified": "2026-11-10 13:30:00.000000"
 }
