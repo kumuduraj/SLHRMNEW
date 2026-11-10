@@ -130,9 +130,10 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   meaning in each field's description (Frappe v16 has no grid-only label; row editors copy grid.docfields), grid
   columns sum to 10 (Employee Name 2, others 1); per-row OT lock = `grid_row.toggle_editable` (v16 has no
   `grid_form.set_df_property`).
-- Shift Types (2026-11-10, no employee assigned yet): Dawn Shift 03-12, Early Shift 06-15, Day Shift 08-17,
-  Morning Shift 10-19, Noon Shift 12-21, Evening Shift 15-24 (ends 00:00 next day), Night Shift 21-06; all auto
-  attendance 0, no holiday list (Company Holiday List Assignment applies). Rows keep `calc_normal_ot`/`calc_double_ot` (server-computed) and approved
+- Shift Types (2026-11-10, hours first so the grid shows the hours; no employee assigned yet): 03-12 Dawn,
+  06-15 Early, 08-17 Day, 10-19 Morning, 12-21 Noon, 15-24 Evening (ends 00:00 next day), 21-06 Night; all auto
+  attendance 0, no holiday list (Company Holiday List Assignment applies). HRMS ships Shift Type without
+  allow_rename: rename only while nothing references a shift, with `frappe.rename_doc(..., merge=False, force=True)`. Rows keep `calc_normal_ot`/`calc_double_ot` (server-computed) and approved
   `normal_ot_hours`/`double_ot_hours`.
 - Worksheet sums submitted markers' approved hours (`slhrm/payroll_ot.py`), rates from overtime.py.
   On submit: one Additional Salary per employee per OT type (components in SLHRM Settings,
