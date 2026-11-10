@@ -206,6 +206,10 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   `slhrm.testing.delete_throwaway(doctype, name)`** (cancel + permanent delete, no "Deleted Document" copy and no
   "Deleted" Comment); the "counts before = after" proof MUST include `Deleted Document` and `Comment` (and Version).
   Name every test record with a marker (`T27-…`, `SLHRMT…`) so it can be told apart from real data.
+  Every `delete_doc` enqueues `delete_dynamic_links` AFTER commit (it removes comments etc. linked to the deleted
+  record): wait until the `default` queue is empty before taking the "after" counts. Bulk deletes (hundreds) in
+  batches, waiting for the queue between batches — Frappe refuses new jobs above 550 queued ("QueueOverloaded");
+  the 2026-11-10 trail purge (1,104 deletes) hit this and blocked a teardown for ~3 min.
 - `...create`, `...report`, `...preview_payroll`, `...remove` (`--kwargs '{"dry_run": 1}'` lists every
   record, counts per doctype, and every record OUTSIDE the set that links into it).
 - Every created doc is listed in the private File `slhrm_demo_manifest.json`; `remove()` deletes those
