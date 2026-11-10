@@ -24,7 +24,7 @@ function figures(m) {
 	return out;
 }
 
-// 1366 px without truncation: header labels and the Shift cell may wrap onto two lines (rows grow),
+// 1366 px without truncation: header labels, Employee Name and Shift may wrap onto two lines (rows grow),
 // IN / OUT show HH:mm in the grid (the row editor keeps the full value)
 const GRID_SEL = '[data-fieldname="attendance_details"]';
 function ensure_grid_style() {
@@ -32,7 +32,8 @@ function ensure_grid_style() {
 	const wrap = "{ white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.15; }";
 	$('<style id="slhrm-marker-grid-style">')
 		.text(`${GRID_SEL} .grid-heading-row .grid-static-col .static-area ${wrap}` +
-			`${GRID_SEL} .grid-body .grid-static-col[data-fieldname="shift"] .static-area ${wrap}` +
+			`${GRID_SEL} .grid-body .grid-static-col[data-fieldname="shift"] .static-area,` +
+			`${GRID_SEL} .grid-body .grid-static-col[data-fieldname="employee_name"] .static-area ${wrap}` +
 			`${GRID_SEL} .grid-heading-row, ${GRID_SEL} .grid-heading-row .grid-row, ${GRID_SEL} .grid-heading-row .data-row,` +
 			`${GRID_SEL} .grid-heading-row .grid-static-col { height: auto; min-height: 32px; overflow: visible; }`)
 		.appendTo("head");
