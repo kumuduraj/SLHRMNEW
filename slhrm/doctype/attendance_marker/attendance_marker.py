@@ -2,14 +2,17 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import cint, flt, get_datetime
+from frappe.utils import cint, flt
 
 from slhrm.attendance import (
+    MAX_PLAUSIBLE_HOURS,
     PUNCH_BIOMETRIC,
+    combine,
     get_holiday_info,
     get_settings,
     get_shift_info,
-    worked_hours_from_times,
+    out_is_next_day,
+    span_hours,
 )
 from slhrm.overtime import calculate_ot_hours
 
@@ -127,15 +130,25 @@ class AttendanceMarker(Document):
             }
 
         date_str = str(self.date)
+        long_rows = []
         for row in self.attendance_details:
+            row.shift_date = self.date
+            # OUT before IN on the same day is impossible -> OUT is on the next day; no OUT -> no flag
+            if not row.out_time:
+                row.out_next_day = 0
+            elif out_is_next_day(row.in_time, row.out_time):
+                row.out_next_day = 1
             is_eligible = cint(eligible.get(row.employee))
             shift_info = get_shift_info(row.shift, date_str, settings)
-            worked = worked_hours_from_times(row.in_time, row.out_time)
+            worked = span_hours(date_str, row.in_time, row.out_time, row.out_next_day)
+            if worked > MAX_PLAUSIBLE_HOURS:
+                long_rows.append(f"{row.idx}. {row.employee_name or row.employee}: {worked} h")
             calc = calculate_ot_hours(
                 {
                     "employee": row.employee, "date": date_str, "ot_eligible": is_eligible,
                     "shift": row.shift, "shift_hours": shift_info.hours,
-                    "in_time": row.in_time, "out_time": row.out_time, "worked_hours": worked,
+                    "in_time": combine(date_str, row.in_time),
+                    "out_time": combine(date_str, row.out_time, row.out_next_day), "worked_hours": worked,
                     "is_holiday": None, "holiday_type": get_holiday_info(row.employee, date_str)[1],
                 },
                 settings,
@@ -168,6 +181,9 @@ class AttendanceMarker(Document):
                             row.idx, row.employee_name or row.employee, row.meta.get_label(field)
                         )
                     )
+        if long_rows:  # warn, don't block (manual overnight entries)
+            frappe.msgprint(_("More than {0} worked hours — check IN / OUT and the OUT next day box:").format(MAX_PLAUSIBLE_HOURS)
+                            + "<br>" + "<br>".join(long_rows), title=_("Long shifts"), indicator="orange")
 
     def _can_write_ot(self):
         if frappe.session.user == "Administrator" or self.flags.ignore_permissions:
@@ -198,11 +214,11 @@ class AttendanceMarker(Document):
             att.attendance_date = self.date
             att.status = row.attendance_status
             att.shift = row.shift
-            # Combine date with time for Datetime fields - handle Time field (timedelta)
+            # IN = shift date + in_time; OUT = (shift date + 1 if "OUT next day") + out_time
             if row.in_time:
-                att.in_time = self._combine_date_time(self.date, row.in_time)
+                att.in_time = combine(self.date, row.in_time)
             if row.out_time:
-                att.out_time = self._combine_date_time(self.date, row.out_time)
+                att.out_time = combine(self.date, row.out_time, row.out_next_day)
             att.working_hours = row.worked_hours
             att.leave_type = row.leave_type
             att.company = self.company
@@ -220,22 +236,6 @@ class AttendanceMarker(Document):
                         "processing_status",
                         "Matched",
                     )
-
-    def _combine_date_time(self, date_obj, time_val):
-        """Safely combine a date and Time/timedelta value into a Datetime string."""
-        if not time_val:
-            return None
-        # Time field in Frappe returns timedelta; convert to HH:MM:SS string
-        if hasattr(time_val, 'total_seconds'):
-            # It's a timedelta object
-            total_seconds = int(time_val.total_seconds())
-            hours = total_seconds // 3600
-            minutes = (total_seconds % 3600) // 60
-            seconds = total_seconds % 60
-            time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-        else:
-            time_str = str(time_val)
-        return f"{date_obj} {time_str}"
 
     # ── Cancel: Reverse Attendance ───────────────────────────────
 

@@ -361,6 +361,39 @@ def recalc_attendance_row(employee, date, shift):
 
 
 @frappe.whitelist()
+def calc_attendance_times(employee, date, shift=None, in_time=None, out_time=None, out_next_day=0):
+    """Attendance Marker row edited by hand (no punches needed): worked hours + calculated OT for
+    IN = date + in_time, OUT = (date + 1 if out_next_day) + out_time. OUT before IN on the same day
+    is impossible, so out_next_day is returned ticked then. Nothing is written."""
+    from slhrm.attendance import MAX_PLAUSIBLE_HOURS, combine, get_holiday_info, get_settings, get_shift_info, out_is_next_day, span_hours
+    from slhrm.overtime import calculate_ot_hours
+
+    frappe.has_permission("Attendance Marker", "create", throw=True)
+    if not employee or not date:
+        frappe.throw(_("Employee and Date are required."))
+    emp = frappe.db.get_value("Employee", employee, ["name", "slhrm_ot_eligible"], as_dict=True)
+    if not emp:
+        frappe.throw(_("Employee {0} not found.").format(employee))
+    in_time, out_time = (in_time or None), (out_time or None)
+    nxt = 1 if out_time and (cint(out_next_day) or out_is_next_day(in_time, out_time)) else 0
+    settings = get_settings()
+    info = get_shift_info(shift, str(date), settings)
+    worked = span_hours(date, in_time, out_time, nxt)
+    ot = calculate_ot_hours({
+        "employee": emp.name, "date": str(date), "ot_eligible": cint(emp.slhrm_ot_eligible), "shift": shift,
+        "shift_hours": info.hours, "in_time": combine(date, in_time), "out_time": combine(date, out_time, nxt),
+        "worked_hours": worked, "is_holiday": None, "holiday_type": get_holiday_info(emp.name, str(date))[1],
+    }, settings)
+    return {
+        "out_next_day": nxt, "worked_hours": worked, "shift_hours": info.hours,
+        "ot_eligible": 1 if cint(emp.slhrm_ot_eligible) else 0,
+        "calc_normal_ot": ot["normal"], "calc_double_ot": ot["double"],
+        "warning": _("More than {0} worked hours — check IN / OUT and the OUT next day box.").format(MAX_PLAUSIBLE_HOURS)
+        if worked > MAX_PLAUSIBLE_HOURS else "",
+    }
+
+
+@frappe.whitelist()
 def get_punch_logs(device_id="", date=None):
     """Fetch punch logs for a specific device and date."""
     if not date:

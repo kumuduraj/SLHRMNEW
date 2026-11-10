@@ -40,7 +40,8 @@
    "fieldtype": "Link",
    "label": "Shift Type",
    "options": "Shift Type",
-   "in_list_view": 1
+   "in_list_view": 1,
+   "columns": 1
   },
   {
    "fieldname": "attendance_status",
@@ -48,12 +49,20 @@
    "label": "Status",
    "options": "\nPresent\nAbsent\nOn Leave\nHalf Day",
    "default": "Present",
-   "in_list_view": 1
+   "in_list_view": 1,
+   "columns": 1
   },
   {
    "fieldname": "section_break_times",
    "fieldtype": "Section Break",
    "label": "Times"
+  },
+  {
+   "fieldname": "shift_date",
+   "fieldtype": "Date",
+   "label": "Shift date",
+   "read_only": 1,
+   "description": "= the marker date. IN is on this date; OUT too, unless OUT next day is ticked."
   },
   {
    "fieldname": "in_time",
@@ -66,6 +75,15 @@
    "fieldtype": "Time",
    "label": "OUT Time",
    "in_list_view": 1
+  },
+  {
+   "fieldname": "out_next_day",
+   "fieldtype": "Check",
+   "label": "OUT next day",
+   "in_list_view": 1,
+   "columns": 1,
+   "default": "0",
+   "description": "OUT is on the day after the shift date (overnight). Ticked automatically when OUT is before IN or the OUT punch is after midnight."
   },
   {
    "fieldname": "column_break_t1",
@@ -196,5 +214,5 @@
   }
  ],
  "permissions": [],
- "modified": "2026-11-08 15:00:00.000000"
+ "modified": "2026-11-10 12:00:00.000000"
 }

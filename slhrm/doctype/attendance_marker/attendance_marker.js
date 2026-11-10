@@ -1,5 +1,10 @@
 // slhrm/doctype/attendance_marker/attendance_marker.js
 //
+// Overnight: IN = shift date (marker date) + IN time; OUT = (next day if "OUT next day") + OUT time.
+// The box is ticked by the loader when the OUT punch is after midnight and by the server whenever
+// OUT < IN; supervisors may tick / untick it. Manual edits recalculate worked hours and OT on the
+// server (slhrm.api.calc_attendance_times) — this file does no time math.
+//
 // OT: calc_normal_ot / calc_double_ot are computed on the server (slhrm.overtime).
 // normal_ot_hours / double_ot_hours (permlevel 1) default to the calculated values and
 // follow recalculations until the user edits them. Ineligible rows stay at 0 (the
@@ -41,12 +46,27 @@ frappe.ui.form.on("Attendance Marker Detail", {
 
 	form_render(frm, cdt, cdn) {
 		const row = locals[cdt][cdn];
+		if (frm.doc.date && row.shift_date !== frm.doc.date) {
+			frappe.model.set_value(cdt, cdn, "shift_date", frm.doc.date);
+		}
 		const grid_row = frm.fields_dict.attendance_details.grid.get_row(cdn);
 		if (grid_row && grid_row.grid_form) {
 			OT_FIELDS.forEach((f) =>
 				grid_row.grid_form.set_df_property(f, "read_only", row.ot_eligible ? 0 : 1)
 			);
 		}
+	},
+
+	in_time(frm, cdt, cdn) {
+		recalc_times(frm, cdt, cdn);
+	},
+
+	out_time(frm, cdt, cdn) {
+		recalc_times(frm, cdt, cdn);
+	},
+
+	out_next_day(frm, cdt, cdn) {
+		recalc_times(frm, cdt, cdn);
 	},
 
 	normal_ot_hours(frm, cdt, cdn) {
@@ -72,6 +92,7 @@ frappe.ui.form.on("Attendance Marker Detail", {
 				frappe.model.set_value(cdt, cdn, {
 					in_time: m.in_time || "",
 					out_time: m.out_time || "",
+					out_next_day: m.out_next_day ? 1 : 0,
 					auto_in_time: m.in_time || "",
 					auto_out_time: m.out_time || "",
 					worked_hours: m.worked_hours || 0,
@@ -102,6 +123,52 @@ frappe.ui.form.on("Attendance Marker Detail", {
 		});
 	},
 });
+
+// Manual IN / OUT / OUT next day edit -> server recalculates (no time math here)
+function recalc_times(frm, cdt, cdn) {
+	const row = locals[cdt][cdn];
+	if (!row || row.__slhrm_recalc || !row.employee || !frm.doc.date) return;
+	const prev_calc = { normal_ot_hours: row.calc_normal_ot, double_ot_hours: row.calc_double_ot };
+	const was_next_day = !!row.out_next_day;
+	frappe.call({
+		method: "slhrm.api.calc_attendance_times",
+		args: {
+			employee: row.employee, date: frm.doc.date, shift: row.shift || "",
+			in_time: row.in_time || "", out_time: row.out_time || "", out_next_day: row.out_next_day ? 1 : 0,
+		},
+		callback(r) {
+			const m = r.message;
+			if (!m) return;
+			row.__slhrm_recalc = true;  // our own set_value calls must not trigger another round
+			const values = {
+				shift_date: frm.doc.date,
+				out_next_day: m.out_next_day,
+				worked_hours: m.worked_hours,
+				shift_hours: m.shift_hours,
+				ot_eligible: m.ot_eligible,
+				calc_normal_ot: m.calc_normal_ot,
+				calc_double_ot: m.calc_double_ot,
+			};
+			if (row.in_time && row.out_time && row.attendance_status === "Absent") {
+				values.attendance_status = "Present";
+			}
+			if (!row.punch_source) values.attendance_source = "Manual";
+			frappe.model.set_value(cdt, cdn, values).then(() => {
+				OT_FIELDS.forEach((f) => {
+					const untouched = !row[f] || flt(row[f]) === flt(prev_calc[f]);
+					if (!m.ot_eligible) frappe.model.set_value(cdt, cdn, f, 0);
+					else if (untouched) frappe.model.set_value(cdt, cdn, f, flt(m[CALC_FOR[f]]));
+				});
+				row.__slhrm_recalc = false;
+				update_summary(frm);
+				if (m.out_next_day && !was_next_day) {
+					frappe.show_alert({ message: __("OUT is before IN: OUT next day ticked."), indicator: "blue" });
+				}
+				if (m.warning) frappe.show_alert({ message: m.warning, indicator: "orange" }, 8);
+			});
+		},
+	});
+}
 
 function guard_ot_value(frm, cdt, cdn, field) {
 	const row = locals[cdt][cdn];
@@ -164,8 +231,10 @@ function auto_load_data(frm) {
 					attendance_status: has_punch ? "Present" : "Absent",
 					attendance_source: !has_punch ? "Manual" : m.punch_source === "App" ? "App" : "Biometric",
 					punch_source: m.punch_source || "",
+					shift_date: frm.doc.date,
 					in_time: m.in_time || "",
 					out_time: m.out_time || "",
+					out_next_day: m.out_next_day ? 1 : 0,
 					auto_in_time: m.in_time || "",
 					auto_out_time: m.out_time || "",
 					worked_hours: m.worked_hours || 0,

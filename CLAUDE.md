@@ -114,7 +114,15 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - Eligibility: `Employee.slhrm_ot_eligible`. Always re-read on the server; ineligible → 0 everywhere.
 - Marker (`slhrm/attendance.py`): punches = Biometric Punch Log for all + Employee Checkin for
   `slhrm_allow_app_checkin`; window = shift start − `shift_match_window_before` … shift end +
-  `ot_punch_window_after`. Rows keep `calc_normal_ot`/`calc_double_ot` (server-computed) and approved
+  `ot_punch_window_after`. **One punch → one employee-day (v0.0.16):** the window is cut at the midpoint between
+  the previous day's shift end and this shift's start (and this end / next start); neighbour shifts = submitted
+  marker row of D−1 / D+1, else `default_shift`. Truly overlapping shifts → no automatic IN/OUT, warning
+  "Overlapping shifts" (HR enters times). Punches used by another date's submitted marker are skipped.
+  **Overnight:** row field `out_next_day` ("OUT next day"; loader ticks it when the OUT punch is after midnight,
+  server whenever OUT < IN). IN = shift date + in_time, OUT = (D+1 if ticked) + out_time — `attendance.combine` /
+  `span_hours` everywhere (worked hours, OT, HRMS Attendance on submit). Manual edits: `slhrm.api.calc_attendance_times`
+  (no writes); > 16 h → warning, not blocked. Known limit: an IN after midnight (late start of a night shift) is
+  still on the shift date. Rows keep `calc_normal_ot`/`calc_double_ot` (server-computed) and approved
   `normal_ot_hours`/`double_ot_hours`.
 - Worksheet sums submitted markers' approved hours (`slhrm/payroll_ot.py`), rates from overtime.py.
   On submit: one Additional Salary per employee per OT type (components in SLHRM Settings,
