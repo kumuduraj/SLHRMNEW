@@ -17,8 +17,10 @@
     "fieldtype": "Data",
     "label": "Biometric Device ID",
     "insert_after": "slhrm_biometric_section",
-    "description": "Employee ID as registered on the biometric device",
-    "name": "Employee-slhrm_biometric_device_id"
+    "description": "Legacy (before v0.2.1), no longer used — the device id is Attendance Device ID (all devices).",
+    "name": "Employee-slhrm_biometric_device_id",
+    "hidden": 1,
+    "read_only": 1
   },
   {
     "doctype": "Custom Field",

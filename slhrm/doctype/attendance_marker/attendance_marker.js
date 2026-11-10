@@ -15,7 +15,7 @@
 const OT_FIELDS = ["ot_hours"];
 const CALC_FOR = { ot_hours: "calc_ot" };
 const FIGURE_FIELDS = ["early_in_min", "late_in_min", "early_out_min", "late_out_min",
-	"late_in_excused", "early_out_excused", "calc_ot"];
+	"late_in_excused", "early_out_excused", "calc_ot", "no_shift"];
 const LATE_FIELDS = { late_in_min: "late_in_excused", early_out_min: "early_out_excused" };
 
 function figures(m) {
@@ -38,6 +38,22 @@ function ensure_grid_style() {
 		.appendTo("head");
 }
 
+// working day without a shift: orange "No shift" in the Shift cell (row editor: the no_shift check)
+function set_shift_formatter(frm) {
+	const grid = frm.fields_dict.attendance_details && frm.fields_dict.attendance_details.grid;
+	const base = frappe.form.get_formatter("Link");
+	const formatter = (value, df, options, doc) => {
+		if (!value && doc && cint(doc.no_shift)) {
+			return `<span class="slhrm-no-shift" style="color: var(--orange-600, #e8590c); font-weight: 600;" title="${
+				__("No shift assigned — OT and late/early not calculated")}">${__("No shift")}</span>`;
+		}
+		return base(value, df, options, doc);
+	};
+	[frappe.meta.get_docfield("Attendance Marker Detail", "shift", frm.doc.name), grid && grid.get_docfield("shift")]
+		.forEach((df) => { if (df) df.formatter = formatter; });
+	(grid && grid.docfields || []).forEach((df) => { if (df.fieldname === "shift") df.formatter = formatter; });
+}
+
 function set_time_formatters(frm) {
 	const grid = frm.fields_dict.attendance_details && frm.fields_dict.attendance_details.grid;
 	const formatter = (value) => {
@@ -56,6 +72,7 @@ function set_time_formatters(frm) {
 function set_late_formatters(frm) {
 	ensure_grid_style();
 	set_time_formatters(frm);
+	set_shift_formatter(frm);
 	const grid = frm.fields_dict.attendance_details && frm.fields_dict.attendance_details.grid;
 	Object.entries(LATE_FIELDS).forEach(([field, excused]) => {
 		const formatter = (value, df, options, doc) => {
@@ -386,12 +403,14 @@ function update_summary(frm) {
 	let present = 0,
 		absent = 0,
 		late_in = 0,
-		early_out = 0;
+		early_out = 0,
+		no_shift = 0;
 	rows.forEach((row) => {
 		if (row.attendance_status === "Present") present++;
 		else if (row.attendance_status === "Absent") absent++;
 		if (cint(row.late_in_min) && !cint(row.late_in_excused)) late_in++;
 		if (cint(row.early_out_min) && !cint(row.early_out_excused)) early_out++;
+		if (cint(row.no_shift)) no_shift++;
 	});
 	if (frm.doc.docstatus !== 0) return;
 	frm.set_value("total_employees", rows.length);
@@ -399,6 +418,7 @@ function update_summary(frm) {
 	frm.set_value("absent_count", absent);
 	frm.set_value("late_in_count", late_in);
 	frm.set_value("early_out_count", early_out);
+	frm.set_value("no_shift_count", no_shift);
 }
 
 // row editor: "OT edited by <user>" beside the OT field when OT differs from OT (calculated)

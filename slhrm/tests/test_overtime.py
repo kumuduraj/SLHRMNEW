@@ -115,3 +115,24 @@ class TestOTRateAmount(UnitTestCase):
         self.assertEqual(calculate_ot_amount(1.333, 123.45), 164.56)
         self.assertEqual(calculate_ot_amount(-3, 150), 0.0)
         self.assertEqual(calculate_ot_amount(3, -1), 0.0)
+
+
+class TestDayFigures(UnitTestCase):
+    """slhrm.attendance.day_figures: no-shift warning (v0.2.1)."""
+
+    def fig(self, start, end, holiday_type=None):
+        from slhrm.attendance import day_figures
+        info = frappe._dict(start=start, end=end)
+        return day_figures(info, dt(D, "07:30"), dt(D, "18:15"), 10.75, 1, holiday_type, SETTINGS)
+
+    def test_no_shift_working_day(self):
+        f = self.fig(None, None)
+        self.assertEqual((f["no_shift"], f["calc_ot"], f["late_in_min"], f["early_in_min"]), (1, 0.0, 0, 0))
+
+    def test_no_shift_on_holiday_is_not_a_warning(self):
+        f = self.fig(None, None, "holiday")
+        self.assertEqual((f["no_shift"], f["calc_ot"]), (0, 10.75))
+
+    def test_with_shift(self):
+        f = self.fig(*DAY)
+        self.assertEqual((f["no_shift"], f["calc_ot"], f["early_in_min"], f["late_out_min"]), (0, 1.75, 30, 75))

@@ -5,13 +5,14 @@ Every raw device record is stored exactly once:
 - per-record result: inserted / duplicate / unknown_employee (stored, status Unmatched) / error;
 - one bad record never rolls back the others (savepoint per record);
 - records before SLHRM Settings "Biometric Start Date" are not stored (result skipped_old);
-- device user ids are matched within the device's SERVED BRANCHES (Biometric Device "Served Branches", always
-  incl. its own branch; v0.0.15): (a) the one Active employee of those branches whose slhrm_biometric_device_id
-  equals the id (ids are unique per device scope, not globally), else (b) if SLHRM Settings "Match Device User by
-  Employee Number" is on: the one Active employee of those branches whose employee_number equals the id and whose
-  name contains the name on the device; (b) then saves the id on the Employee, so the link is explicit from then on
-  (classify_by_number);
-  unmatched records are re-matched when the mapping is set on the Employee (doc_events on_update).
+- device user ids (v0.2.1): ONE number = ONE person on every device. (a) the Active employee whose ERPNext
+  Employee.attendance_device_id ("Attendance Device ID (all devices)", unique company-wide by a DB index) equals
+  the id, SITE-WIDE; an employee whose branch the device does not serve still matches, with match_reason
+  "other_branch" (report "Device Users Other Branch"). Else (b) if SLHRM Settings "Match Device User by Employee
+  Number" is on: the one Active employee of the device's SERVED BRANCHES whose employee_number equals the id and
+  whose name contains the name on the device; (b) then writes attendance_device_id (classify_by_number).
+  Unmatched records are re-matched when attendance_device_id is set (doc_events on_update). A branch transfer keeps
+  the id. slhrm_biometric_device_id is legacy (hidden, copied by patch v0_2_1, never written).
 IN/OUT pairing and OT are NOT decided here (Attendance Marker / slhrm.overtime).
 
 Whitelisted wrappers (API key, fail closed) live in slhrm.api: device_ingest, device_heartbeat.
@@ -36,6 +37,8 @@ MAX_BATCH = 500
 FUTURE_TOLERANCE = timedelta(minutes=10)
 SETTINGS = "SLHRM Settings"
 NUMBER_SETTING = "match_device_user_by_employee_number"
+ID_FIELD = "attendance_device_id"  # ERPNext Employee field, unique company-wide (v0.2.1)
+OTHER_BRANCH = "other_branch"
 
 # ZKTeco punch state → Biometric Punch Log.punch_type (the raw state is kept in device_punch_state)
 PUNCH_TYPES = {0: "IN", 1: "OUT", 2: "BREAK", 3: "RETURN", 4: "IN", 5: "OUT"}
@@ -90,32 +93,39 @@ def devices_serving(branch):
 
 
 def resolve_employee(device_user_id, branches, cache=None):
-    """Rule (a), scoped to the device's served branches: the ONE Active employee of those branches whose
-    slhrm_biometric_device_id equals the id. No branch, nobody, or several (data error) → None (Unmatched)."""
+    """Rule (a), SITE-WIDE: the Active employee whose attendance_device_id equals the id (unique index → at most
+    one). `other_branch` is set when the device's served branches do not include the employee's branch (still a
+    match; match_reason "other_branch"). Nobody → None (Unmatched)."""
     branches = as_branches(branches)
     key = (device_user_id, branches)
     if cache is not None and key in cache:
         return cache[key]
     rows = frappe.get_all(
-        "Employee",
-        filters={"slhrm_biometric_device_id": device_user_id, "branch": ["in", list(branches)], "status": "Active"},
+        "Employee", filters={ID_FIELD: device_user_id, "status": "Active"},
         fields=["name", "employee_name", "employee_number", "branch"],
-    ) if branches and device_user_id else []
+    ) if device_user_id else []
     emp = rows[0] if len(rows) == 1 else None
+    if emp:
+        emp.other_branch = emp.branch not in branches
     if cache is not None:
         cache[key] = emp
     return emp
 
 
-def id_holder(device_user_id, branches, exclude=None):
-    """Another Active employee of these (served) branches that already holds this device user id."""
-    branches = as_branches(branches)
-    if not branches:
+def match_reason_for(emp):
+    """match_reason stored on a MATCHED punch: "other_branch" when the employee's branch is not served."""
+    return OTHER_BRANCH if emp and emp.get("other_branch") else None
+
+
+def id_holder(device_user_id, exclude=None):
+    """The employee (any status, any branch) that holds this attendance_device_id."""
+    uid = cstr(device_user_id).strip()
+    if not uid:
         return None
-    filters = {"slhrm_biometric_device_id": cstr(device_user_id).strip(), "branch": ["in", list(branches)], "status": "Active"}
+    filters = {ID_FIELD: uid}
     if exclude:
         filters["name"] = ["!=", exclude]
-    return frappe.db.get_value("Employee", filters, ["name", "employee_name", "branch"], as_dict=True)
+    return frappe.db.get_value("Employee", filters, ["name", "employee_name", "branch", "status"], as_dict=True)
 
 
 def start_datetime():
@@ -188,7 +198,7 @@ def _ingest_one(device, p, site_tz, agent, cache):
             "punch_time": site_time,
             "punch_type": PUNCH_TYPES.get(state, "IN"),
             "processing_status": "Pending" if emp else "Unmatched",
-            "match_reason": None if emp else reason,
+            "match_reason": match_reason_for(emp) if emp else reason,
             "source_device": device.name,
             "device_serial": device.name,
             "device_user_id": uid,
@@ -238,8 +248,8 @@ def heartbeat(serial, info, agent=None):
 
 
 def rematch(device_user_id=None, by_number=None):
-    """Match Unmatched device records (optionally one device user id) to employees: (a) explicit
-    slhrm_biometric_device_id, else (b) employee number (setting; by_number overrides it). Records left
+    """Match Unmatched device records (optionally one device user id) to employees: (a) attendance_device_id
+    (site-wide), else (b) employee number (setting; by_number overrides it). Records left
     Unmatched get match_reason. Returns the number of records matched."""
     filters = {"processing_status": "Unmatched", "device_user_id": ["is", "set"]}
     if device_user_id:
@@ -260,7 +270,7 @@ def rematch(device_user_id=None, by_number=None):
         for r in rows:
             if emp:
                 frappe.db.set_value(PUNCH, r.name, {
-                    "employee": emp.name, "employee_name": emp.employee_name, "match_reason": None,
+                    "employee": emp.name, "employee_name": emp.employee_name, "match_reason": match_reason_for(emp),
                     "employee_number": emp.employee_number, "processing_status": "Pending",
                 })
                 matched += 1
@@ -270,53 +280,26 @@ def rematch(device_user_id=None, by_number=None):
 
 
 def on_employee_update(doc, method=None):
-    """doc_events Employee.on_update: a new/changed device user id picks up its Unmatched records
+    """doc_events Employee.on_update: a new/changed attendance_device_id picks up its Unmatched records
     (explicit id only — never links another employee from inside this save)."""
-    if doc.get("slhrm_biometric_device_id") and doc.has_value_changed("slhrm_biometric_device_id"):
-        rematch(cstr(doc.slhrm_biometric_device_id).strip(), by_number=0)
+    if doc.get(ID_FIELD) and doc.has_value_changed(ID_FIELD):
+        rematch(cstr(doc.get(ID_FIELD)).strip(), by_number=0)
 
 
 def on_employee_validate(doc, method=None):
-    """doc_events Employee.validate:
-    1. device user ids are per device scope (served branches), so a branch transfer clears the id unless the
-       same save sets a new one, or one device serves both the old and the new branch (the id stays valid).
-       Punches already matched keep their link.
-    2. the id must be unique among Active employees of the served branches of every device that serves the
-       employee's branch (otherwise that device could not tell them apart)."""
-    _clear_id_on_branch_transfer(doc)
-    _validate_unique_device_id(doc)
-
-
-def _validate_unique_device_id(doc):
-    uid = cstr(doc.get("slhrm_biometric_device_id")).strip()
-    if not uid or doc.get("status") != "Active" or not doc.get("branch"):
+    """doc_events Employee.validate (v0.2.1): attendance_device_id is trimmed (empty → NULL, so the unique index
+    allows many employees without one) and must not be held by another employee — one number = one person,
+    company-wide. A branch transfer keeps the id."""
+    uid = cstr(doc.get(ID_FIELD)).strip()
+    doc.set(ID_FIELD, uid or None)
+    if not uid or not (doc.is_new() or doc.has_value_changed(ID_FIELD)):
         return
-    if not doc.is_new() and not any(doc.has_value_changed(f) for f in ("slhrm_biometric_device_id", "branch", "status")):
-        return
-    for serial, served in devices_serving(doc.branch):
-        other = id_holder(uid, served, exclude=None if doc.is_new() else doc.name)
-        if other and other.name != doc.name:
-            frappe.throw(_("Device user id {0} is already used by {1} ({2}, branch {3}). Device {4} serves branches {5}, "
-                           "so the id must be unique across them.").format(
-                               uid, other.name, other.employee_name, other.branch, serial, ", ".join(served)),
-                         title=_("Device user id in use"))
-
-
-def _clear_id_on_branch_transfer(doc):
-    if doc.is_new() or not doc.has_value_changed("branch"):
-        return
-    before = doc.get_doc_before_save()
-    old_id = cstr(before.get("slhrm_biometric_device_id") if before else "").strip()
-    old_branch = before.branch if before else None
-    if old_id and any(doc.branch in served for _serial, served in devices_serving(old_branch)):
-        return  # a device serves both branches: the id still identifies the employee there
-    if old_id and cstr(doc.get("slhrm_biometric_device_id")).strip() == old_id:
-        doc.slhrm_biometric_device_id = None
-        frappe.msgprint(_("{0} moved from branch {1} to {2}: device user id {3} was cleared (ids are per branch). "
-                          "Map the employee again in Unmatched Device Users once they punch on the new branch's device. "
-                          "Punches already matched keep their link.").format(
-                              doc.employee_name or doc.name, before.branch or "-", doc.branch or "-", old_id),
-                        title=_("Device user id cleared"), indicator="orange")
+    other = id_holder(uid, exclude=None if doc.is_new() else doc.name)
+    if other:
+        frappe.throw(_("Attendance Device ID {0} is already used by {1} ({2}, branch {3}, {4}). One number = one person on "
+                       "every device: re-enrol one of them on the device with a free number.").format(
+                           uid, other.name, other.employee_name, other.branch or "-", other.status),
+                     title=_("Attendance Device ID in use"))
 
 
 # ── (b) match by Employee Number ────────────────────────────────
@@ -340,15 +323,16 @@ def name_sanity(device_name, employee_name):
 def _number_index(cache):
     if cache is not None and "_number_index" in cache:
         return cache["_number_index"]
-    by_number, by_id = {}, {}  # keyed (branch, value)
-    for e in frappe.get_all("Employee", filters={"status": "Active"},
-                            fields=["name", "employee_name", "employee_number", "branch", "slhrm_biometric_device_id"]):
+    by_number, by_id = {}, {}  # by_number keyed (branch, number); by_id keyed id (site-wide, any status)
+    for e in frappe.get_all("Employee", fields=["name", "employee_name", "employee_number", "branch", "status", ID_FIELD]):
+        did = cstr(e.get(ID_FIELD)).strip()
+        if did:
+            by_id.setdefault(did, []).append(e)
+        if e.status != "Active":
+            continue
         num = cstr(e.employee_number).strip().lower()
         if num and e.branch:
             by_number.setdefault((e.branch, num), []).append(e)
-        did = cstr(e.slhrm_biometric_device_id).strip()
-        if did and e.branch:
-            by_id.setdefault((e.branch, did), []).append(e)
     idx = (by_number, by_id)
     if cache is not None:
         cache["_number_index"] = idx
@@ -362,8 +346,8 @@ def device_user_name(serial, device_user_id):
 def classify_by_number(device_user_id, branches, device_name, cache=None):
     """Rule (b) without writing. Returns {result: match|ambiguous|conflict|none, employee (row or None),
     sane (name check), detail}. Hit = Active employee of one of the device's served branches, employee_number ==
-    device user id (trimmed, case-insensitive). Conflict: the id is already used by another active
-    employee of those branches, or the hit already has a different device id (explicit mapping wins)."""
+    device user id (trimmed, case-insensitive). Conflict: the id is already held by another employee (anywhere,
+    any status), or the hit already has a different attendance_device_id (explicit mapping wins)."""
     uid = cstr(device_user_id).strip()
     branches = as_branches(branches)
     by_number, by_id = _number_index(cache)
@@ -375,11 +359,11 @@ def classify_by_number(device_user_id, branches, device_name, cache=None):
                             detail=", ".join(h.name for h in hits))
     e = hits[0]
     sane = name_sanity(device_name, e.employee_name)
-    others = [o for b in branches for o in by_id.get((b, uid), []) if o.name != e.name]
+    others = [o for o in by_id.get(uid, []) if o.name != e.name]
     if others:
         return frappe._dict(result="conflict", employee=e, sane=sane,
                             detail=f"id {uid} used by {others[0].name} ({others[0].employee_name})")
-    current = cstr(e.slhrm_biometric_device_id).strip()
+    current = cstr(e.get(ID_FIELD)).strip()
     if current and current != uid:
         return frappe._dict(result="conflict", employee=e, sane=sane, detail=f"{e.name} already has device id {current}")
     return frappe._dict(result="match", employee=e, sane=sane, detail="")
@@ -393,9 +377,9 @@ def outcome(c):
 
 
 def link_by_number(employee, device_user_id, cache=None):
-    """Save the device id on the Employee (Version + normal hooks; on_update re-matches its records)."""
+    """Save attendance_device_id on the Employee (Version + normal hooks; on_update re-matches its records)."""
     emp = frappe.get_doc("Employee", employee)
-    emp.slhrm_biometric_device_id = device_user_id
+    emp.set(ID_FIELD, device_user_id)
     emp.flags.ignore_permissions = True
     emp.save(ignore_permissions=True)
     if cache is not None:  # the index / resolve cache now know a different state
@@ -512,8 +496,8 @@ def _tokens(text):
 
 
 def mapping_candidates():
-    """Active employees without a device id, with name tokens (for suggest_employee)."""
-    rows = frappe.get_all("Employee", filters={"status": "Active", "slhrm_biometric_device_id": ["in", ["", None]]},
+    """Active employees without an attendance_device_id, with name tokens (for suggest_employee)."""
+    rows = frappe.get_all("Employee", filters={"status": "Active", ID_FIELD: ["in", ["", None]]},
                           fields=["name", "employee_name", "first_name", "middle_name", "last_name", "branch"])
     for e in rows:
         e.tokens = set(_tokens(e.employee_name)) | set(_tokens(e.first_name)) | set(_tokens(e.middle_name)) | set(_tokens(e.last_name))
@@ -557,9 +541,10 @@ def suggest_employee(device_name, branches, employees):
 
 @frappe.whitelist(methods=["POST"])
 def map_device_user(device_serial, device_user_id, employee, replace=0):
-    """Desk "Map to Employee": set Employee.slhrm_biometric_device_id; its Unmatched punches re-match
-    (Employee on_update). Business refusals (employee not in a branch the device serves, id used by another
-    active employee of those branches, inactive employee, no punches) return {"refused": message} — no exception, so the browser shows a message, not a 417.
+    """Desk "Map to Employee": set Employee.attendance_device_id; its Unmatched punches re-match (Employee
+    on_update). One number = one person: refused ({"refused": message}, no exception) when another employee holds
+    the id, the employee is not active, or the device user has no punches. An employee of a branch the device does
+    not serve is allowed (other_branch in the result; punches carry match_reason "other_branch").
     If the employee already has a different id, returns {"confirm": ...} unless replace=1.
     Role / permission failures still raise."""
     frappe.only_for(MAP_ROLES)
@@ -571,21 +556,62 @@ def map_device_user(device_serial, device_user_id, employee, replace=0):
     emp.check_permission("write")
     if emp.status != "Active":
         return {"refused": _("Employee {0} is not active.").format(emp.name)}
-    if not device.branches or emp.branch not in device.branches:
-        return {"refused": _("{0} is in branch {1}, but device {2} serves only {3}. Change the employee's branch, or add "
-                             "the branch to the device's Served Branches.").format(
-                                 emp.name, emp.branch or "-", device.name, ", ".join(device.branches) or "-")}
-    other = id_holder(device_user_id, device.branches, exclude=emp.name)
+    other = id_holder(device_user_id, exclude=emp.name)
     if other:
-        return {"refused": _("Device user id {0} is already used by {1} ({2}) in branch {3}.").format(
-            device_user_id, other.name, other.employee_name, other.branch)}
-    current = cstr(emp.slhrm_biometric_device_id).strip()
+        return {"refused": _("Attendance Device ID {0} is already used by {1} ({2}, branch {3}). One number = one person: "
+                             "re-enrol one of them on the device with a free number.").format(
+                                 device_user_id, other.name, other.employee_name, other.branch or "-")}
+    other_branch = emp.branch not in (device.branches or ())
+    current = cstr(emp.get(ID_FIELD)).strip()
     if current == device_user_id:
-        return {"matched": rematch(device_user_id), "employee": emp.name, "unchanged": True}
+        return {"matched": rematch(device_user_id), "employee": emp.name, "unchanged": True, "other_branch": other_branch}
     if current and not cint(replace):
-        return {"confirm": _("{0} already has device user id {1}. Replace it with {2}? Punches already matched to {1} stay matched.")
+        return {"confirm": _("{0} already has Attendance Device ID {1}. Replace it with {2}? Punches already matched to {1} stay matched.")
                 .format(emp.employee_name, current, device_user_id)}
-    emp.slhrm_biometric_device_id = device_user_id
+    emp.set(ID_FIELD, device_user_id)
     emp.save()  # on_update → rematch(device_user_id)
     matched = frappe.db.count(PUNCH, {"device_user_id": device_user_id, "employee": emp.name})
-    return {"matched": matched, "employee": emp.name}
+    return {"matched": matched, "employee": emp.name, "other_branch": other_branch, "branch": emp.branch}
+
+
+# ── reports / checks (read-only) ────────────────────────────────
+
+
+def other_branch_rows(device=None):
+    """Matched punches whose employee's branch the device does not serve (match_reason other_branch)."""
+    rows = frappe.db.sql(f"""
+        select device_serial, device_user_id, employee, employee_name, count(*) as punches,
+               min(punch_time) as first_punch, max(punch_time) as last_punch
+        from `tab{PUNCH}`
+        where match_reason = %(reason)s and ifnull(employee, '') != '' {"and device_serial = %(device)s" if device else ""}
+        group by device_serial, device_user_id, employee, employee_name
+        order by device_serial, employee""", {"reason": OTHER_BRANCH, "device": device}, as_dict=True)
+    devices = {d.name: d for d in frappe.get_all(DEVICE, fields=["name", "device_name", "branch"])}
+    for r in rows:
+        d = devices.get(r.device_serial) or frappe._dict()
+        r.device_name = d.device_name or r.device_serial
+        r.served_branches = ", ".join(served_branches(r.device_serial, d.branch))
+        r.employee_branch = frappe.db.get_value("Employee", r.employee, "branch")
+        r.user_name = device_user_name(r.device_serial, r.device_user_id)
+    return rows
+
+
+def device_id_collisions(serial):
+    """Before a device goes live (bench execute, read-only): its device users (synced by the agent) whose id is
+    already the attendance_device_id of an employee the name on the device does not match → that person needs
+    re-enrolment on the device with a free number. Returns {"device", "served", "users", "collisions", "same_person"}."""
+    device = get_device(serial)
+    users = frappe.get_all(DEVICE_USER, filters={"device": device.name, "on_device": 1}, fields=["device_user_id", "user_name"])
+    holders = {cstr(e.get(ID_FIELD)).strip(): e for e in frappe.get_all(
+        "Employee", filters={ID_FIELD: ["is", "set"]}, fields=["name", "employee_name", "branch", "status", ID_FIELD])}
+    collisions, same = [], []
+    for u in users:
+        h = holders.get(cstr(u.device_user_id).strip())
+        if not h:
+            continue
+        row = {"device_user_id": u.device_user_id, "name_on_device": u.user_name, "holder": h.name,
+               "holder_name": h.employee_name, "holder_branch": h.branch, "holder_status": h.status}
+        (same if name_sanity(u.user_name, h.employee_name) else collisions).append(row)
+    out = {"device": device.name, "served": device.branches, "users": len(users), "collisions": collisions, "same_person": same}
+    print(json.dumps(out, indent=1, default=str))
+    return out

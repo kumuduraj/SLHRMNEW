@@ -14,7 +14,7 @@
  "search_fields": "device_name,branch",
  "sort_field": "modified",
  "sort_order": "DESC",
- "modified": "2026-11-10 10:00:00.000000",
+ "modified": "2026-11-10 22:00:00.000000",
  "fields": [
   {
    "fieldname": "serial",
@@ -38,7 +38,7 @@
    "label": "Branch",
    "options": "Branch",
    "in_list_view": 1,
-   "description": "Device user ids are matched to Employee.slhrm_biometric_device_id, preferring employees of this branch."
+   "description": "Device user ids are matched to Employee Attendance Device ID (all devices) company-wide; employees of a branch this device does not serve are matched as 'other branch' (report Device Users Other Branch). The employee-number fallback looks only in the served branches."
   },
   {
    "fieldname": "served_branches",

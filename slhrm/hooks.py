@@ -35,6 +35,11 @@ fixtures = [
         "dt": "Property Setter",
         "filters": [["module", "=", "SLHRM"]],
     },
+    {
+        # v0.2.1: Attendance Supervisor read-only on Branch / Employee / Shift Type / Holiday List
+        "dt": "Custom DocPerm",
+        "filters": [["role", "=", "Attendance Supervisor"]],
+    },
 ]
 
 # Doc events

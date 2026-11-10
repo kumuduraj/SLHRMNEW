@@ -19,7 +19,6 @@ class BiometricDevice(Document):
         except (ZoneInfoNotFoundError, ValueError):
             frappe.throw(_("Unknown timezone {0}. Use an IANA name such as Asia/Colombo.").format(self.timezone))
         self.set_served_branches()
-        self.validate_unique_device_ids()
 
     def set_served_branches(self):
         """The device's own branch is always served; no duplicates."""
@@ -32,17 +31,3 @@ class BiometricDevice(Document):
         if self.branch and self.branch not in seen:
             self.append("served_branches", {"branch": self.branch})
 
-    def validate_unique_device_ids(self):
-        """Device user ids must identify ONE Active employee across the served branches."""
-        branches = [r.branch for r in self.served_branches if r.branch]
-        if len(branches) < 2:
-            return
-        dupes = frappe.db.sql("""select slhrm_biometric_device_id, group_concat(concat(name, ' ', employee_name, ' (', branch, ')')
-                                 separator '; ') who, count(*) n from tabEmployee
-                                 where status = 'Active' and ifnull(slhrm_biometric_device_id, '') != '' and branch in %(b)s
-                                 group by slhrm_biometric_device_id having n > 1""", {"b": tuple(branches)}, as_dict=True)
-        if dupes:
-            frappe.throw(_("These device user ids are used by more than one active employee of the served branches {0}:"
-                           "<br>{1}<br>Fix the employees' device ids first.").format(
-                               ", ".join(branches), "<br>".join(f"{x.slhrm_biometric_device_id}: {x.who}" for x in dupes[:20])),
-                         title=_("Device user ids not unique"))

@@ -108,6 +108,17 @@
    "description": "Rows with Early Out not excused by short leave."
   },
   {
+   "fieldname": "column_break_s5",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "no_shift_count",
+   "fieldtype": "Int",
+   "label": "No shift",
+   "read_only": 1,
+   "description": "Rows on a working day without a Shift (OT and late/early not calculated)."
+  },
+  {
    "fieldname": "section_break_details",
    "fieldtype": "Section Break",
    "label": "Attendance Details"
@@ -192,5 +203,5 @@
    "write": 1
   }
  ],
- "modified": "2026-11-10 20:00:00.000000"
+ "modified": "2026-11-10 22:00:00.000000"
 }

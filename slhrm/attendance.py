@@ -258,7 +258,8 @@ def day_figures(shift_info, in_dt, out_dt, worked, ot_eligible, holiday_type, se
         "ot_eligible": ot_eligible, "worked_hours": worked, "holiday_type": holiday_type,
         "early_in_min": mins["early_in_min"], "late_out_min": mins["late_out_min"],
     }, settings)
-    return dict(mins, late_in_excused=late_ok, early_out_excused=early_ok, calc_ot=calc_ot)
+    no_shift = 1 if working_day and not shift_info.start else 0  # warning: OT and late/early not calculated
+    return dict(mins, late_in_excused=late_ok, early_out_excused=early_ok, calc_ot=calc_ot, no_shift=no_shift)
 
 
 def compute_day(employee, date_str, shift_info, punches, ot_eligible, holiday, settings=None):

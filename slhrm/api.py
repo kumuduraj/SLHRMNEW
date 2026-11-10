@@ -76,14 +76,14 @@ def device_punch(device_id, employee_id, punch_time, punch_type="IN"):
     employee_id can be either:
     - ERPNext Employee ID (field: employee)
     - Employee Number (field: employee_number)
-    - Biometric Device ID (field: slhrm_biometric_device_id custom field)
+    - Attendance Device ID (ERPNext field attendance_device_id, unique company-wide)
     """
     _validate_device_api_key()
 
     if not device_id or not employee_id or not punch_time:
         frappe.throw(_("device_id, employee_id, and punch_time are required."))
 
-    # Try lookup by ERPNext Employee ID first, then employee_number, then slhrm_biometric_device_id
+    # Try lookup by ERPNext Employee ID first, then employee_number, then attendance_device_id
     employee = frappe.db.get_value(
         "Employee",
         {"employee": employee_id, "status": "Active"},
@@ -100,7 +100,7 @@ def device_punch(device_id, employee_id, punch_time, punch_type="IN"):
     if not employee:
         employee = frappe.db.get_value(
             "Employee",
-            {"slhrm_biometric_device_id": employee_id, "status": "Active"},
+            {"attendance_device_id": employee_id, "status": "Active"},
             ["name", "employee_name", "employee_number"],
             as_dict=True,
         )
@@ -161,7 +161,7 @@ def device_punch_bulk(device_id, punches, strict=False):
 
     for p in punches:
         try:
-            # Try lookup by ERPNext Employee ID first, then employee_number, then slhrm_biometric_device_id
+            # Try lookup by ERPNext Employee ID first, then employee_number, then attendance_device_id
             employee = frappe.db.get_value(
                 "Employee",
                 {"employee": p.get("employee_id"), "status": "Active"},
@@ -178,7 +178,7 @@ def device_punch_bulk(device_id, punches, strict=False):
             if not employee:
                 employee = frappe.db.get_value(
                     "Employee",
-                    {"slhrm_biometric_device_id": p.get("employee_id"), "status": "Active"},
+                    {"attendance_device_id": p.get("employee_id"), "status": "Active"},
                     ["name", "employee_name", "employee_number"],
                     as_dict=True,
                 )
@@ -300,6 +300,7 @@ def load_attendance_data(date, branch, device_id=""):
     frappe.has_permission("Attendance Marker", "create", throw=True)
     if not date or not branch:
         frappe.throw(_("Date and Branch are required."))
+    _check_branch_allowed(branch)
 
     date_str = str(date)
 
@@ -342,6 +343,22 @@ def load_attendance_data(date, branch, device_id=""):
     return {"employees": employees, "punch_refs": punch_refs, "matched": matched}
 
 
+def _check_branch_allowed(branch):
+    """User Permission on Branch (e.g. an Attendance Supervisor restricted to DUTCHPUB) also limits the
+    attendance endpoints, which read with frappe.get_all."""
+    from frappe.core.doctype.user_permission.user_permission import get_permitted_documents
+
+    allowed = get_permitted_documents("Branch")
+    if allowed and branch not in allowed:
+        frappe.throw(_("Not permitted for branch {0}.").format(branch), frappe.PermissionError)
+
+
+def _check_employee_allowed(employee):
+    branch = frappe.db.get_value("Employee", employee, "branch")
+    if branch:
+        _check_branch_allowed(branch)
+
+
 @frappe.whitelist()
 def recalc_attendance_row(employee, date, shift):
     """Recalculate one Attendance Marker row when the user changes its shift."""
@@ -350,6 +367,7 @@ def recalc_attendance_row(employee, date, shift):
     frappe.has_permission("Attendance Marker", "create", throw=True)
     if not employee or not date:
         frappe.throw(_("Employee and Date are required."))
+    _check_employee_allowed(employee)
 
     emp = frappe.db.get_value(
         "Employee", employee, ["name", "slhrm_ot_eligible", "slhrm_allow_app_checkin"], as_dict=True
@@ -387,6 +405,7 @@ def calc_attendance_times(employee, date, shift=None, in_time=None, out_time=Non
     emp = frappe.db.get_value("Employee", employee, ["name", "slhrm_ot_eligible"], as_dict=True)
     if not emp:
         frappe.throw(_("Employee {0} not found.").format(employee))
+    _check_employee_allowed(employee)
     in_time, out_time = (in_time or None), (out_time or None)
     nxt = 1 if out_time and (cint(out_next_day) or out_is_next_day(in_time, out_time)) else 0
     settings = get_settings()

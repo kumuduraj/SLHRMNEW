@@ -20,11 +20,26 @@ def execute():
     """after_install"""
     _ensure_module_def()
     ensure_roles()
+    ensure_custom_perm_base()
 
 
 def after_migrate():
     _ensure_module_def()
     ensure_roles()
+
+
+SUPERVISOR_READ_DOCTYPES = ("Branch", "Employee", "Shift Type", "Holiday List")
+
+
+def ensure_custom_perm_base():
+    """Frappe uses ONLY Custom DocPerm rows for a doctype once any exists. Before the SLHRM fixture adds the
+    Attendance Supervisor read rows, make sure the standard rows were copied (what Role Permission Manager does;
+    no-op when the doctype already has Custom DocPerm rows, as on production)."""
+    from frappe.permissions import setup_custom_perms
+
+    for dt in SUPERVISOR_READ_DOCTYPES:
+        if frappe.db.exists("DocType", dt):
+            setup_custom_perms(dt)
 
 
 def ensure_roles():

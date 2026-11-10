@@ -1,4 +1,4 @@
-// Unmatched Device Users — "Map to Employee" writes Employee.slhrm_biometric_device_id via
+// Unmatched Device Users — "Map to Employee" writes Employee.attendance_device_id (company-wide) via
 // slhrm.biometric.map_device_user; that employee's Unmatched punches re-match on the server.
 frappe.query_reports["Unmatched Device Users"] = {
 	filters: [
@@ -40,8 +40,8 @@ function slhrm_map_device_user(report, row) {
 			},
 			{
 				fieldname: "employee", label: __("Employee"), fieldtype: "Link", options: "Employee", reqd: 1,
-				default: row.emp || undefined, get_query: () => ({ filters: Object.assign({ status: "Active" },
-					row.served_branches ? { branch: ["in", row.served_branches.split(", ")] } : {}) }),
+				default: row.emp || undefined, get_query: () => ({ filters: { status: "Active" } }),
+				description: __("Any branch: one number = one person on every device. An employee of a branch this device does not serve is matched as 'other branch'."),
 			},
 		],
 		primary_action_label: __("Map"),
@@ -62,7 +62,8 @@ function slhrm_map_device_user(report, row) {
 						return;
 					}
 					d.hide();
-					frappe.show_alert({ message: __("Mapped to {0}: {1} punch(es) matched", [m.employee, m.matched]), indicator: "green" });
+					frappe.show_alert({ message: __("Mapped to {0}: {1} punch(es) matched", [m.employee, m.matched]) +
+						(m.other_branch ? " — " + __("other branch ({0})", [m.branch || ""]) : ""), indicator: m.other_branch ? "orange" : "green" });
 					report.refresh();
 				});
 			call(false);

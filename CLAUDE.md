@@ -87,12 +87,13 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 
 ## Overtime (OT) flow
 `Attendance Marker` → `Payroll Worksheet` → `Additional Salary` → `Salary Slip`
-- **`slhrm/overtime.py` is the only OT math** (pure functions: `calculate_ot_hours`,
-  `calculate_ot_rates`, `calculate_ot_amounts`; currently PLACEHOLDER formulas). Never compute OT
+- **`slhrm/overtime.py` is the only OT math** (pure functions: `early_late_minutes`, `excused`, `calculate_ot_hours`,
+  `calculate_ot_rate`, `calculate_ot_amount`; v0.2.0 rule, see the v0.2.0 section; the OT RATE is still SLHRM Settings
+  default_ot_rate). Never compute OT
   anywhere else — the worksheet JS calls `slhrm.api.calc_worksheet_row`. Unit tests: `slhrm/tests/test_overtime.py`
   (UnitTestCase only; run with `CI=1 bench --site … run-tests --app slhrm --module
   slhrm.tests.test_overtime --skip-before-tests` — do not set `allow_tests` on production).
-- Two types: **Normal** (working-day hours beyond the shift) and **Double** (holiday / weekly off).
+- ONE OT type since v0.2.0 (Normal / Double removed).
   HRMS v16 resolves holidays only via **Holiday List Assignment** (employee, else company);
   `Employee.holiday_list` is ignored.
 - **Worksheet = HRMS Salary Slip preview + OT. Never duplicate HRMS pay math.**
@@ -306,8 +307,9 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   confirmed by the agent); agent config `min_punch_date` (default for all devices, per-device override) → older
   records are never queued or sent, counted `skipped_old` per pull (log, `device_pull`, `status`). All rows before
   2026-11-01 were deleted on 2026-11-09 (backup `~/cc-tmp/punch_backup_pre_20261101.json.gz`, 600).
-- Unknown device users are STORED (`employee` empty, status Unmatched) and re-matched when
-  `Employee.slhrm_biometric_device_id` is set (doc_events `on_update` → `slhrm.biometric.rematch`).
+- **v0.2.1 supersedes the matching rules below — see "Device ids company-wide (v0.2.1)".**
+  Unknown device users are STORED (`employee` empty, status Unmatched) and re-matched when
+  the device id is set on the Employee (doc_events `on_update` → `slhrm.biometric.rematch`).
   **Matching scope = the device's SERVED BRANCHES** (v0.0.15): Biometric Device child table `served_branches`
   (`Biometric Device Branch`; the device's own branch is always added on save; `slhrm.biometric.served_branches`).
   DUTCHPUB device serves DUTCHPUB + FORTFUSION (2026-11-10; FORTFUSION has no device). No "anywhere" fallback:
@@ -455,3 +457,24 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   (kept while the value is unchanged); Version (track_changes) keeps the history. Users without level-1 write: ot_hours
   follows calc_ot unless a level-1 user edited it.
 - Staff Bill (SB): deduction via Additional Salary, worksheet fixed column; not EPF base, not APIT-deductible.
+
+## Device ids company-wide, Attendance Supervisor reads, no-shift warning (v0.2.1, Raj 2026-11-10)
+- **Device id = ERPNext `Employee.attendance_device_id`** (label "Attendance Device ID (all devices)", Property Setters;
+  placed after Employee Number by a `field_order` Property Setter). DB unique index → one number = one person on every
+  device, company-wide. `slhrm_biometric_device_id` is legacy: copied by patch v0_2_1.copy_device_ids (aborts on any
+  conflict), hidden + read-only, never written or read by matching.
+- Matching (`slhrm/biometric.py`): (a) SITE-WIDE Active employee with that attendance_device_id; employee's branch not
+  served by the device → still matched, punch `match_reason = other_branch` (report **Device Users Other Branch**).
+  (b) employee-number fallback stays scoped to the device's served branches and writes attendance_device_id.
+  No per-branch uniqueness checks; branch transfer keeps the id; Employee validate refuses an id held by anyone else
+  (any branch / status) and stores empty as NULL. Map to Employee allows any branch (alert says "other branch").
+- Before a new device goes live: agent syncs its users (read-only) → `bench execute slhrm.biometric.device_id_collisions
+  --kwargs '{"serial": "..."}'` lists device users whose id already belongs to someone else (re-enrol on site).
+- **Attendance Supervisor reads** Branch / Employee / Shift Type / Holiday List: Custom DocPerm fixture
+  (`fixtures/custom_docperm.json`, read only). Frappe uses ONLY Custom DocPerm rows for a doctype once one exists:
+  patch v0_2_1.supervisor_perm_base + `install.ensure_custom_perm_base` copy the standard rows first (no-op on prod,
+  which already had custom rows for all four). **Branch scope: HR adds a User Permission (Allow: Branch, value = the
+  supervisor's branch) per supervisor**; `api._check_branch_allowed` applies it to load_attendance_data /
+  recalc_attendance_row / calc_attendance_times (they read with get_all).
+- Working day without a shift: row `no_shift` (orange "No shift" in the Shift cell), parent `no_shift_count` ("No shift").
+

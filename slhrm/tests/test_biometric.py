@@ -6,7 +6,8 @@ from frappe.tests import UnitTestCase
 
 import frappe
 
-from slhrm.biometric import PUNCH_TYPES, as_branches, name_sanity, outcome, parse_device_time, punch_key, to_site_time
+from slhrm.biometric import (OTHER_BRANCH, PUNCH_TYPES, as_branches, match_reason_for, name_sanity, outcome, parse_device_time,
+                             punch_key, to_site_time)
 
 
 class TestBiometric(UnitTestCase):
@@ -56,3 +57,10 @@ class TestBiometric(UnitTestCase):
         self.assertEqual(as_branches(["DUTCHPUB", "FORTFUSION", "DUTCHPUB", " ", None]), ("DUTCHPUB", "FORTFUSION"))
         self.assertEqual(as_branches(None), ())
         self.assertEqual(as_branches(""), ())
+
+
+class TestOtherBranch(UnitTestCase):
+    def test_match_reason_for(self):
+        self.assertEqual(match_reason_for(frappe._dict(name="E1", branch="ALIYA", other_branch=True)), OTHER_BRANCH)
+        self.assertIsNone(match_reason_for(frappe._dict(name="E1", branch="DUTCHPUB", other_branch=False)))
+        self.assertIsNone(match_reason_for(None))

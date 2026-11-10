@@ -123,7 +123,7 @@ class AttendanceMarker(Document):
           otherwise follows calc_ot
         """
         if not self.attendance_details:
-            self.late_in_count = self.early_out_count = 0
+            self.late_in_count = self.early_out_count = self.no_shift_count = 0
             return
 
         settings = get_settings()
@@ -148,7 +148,7 @@ class AttendanceMarker(Document):
 
         date_str = str(self.date)
         long_rows = []
-        late_in_count = early_out_count = 0
+        late_in_count = early_out_count = no_shift_count = 0
         for row in self.attendance_details:
             row.shift_date = self.date
             prev = stored.get(row.name)
@@ -181,6 +181,7 @@ class AttendanceMarker(Document):
                 late_in_count += 1
             if cint(row.early_out_min) and not cint(row.early_out_excused):
                 early_out_count += 1
+            no_shift_count += cint(row.no_shift)
 
             if not is_eligible:
                 row.ot_hours = 0
@@ -198,6 +199,7 @@ class AttendanceMarker(Document):
 
         self.late_in_count = late_in_count
         self.early_out_count = early_out_count
+        self.no_shift_count = no_shift_count
         if long_rows:  # warn, don't block (manual overnight entries)
             frappe.msgprint(_("More than {0} worked hours — check IN / OUT and the OUT next day box:").format(MAX_PLAUSIBLE_HOURS)
                             + "<br>" + "<br>".join(long_rows), title=_("Long shifts"), indicator="orange")
