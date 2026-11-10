@@ -24,20 +24,38 @@ function figures(m) {
 	return out;
 }
 
-// grid headers may wrap onto two lines ("Early Out" at 1366 px) instead of being cut off
+// 1366 px without truncation: header labels and the Shift cell may wrap onto two lines (rows grow),
+// IN / OUT show HH:mm in the grid (the row editor keeps the full value)
+const GRID_SEL = '[data-fieldname="attendance_details"]';
 function ensure_grid_style() {
 	if (document.getElementById("slhrm-marker-grid-style")) return;
+	const wrap = "{ white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.15; }";
 	$('<style id="slhrm-marker-grid-style">')
-		.text('[data-fieldname="attendance_details"] .grid-heading-row .grid-static-col .static-area' +
-			"{ white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.15; }" +
-			'[data-fieldname="attendance_details"] .grid-heading-row .grid-static-col' +
-			"{ height: auto; min-height: 32px; }")
+		.text(`${GRID_SEL} .grid-heading-row .grid-static-col .static-area ${wrap}` +
+			`${GRID_SEL} .grid-body .grid-static-col[data-fieldname="shift"] .static-area ${wrap}` +
+			`${GRID_SEL} .grid-heading-row, ${GRID_SEL} .grid-heading-row .grid-row, ${GRID_SEL} .grid-heading-row .data-row,` +
+			`${GRID_SEL} .grid-heading-row .grid-static-col { height: auto; min-height: 32px; overflow: visible; }`)
 		.appendTo("head");
+}
+
+function set_time_formatters(frm) {
+	const grid = frm.fields_dict.attendance_details && frm.fields_dict.attendance_details.grid;
+	const formatter = (value) => {
+		if (!value) return "";
+		const m = String(value).match(/^(\d{1,2}):(\d{2})/);
+		return m ? `${m[1].padStart(2, "0")}:${m[2]}` : frappe.utils.escape_html(String(value));
+	};
+	["in_time", "out_time"].forEach((field) => {
+		[frappe.meta.get_docfield("Attendance Marker Detail", field, frm.doc.name), grid && grid.get_docfield(field)]
+			.forEach((df) => { if (df) df.formatter = formatter; });
+		(grid && grid.docfields || []).forEach((df) => { if (df.fieldname === field) df.formatter = formatter; });
+	});
 }
 
 // orange Late In / Early Out cells in the grid (not when excused by short leave)
 function set_late_formatters(frm) {
 	ensure_grid_style();
+	set_time_formatters(frm);
 	const grid = frm.fields_dict.attendance_details && frm.fields_dict.attendance_details.grid;
 	Object.entries(LATE_FIELDS).forEach(([field, excused]) => {
 		const formatter = (value, df, options, doc) => {
