@@ -598,20 +598,30 @@ def other_branch_rows(device=None):
 
 def device_id_collisions(serial):
     """Before a device goes live (bench execute, read-only): its device users (synced by the agent) whose id is
-    already the attendance_device_id of an employee the name on the device does not match → that person needs
-    re-enrolment on the device with a free number. Returns {"device", "served", "users", "collisions", "same_person"}."""
+    already the attendance_device_id of another employee. Each hit is classed by the name on the device:
+    same_person (name check passes), similar (spelling variant, ratio >= 0.6 on a name token — HR checks),
+    no_name (empty / "NN-…" placeholder — HR checks), collisions (name clearly differs → re-enrol that device user
+    with a free number). Returns {"device", "served", "users", "collisions", "similar", "no_name", "same_person"}."""
     device = get_device(serial)
     users = frappe.get_all(DEVICE_USER, filters={"device": device.name, "on_device": 1}, fields=["device_user_id", "user_name"])
     holders = {cstr(e.get(ID_FIELD)).strip(): e for e in frappe.get_all(
         "Employee", filters={ID_FIELD: ["is", "set"]}, fields=["name", "employee_name", "branch", "status", ID_FIELD])}
-    collisions, same = [], []
+    out = {"device": device.name, "served": device.branches, "users": len(users),
+           "collisions": [], "similar": [], "no_name": [], "same_person": []}
     for u in users:
         h = holders.get(cstr(u.device_user_id).strip())
         if not h:
             continue
         row = {"device_user_id": u.device_user_id, "name_on_device": u.user_name, "holder": h.name,
                "holder_name": h.employee_name, "holder_branch": h.branch, "holder_status": h.status}
-        (same if name_sanity(u.user_name, h.employee_name) else collisions).append(row)
-    out = {"device": device.name, "served": device.branches, "users": len(users), "collisions": collisions, "same_person": same}
+        dn = cstr(u.user_name).strip()
+        if name_sanity(dn, h.employee_name):
+            out["same_person"].append(row)
+        elif not dn or re.fullmatch(r"(?i)nn-?\d*", dn):
+            out["no_name"].append(row)
+        elif any(SequenceMatcher(None, a, b).ratio() >= 0.6 for a in _tokens(dn) for b in _tokens(h.employee_name)):
+            out["similar"].append(row)
+        else:
+            out["collisions"].append(row)
     print(json.dumps(out, indent=1, default=str))
     return out
