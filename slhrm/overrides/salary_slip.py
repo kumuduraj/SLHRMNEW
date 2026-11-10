@@ -3,7 +3,7 @@ import json
 import frappe
 from frappe.utils import flt
 
-from slhrm.statutory import apply_epf
+from slhrm.statutory import apply_apit, apply_epf
 
 
 def apply_salary_package(doc, method):
@@ -18,12 +18,14 @@ def apply_salary_package(doc, method):
 
 def apply_salary_rules(slip):
     """THE single entry point for SLHRM slip rules, in this order:
-    1. Employee Salary Package overrides  2. EPF/ETF on the final earnings (slhrm.statutory).
+    1. Employee Salary Package overrides  2. EPF/ETF on the final earnings  3. APIT (slhrm.statutory).
     Used by the real Salary Slip hook and the Payroll Worksheet preview (slhrm.payroll_preview).
-    Returns apply_epf()'s result ({epf_base, employer, applied}).
+    Returns apply_epf()'s result ({epf_base, employer, applied}) plus "apit" (apply_apit()'s result).
     """
     apply_package_overrides(slip)
-    return apply_epf(slip)
+    out = apply_epf(slip)
+    out["apit"] = apply_apit(slip)
+    return out
 
 
 def apply_package_overrides(slip):

@@ -651,11 +651,14 @@ def download_worksheet_xlsx(name):
 
 @frappe.whitelist()
 def calc_worksheet_row(employee, structure_gross=0, structure_deduction=0, loan_deduction=0,
-                       normal_ot_hours=0, double_ot_hours=0, normal_ot_rate=0, double_ot_rate=0):
-    """OT + totals for one row (inline OT editor). Does NOT rebuild the salary preview."""
+                       normal_ot_hours=0, double_ot_hours=0, normal_ot_rate=0, double_ot_rate=0,
+                       apit_taxable_base=None, apit_preview=0, start_date=None):
+    """OT + totals for one row (inline OT editor). Does NOT rebuild the salary preview.
+    With apit_taxable_base (stored row value) the row's APIT is recomputed including the OT."""
     from slhrm.overtime import calculate_ot_amounts
     from slhrm.payroll_ot import get_ot_eligibility
     from slhrm.payroll_pay import compose_pay
+    from slhrm.statutory import apit_component, worksheet_apit
 
     frappe.has_permission("Payroll Worksheet", "read", throw=True)
     eligible = cint(get_ot_eligibility([employee]).get(employee))
@@ -669,7 +672,9 @@ def calc_worksheet_row(employee, structure_gross=0, structure_deduction=0, loan_
         "normal_ot_amount": amounts["normal"],
         "double_ot_amount": amounts["double"],
         "ot_amount": flt(amounts["normal"] + amounts["double"], 2),
-        **compose_pay(structure_gross, structure_deduction, amounts["normal"], amounts["double"], loan_deduction),
+        **compose_pay(structure_gross, structure_deduction, amounts["normal"], amounts["double"], loan_deduction,
+                      apit_preview, (worksheet_apit(apit_taxable_base, amounts["normal"], amounts["double"], employee, start_date)
+                                     if apit_taxable_base not in (None, "") and start_date and apit_component() else None)),
     }
 
 

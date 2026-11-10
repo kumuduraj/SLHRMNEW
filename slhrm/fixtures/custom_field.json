@@ -151,5 +151,30 @@
     "in_standard_filter": 0,
     "description": "SLHRM: Employees' Provident Fund member number (from HR).",
     "name": "Employee-slhrm_epf_no"
+  },
+  {
+    "doctype": "Custom Field",
+    "dt": "Salary Component",
+    "module": "SLHRM",
+    "fieldname": "slhrm_reduces_epf_base",
+    "fieldtype": "Check",
+    "label": "Reduces EPF base and APIT taxable",
+    "insert_after": "slhrm_epf_rate",
+    "default": "0",
+    "depends_on": "eval:doc.type=='Deduction'",
+    "description": "SLHRM: this deduction (e.g. No Pay entered as Additional Salary) is subtracted from the EPF base and from the APIT taxable amount.",
+    "name": "Salary Component-slhrm_reduces_epf_base"
+  },
+  {
+    "doctype": "Custom Field",
+    "dt": "Employee",
+    "module": "SLHRM",
+    "fieldname": "slhrm_apit_exempt",
+    "fieldtype": "Check",
+    "label": "APIT exempt",
+    "insert_after": "slhrm_epf_no",
+    "default": "0",
+    "description": "SLHRM: no APIT is deducted (non-resident / special cases).",
+    "name": "Employee-slhrm_apit_exempt"
   }
 ]

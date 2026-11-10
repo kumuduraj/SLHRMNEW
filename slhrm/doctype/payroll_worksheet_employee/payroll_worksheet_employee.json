@@ -216,6 +216,25 @@
    "read_only": 1
   },
   {
+   "fieldname": "apit_taxable_base",
+   "fieldtype": "Currency",
+   "label": "APIT Taxable (without worksheet OT)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "apit_preview",
+   "fieldtype": "Currency",
+   "label": "APIT in preview",
+   "read_only": 1
+  },
+  {
+   "fieldname": "apit_amount",
+   "fieldtype": "Currency",
+   "label": "APIT (incl. OT)",
+   "read_only": 1,
+   "description": "APIT on APIT Taxable + Normal OT + Double OT — what the final Salary Slip deducts."
+  },
+  {
    "fieldname": "column_break_r1",
    "fieldtype": "Column Break"
   },
@@ -248,5 +267,5 @@
   }
  ],
  "permissions": [],
- "modified": "2026-11-08 21:30:00.000000"
+ "modified": "2026-11-10 15:00:00.000000"
 }

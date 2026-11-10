@@ -11,8 +11,10 @@
 
 additional_earning_total / additional_deduction_total = preview rows linked to an Additional
 Salary — display only (already inside the preview, never added again).
-Tax/statutory components on the final Salary Slip are computed on gross INCLUDING OT, so for
-those the worksheet is an approximation (OT reaches the slip as Additional Salary).
+APIT (v0.1.0): the preview's APIT excludes worksheet OT; the row's apit_amount is recomputed on
+apit_taxable_base + Normal OT + Double OT (slhrm.statutory.worksheet_apit) and replaces the preview
+APIT inside total_deduction — the same amount the final slip computes (OT arrives as Additional Salary).
+EPF never includes OT (OT components are not EPF-applicable).
 """
 import json
 
@@ -22,20 +24,30 @@ from frappe.utils import cint, flt
 from slhrm.overtime import calculate_ot_amounts, calculate_ot_rates
 from slhrm.payroll_ot import get_marker_ot_hours
 from slhrm.payroll_preview import build_previews
+from slhrm.statutory import worksheet_apit
 
 PRECISION = 2
 OT_INPUT_FIELDS = ("normal_ot_hours", "normal_ot_rate", "double_ot_hours", "double_ot_rate")
 
 
 def compose_pay(structure_gross=0, structure_deduction=0, normal_ot_amount=0, double_ot_amount=0,
-                loan_deduction=0):
+                loan_deduction=0, apit_preview=0, apit_amount=None):
+    """apit_amount=None: no APIT adjustment. Else the preview APIT (inside structure_deduction) is
+    replaced by apit_amount (APIT including the worksheet OT)."""
     earning = flt(structure_gross) + flt(normal_ot_amount) + flt(double_ot_amount)
     deduction = flt(structure_deduction) + flt(loan_deduction)
-    return {
-        "total_earning": flt(earning, PRECISION),
-        "total_deduction": flt(deduction, PRECISION),
-        "net_pay": flt(earning - deduction, PRECISION),
-    }
+    out = {}
+    if apit_amount is not None:
+        deduction += flt(apit_amount) - flt(apit_preview)
+        out["apit_amount"] = flt(apit_amount, PRECISION)
+    return dict(out, total_earning=flt(earning, PRECISION), total_deduction=flt(deduction, PRECISION),
+                net_pay=flt(earning - deduction, PRECISION))
+
+
+def row_apit(row, on_date):
+    """Final APIT for a worksheet row (dict or child doc) incl. its OT amounts."""
+    g = row.get if isinstance(row, dict) else (lambda k, _r=row: getattr(_r, k, None))
+    return worksheet_apit(g("apit_taxable_base"), g("normal_ot_amount"), g("double_ot_amount"), g("employee"), on_date)
 
 
 def salary_fields_from_preview(preview):
@@ -56,6 +68,8 @@ def salary_fields_from_preview(preview):
         "absent_days": flt(preview.absent_days),
         "leave_days": flt(preview.leave_without_pay),
         "row_error": preview.error or "",
+        "apit_taxable_base": flt(preview.get("apit_taxable_base"), PRECISION),
+        "apit_preview": flt(preview.get("apit_preview"), PRECISION),
         # per-row breakdown so saved / submitted worksheets render without recomputing
         "components_json": json.dumps({
             "earnings": [{"component": r["component"], "amount": r["amount"], "additional_salary": r["additional_salary"]}
@@ -64,8 +78,20 @@ def salary_fields_from_preview(preview):
                            for r in preview.deductions],
             "employer": [{"component": r["component"], "amount": r["amount"]} for r in preview.employer or []],
             "base_component": preview.base_component,
+            "apit_component": preview.get("apit_component"),
+            "fixed_columns": fixed_columns(),
         }),
     }
+
+
+def fixed_columns():
+    """Worksheet columns shown even when no row has an amount (only components that exist)."""
+    from slhrm.salary_setup import WORKSHEET_FIXED_DEDUCTIONS, WORKSHEET_FIXED_EARNINGS
+
+    have = set(frappe.get_all("Salary Component", filters={"name": ["in", WORKSHEET_FIXED_EARNINGS + WORKSHEET_FIXED_DEDUCTIONS]},
+                              pluck="name"))
+    return {"earnings": [c for c in WORKSHEET_FIXED_EARNINGS if c in have],
+            "deductions": [c for c in WORKSHEET_FIXED_DEDUCTIONS if c in have]}
 
 
 def build_rows(employees, company, start_date, end_date, ot_inputs=None, progress=None):
@@ -107,8 +133,9 @@ def build_rows(employees, company, start_date, end_date, ot_inputs=None, progres
             "ot_amount": flt(amounts["normal"] + amounts["double"], PRECISION),
             **salary,
         }
+        apit = row_apit(row, start_date) if p.get("apit_component") else None
         row.update(compose_pay(row["structure_gross"], row["structure_deduction"], row["normal_ot_amount"],
-                               row["double_ot_amount"], row["loan_deduction"]))
+                               row["double_ot_amount"], row["loan_deduction"], row["apit_preview"], apit))
         rows.append(row)
 
         for r in p.earnings:

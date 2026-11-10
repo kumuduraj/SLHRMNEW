@@ -5,7 +5,8 @@ from frappe.utils import cint, flt, get_first_day, get_last_day, nowdate
 
 from slhrm.overtime import calculate_ot_amounts, calculate_ot_rates
 from slhrm.payroll_ot import get_marker_ot_hours, get_ot_eligibility
-from slhrm.payroll_pay import compose_pay
+from slhrm.payroll_pay import compose_pay, row_apit
+from slhrm.statutory import apit_component
 
 MONTH_NAMES = {
     "01": "January", "02": "February", "03": "March", "04": "April",
@@ -141,6 +142,7 @@ class PayrollWorksheet(Document):
                 marker_hours = get_marker_ot_hours(employees, self.start_date, self.end_date)
 
         total_ot = total_normal = total_double = total_gross = total_ded = total_net = 0
+        has_apit = bool(apit_component())
 
         for row in self.employees:
             row.ot_eligible = cint(eligibility.get(row.employee))
@@ -177,10 +179,11 @@ class PayrollWorksheet(Document):
             row.double_ot_amount = amounts["double"]
             row.ot_amount = flt(amounts["normal"] + amounts["double"], 2)
 
-            # pay = HRMS preview (structure_gross / structure_deduction / loan) + OT
+            # pay = HRMS preview (structure_gross / structure_deduction / loan) + OT; APIT incl. OT
+            apit = row_apit(row, self.start_date) if has_apit else None
             row.update(compose_pay(
                 row.structure_gross, row.structure_deduction, row.normal_ot_amount,
-                row.double_ot_amount, row.loan_deduction,
+                row.double_ot_amount, row.loan_deduction, row.apit_preview, apit,
             ))
 
             total_normal += flt(row.normal_ot_amount)

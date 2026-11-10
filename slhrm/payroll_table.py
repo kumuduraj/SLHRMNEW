@@ -8,10 +8,13 @@ OT/total fields — no pay math here, only layout + column sums.
 
 Layout (left -> right):
   # | Employee | Working Days | Payment Days | LWP |
-  EARNINGS: one column per earning component in any row (base component first, then structure
-            order) + "Additional" (Additional Salary earnings) |
+  EARNINGS: base component first, then the fixed columns (components_json.fixed_columns: Basic Salary,
+            Base Allowance, Vehicle Allowance, Other Allowance — shown even when empty), then any other
+            earning component in a row. Additional Salary lines go to their OWN component column (v0.1.0). |
   NORMAL OT: Hrs, Rate, Amount | DOUBLE OT: Hrs, Rate, Amount | GROSS |
-  DEDUCTIONS: one column per deduction component in any row (+ "Additional", + Loan if > 0) |
+  DEDUCTIONS: fixed columns (Death Donation, No Pay, Other Deduction, Salary Advance, Personal Loan,
+            EPF Employee 8%, APIT), then other deduction components (+ Loan if > 0). The APIT cell is the
+            row's apit_amount (APIT incl. worksheet OT), not the preview value. |
   TOTAL DED | NET PAY |
   EMPLOYER (statistical components, e.g. employer EPF 12% / ETF 3%; collapsible in the form)
 Missing values are None (shown as "-"). Totals sum money and hours only (not rates or day counts).
@@ -20,7 +23,6 @@ import json
 
 from frappe.utils import flt
 
-ADDITIONAL = "__additional__"
 NO_TOTAL = {"normal_ot_rate", "double_ot_rate", "total_working_days", "payment_days", "lwp_days"}  # money + hours only
 
 
@@ -34,6 +36,7 @@ def _breakdown(row):
         return {"earnings": [], "deductions": [], "employer": [], "base_component": None}
     data = json.loads(raw) if isinstance(raw, str) else raw
     data.setdefault("employer", [])
+    data.setdefault("fixed_columns", {})
     return data
 
 
@@ -41,19 +44,27 @@ def build_table(rows):
     rows = list(rows or [])
     parsed = [_breakdown(r) for r in rows]
 
+    apit_comps = list(dict.fromkeys(b.get("apit_component") for b in parsed if b.get("apit_component")))
+
     def union(kind):
-        seen, base_first = [], []
+        seen, base_first, fixed = [], [], []
         for b in parsed:
+            for c in (b.get("fixed_columns") or {}).get(kind, []):
+                if c not in fixed:
+                    fixed.append(c)
             for line in b.get(kind, []):
-                if line.get("additional_salary"):
-                    continue
                 c = line["component"]
                 if c not in seen:
                     seen.append(c)
             if kind == "earnings" and b.get("base_component"):
                 base_first.append(b["base_component"])
-        bases = [c for c in dict.fromkeys(base_first) if c in seen]
-        return bases + [c for c in seen if c not in bases]
+        if kind == "deductions":
+            for c in apit_comps:  # APIT may appear only through worksheet OT
+                if c not in seen and c not in fixed and any(flt(_get(r, "apit_amount")) for r in rows):
+                    seen.append(c)
+        bases = [c for c in dict.fromkeys(base_first) if c in seen or c in fixed]
+        head = bases + [c for c in fixed if c not in bases]
+        return head + [c for c in seen if c not in head]
 
     earn_comps = union("earnings")
     ded_comps = union("deductions")
@@ -62,11 +73,9 @@ def build_table(rows):
         for line in b.get("employer", []):
             if line["component"] not in emp_comps:
                 emp_comps.append(line["component"])
-    has_add_earn = any(line.get("additional_salary") for b in parsed for line in b.get("earnings", []))
-    has_add_ded = any(line.get("additional_salary") for b in parsed for line in b.get("deductions", []))
     has_loan = any(flt(_get(r, "loan_deduction")) > 0 for r in rows)
 
-    tip = lambda c: f"{c} — from Salary Structure"
+    tip = lambda c: f"{c} — Salary Structure / Additional Salary"
     groups = [
         {"key": "info", "label": "", "columns": [
             {"key": "idx", "label": "#", "type": "int"},
@@ -76,9 +85,7 @@ def build_table(rows):
             {"key": "lwp_days", "label": "LWP", "type": "float"},
         ]},
         {"key": "earnings", "label": "EARNINGS",
-         "columns": [{"key": f"E::{c}", "label": c, "type": "currency", "tooltip": tip(c)} for c in earn_comps]
-         + ([{"key": f"E::{ADDITIONAL}", "label": "Additional", "type": "currency",
-              "tooltip": "Additional Salary earnings (submitted, this period)"}] if has_add_earn else [])},
+         "columns": [{"key": f"E::{c}", "label": c, "type": "currency", "tooltip": tip(c)} for c in earn_comps]},
         {"key": "normal_ot", "label": "NORMAL OT", "columns": [
             {"key": "normal_ot_hours", "label": "Hrs", "type": "float"},
             {"key": "normal_ot_rate", "label": "Rate", "type": "currency"},
@@ -90,8 +97,6 @@ def build_table(rows):
         {"key": "gross", "label": "", "columns": [{"key": "total_earning", "label": "GROSS", "type": "currency"}]},
         {"key": "deductions", "label": "DEDUCTIONS",
          "columns": [{"key": f"D::{c}", "label": c, "type": "currency", "tooltip": tip(c)} for c in ded_comps]
-         + ([{"key": f"D::{ADDITIONAL}", "label": "Additional", "type": "currency",
-              "tooltip": "Additional Salary deductions (submitted, this period)"}] if has_add_ded else [])
          + ([{"key": "loan_deduction", "label": "Loan", "type": "currency"}] if has_loan else [])},
         {"key": "total_ded", "label": "", "columns": [{"key": "total_deduction", "label": "TOTAL DED", "type": "currency"}]},
         {"key": "net", "label": "", "columns": [{"key": "net_pay", "label": "NET PAY", "type": "currency"}]},
@@ -114,8 +119,11 @@ def build_table(rows):
             cells[key] = flt(_get(r, key))
         for prefix, kind in (("E", "earnings"), ("D", "deductions")):
             for line in b.get(kind, []):
-                key = f"{prefix}::{ADDITIONAL}" if line.get("additional_salary") else f"{prefix}::{line['component']}"
+                key = f"{prefix}::{line['component']}"
                 cells[key] = flt(cells.get(key) or 0) + flt(line["amount"])
+        apit_amount = _get(r, "apit_amount")
+        if b.get("apit_component") and apit_amount is not None and (flt(apit_amount) or f"D::{b['apit_component']}" in cells):
+            cells[f"D::{b['apit_component']}"] = flt(apit_amount)  # APIT incl. worksheet OT
         for line in b.get("employer", []):
             key = f"ER::{line['component']}"
             cells[key] = flt(cells.get(key) or 0) + flt(line["amount"])

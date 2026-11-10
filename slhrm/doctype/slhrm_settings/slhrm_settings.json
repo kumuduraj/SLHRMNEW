@@ -151,6 +151,25 @@
    "label": "PWA Logo"
   },
   {
+   "fieldname": "section_break_apit",
+   "fieldtype": "Section Break",
+   "label": "APIT (monthly)"
+  },
+  {
+   "fieldname": "apit_component",
+   "fieldtype": "Link",
+   "options": "Salary Component",
+   "label": "APIT Component",
+   "description": "Deduction SLHRM fills on every Salary Slip and worksheet row (slhrm.statutory.apply_apit). Empty = APIT off."
+  },
+  {
+   "fieldname": "apit_slabs",
+   "fieldtype": "Table",
+   "options": "SLHRM APIT Slab",
+   "label": "APIT Slabs",
+   "description": "Progressive monthly bands. Taxable = all earnings (incl. OT, Other Allowance) - No Pay."
+  },
+  {
    "fieldname": "section_break_payroll",
    "fieldtype": "Section Break",
    "label": "Payroll"
@@ -179,5 +198,5 @@
    "write": 1
   }
  ],
- "modified": "2026-11-09 16:00:00.000000"
+ "modified": "2026-11-10 15:00:00.000000"
 }

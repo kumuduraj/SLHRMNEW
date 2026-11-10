@@ -344,42 +344,46 @@ function set_dates(frm) {
 // Values come only from the stored HRMS preview breakdown (row.components_json) and the row's
 // OT / total fields; the JS adds column sums for the totals row, nothing else.
 
-const ADDITIONAL = '__additional__';
 const NO_TOTAL = ['normal_ot_rate', 'double_ot_rate', 'total_working_days', 'payment_days', 'lwp_days'];  // money + hours only
 
 function parse_breakdown(row) {
     let b = {};
     try { b = row.components_json ? JSON.parse(row.components_json) : {}; } catch (e) { b = {}; }
-    return { earnings: b.earnings || [], deductions: b.deductions || [], employer: b.employer || [], base_component: b.base_component || null };
+    return { earnings: b.earnings || [], deductions: b.deductions || [], employer: b.employer || [], base_component: b.base_component || null,
+             apit_component: b.apit_component || null, fixed_columns: b.fixed_columns || {} };
 }
 
 
 function build_table(rows) {
     rows = rows || [];
     const parsed = rows.map(parse_breakdown);
+    const apit_comps = [];
+    parsed.forEach(b => { if (b.apit_component && !apit_comps.includes(b.apit_component)) apit_comps.push(b.apit_component); });
     const union = kind => {
-        const seen = [], bases = [];
+        const seen = [], bases = [], fixed = [];
         parsed.forEach(b => {
-            b[kind].forEach(l => { if (!l.additional_salary && !seen.includes(l.component)) seen.push(l.component); });
+            (b.fixed_columns[kind] || []).forEach(c => { if (!fixed.includes(c)) fixed.push(c); });
+            b[kind].forEach(l => { if (!seen.includes(l.component)) seen.push(l.component); });
             if (kind === 'earnings' && b.base_component && !bases.includes(b.base_component)) bases.push(b.base_component);
         });
-        const first = bases.filter(c => seen.includes(c));
-        return first.concat(seen.filter(c => !first.includes(c)));
+        if (kind === 'deductions') {  // APIT may appear only through worksheet OT
+            apit_comps.forEach(c => { if (!seen.includes(c) && !fixed.includes(c) && rows.some(r => flt(r.apit_amount))) seen.push(c); });
+        }
+        const first = bases.filter(c => seen.includes(c) || fixed.includes(c));
+        const head = first.concat(fixed.filter(c => !first.includes(c)));
+        return head.concat(seen.filter(c => !head.includes(c)));
     };
     const earn = union('earnings'), ded = union('deductions'), emp = [];
     parsed.forEach(b => b.employer.forEach(l => { if (!emp.includes(l.component)) emp.push(l.component); }));
-    const add_earn = parsed.some(b => b.earnings.some(l => l.additional_salary));
-    const add_ded = parsed.some(b => b.deductions.some(l => l.additional_salary));
     const has_loan = rows.some(r => flt(r.loan_deduction) > 0);
-    const tip = c => c + ' — from Salary Structure';
+    const tip = c => c + ' — Salary Structure / Additional Salary';
 
     let groups = [
         { key: 'info', label: '', columns: [
             { key: 'idx', label: '#', type: 'int' }, { key: 'employee_name', label: 'Employee', type: 'text' },
             { key: 'total_working_days', label: 'Working Days', type: 'float' },
             { key: 'payment_days', label: 'Payment Days', type: 'float' }, { key: 'lwp_days', label: 'LWP', type: 'float' }] },
-        { key: 'earnings', label: 'EARNINGS', columns: earn.map(c => ({ key: 'E::' + c, label: c, type: 'currency', tooltip: tip(c) }))
-            .concat(add_earn ? [{ key: 'E::' + ADDITIONAL, label: 'Additional', type: 'currency', tooltip: 'Additional Salary earnings (submitted, this period)' }] : []) },
+        { key: 'earnings', label: 'EARNINGS', columns: earn.map(c => ({ key: 'E::' + c, label: c, type: 'currency', tooltip: tip(c) })) },
         { key: 'normal_ot', label: 'NORMAL OT', columns: [
             { key: 'normal_ot_hours', label: 'Hrs', type: 'float' }, { key: 'normal_ot_rate', label: 'Rate', type: 'currency' },
             { key: 'normal_ot_amount', label: 'Amount', type: 'currency' }] },
@@ -388,7 +392,6 @@ function build_table(rows) {
             { key: 'double_ot_amount', label: 'Amount', type: 'currency' }] },
         { key: 'gross', label: '', columns: [{ key: 'total_earning', label: 'GROSS', type: 'currency' }] },
         { key: 'deductions', label: 'DEDUCTIONS', columns: ded.map(c => ({ key: 'D::' + c, label: c, type: 'currency', tooltip: tip(c) }))
-            .concat(add_ded ? [{ key: 'D::' + ADDITIONAL, label: 'Additional', type: 'currency', tooltip: 'Additional Salary deductions (submitted, this period)' }] : [])
             .concat(has_loan ? [{ key: 'loan_deduction', label: 'Loan', type: 'currency' }] : []) },
         { key: 'total_ded', label: '', columns: [{ key: 'total_deduction', label: 'TOTAL DED', type: 'currency' }] },
         { key: 'net', label: '', columns: [{ key: 'net_pay', label: 'NET PAY', type: 'currency' }] },
@@ -405,9 +408,13 @@ function build_table(rows) {
             .forEach(k => { cells[k] = flt(r[k]); });
         const b = parsed[i];
         [['E', 'earnings'], ['D', 'deductions']].forEach(([p, kind]) => b[kind].forEach(l => {
-            const key = p + '::' + (l.additional_salary ? ADDITIONAL : l.component);
+            const key = p + '::' + l.component;
             cells[key] = flt(cells[key] || 0) + flt(l.amount);
         }));
+        if (b.apit_component && r.apit_amount !== undefined && r.apit_amount !== null
+            && (flt(r.apit_amount) || ('D::' + b.apit_component) in cells)) {
+            cells['D::' + b.apit_component] = flt(r.apit_amount);  // APIT incl. worksheet OT
+        }
         b.employer.forEach(l => { const key = 'ER::' + l.component; cells[key] = flt(cells[key] || 0) + flt(l.amount); });
         return cells;
     });
@@ -603,7 +610,9 @@ function render_payroll_table(frm) {
         if (!row || !row.ot_eligible) return;
         const args = {
             employee: row.employee, structure_gross: row.structure_gross || 0,
-            structure_deduction: row.structure_deduction || 0, loan_deduction: row.loan_deduction || 0
+            structure_deduction: row.structure_deduction || 0, loan_deduction: row.loan_deduction || 0,
+            apit_taxable_base: row.apit_taxable_base || 0, apit_preview: row.apit_preview || 0,
+            start_date: frm.doc.start_date || ''
         };
         OT_INPUTS.forEach(f => { args[f] = row[f] || 0; });
         args[field] = value;

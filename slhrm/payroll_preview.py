@@ -132,6 +132,7 @@ def build_preview(employee, company, start_date, end_date):
         employee=employee, earnings=[], deductions=[], gross_pay=0.0, total_deduction=0.0, net_pay=0.0,
         total_loan_repayment=0.0, total_working_days=0.0, payment_days=0.0, absent_days=0.0,
         leave_without_pay=0.0, salary_structure="", base=0.0, employer=[], base_component=None, error=None,
+        apit_component=None, apit_taxable_base=0.0, apit_preview=0.0, apit_exempt=0,
     )
     savepoint = f"slhrm_preview_{frappe.generate_hash(length=8)}"
     messages_before = len(frappe.local.message_log or [])
@@ -163,8 +164,9 @@ def build_preview(employee, company, start_date, end_date):
             "base", order_by="from_date desc",
         ))
         _drop_worksheet_ot(slip)
-        rules = apply_salary_rules(slip)  # package overrides -> EPF/ETF (same entry point as the real slip)
+        rules = apply_salary_rules(slip)  # package overrides -> EPF/ETF -> APIT (same entry point as the real slip)
         employer = _merge_employer(employer, rules["employer"])
+        apit = rules.get("apit") or {}
 
         result.update(
             earnings=_rows(slip.earnings),
@@ -180,6 +182,9 @@ def build_preview(employee, company, start_date, end_date):
             salary_structure=slip.salary_structure or "",
             employer=employer,
             base_component=_base_component(slip.salary_structure),
+            # APIT without worksheet OT; the worksheet adds its OT (slhrm.statutory.worksheet_apit)
+            apit_component=apit.get("component"), apit_taxable_base=flt(apit.get("taxable"), 2),
+            apit_preview=flt(apit.get("amount"), 2), apit_exempt=1 if apit.get("exempt") else 0,
         )
     except Exception as e:
         result.error = frappe.utils.strip_html(str(e)) or type(e).__name__

@@ -1,0 +1,55 @@
+{
+ "actions": [],
+ "creation": "2026-11-10 15:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "from_amount",
+  "to_amount",
+  "rate",
+  "effective_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "from_amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "From (monthly)",
+   "reqd": 1
+  },
+  {
+   "fieldname": "to_amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "To (monthly)",
+   "description": "0 or empty = no upper limit (top band)."
+  },
+  {
+   "fieldname": "rate",
+   "fieldtype": "Percent",
+   "in_list_view": 1,
+   "label": "Rate %",
+   "reqd": 1
+  },
+  {
+   "fieldname": "effective_from",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Effective From",
+   "reqd": 1,
+   "description": "A slip uses the slab set with the latest Effective From on or before its period start."
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-10 15:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "SLHRM",
+ "name": "SLHRM APIT Slab",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "creation",
+ "sort_order": "ASC",
+ "states": []
+}
