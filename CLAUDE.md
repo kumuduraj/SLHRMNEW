@@ -459,6 +459,8 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - Staff Bill (SB): deduction via Additional Salary, worksheet fixed column; not EPF base, not APIT-deductible.
 
 ## Device ids company-wide, Attendance Supervisor reads, no-shift warning (v0.2.1, Raj 2026-11-10)
+- Property Setter fixtures: `doctype_or_field` must be `DocField` (or `DocType`); `Field` is silently ignored by
+  Frappe (v0.2.1 found the employee_number setters had never applied).
 - **Device id = ERPNext `Employee.attendance_device_id`** (label "Attendance Device ID (all devices)", Property Setters;
   placed after Employee Number by a `field_order` Property Setter). DB unique index → one number = one person on every
   device, company-wide. `slhrm_biometric_device_id` is legacy: copied by patch v0_2_1.copy_device_ids (aborts on any
