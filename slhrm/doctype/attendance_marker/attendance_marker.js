@@ -164,7 +164,7 @@ function recalc_times(frm, cdt, cdn) {
 				row.__slhrm_recalc = false;
 				update_summary(frm);
 				if (m.out_next_day && !was_next_day) {
-					frappe.show_alert({ message: __("OUT is before IN: OUT next day ticked."), indicator: "blue" });
+					frappe.show_alert({ message: __("OUT is before IN: OUT +1 (next day) ticked."), indicator: "blue" });
 				}
 				if (m.warning) frappe.show_alert({ message: m.warning, indicator: "orange" }, 8);
 			});

@@ -39,10 +39,11 @@
   {
    "fieldname": "shift",
    "fieldtype": "Link",
-   "label": "Shift Type",
+   "label": "Shift",
    "options": "Shift Type",
    "in_list_view": 1,
-   "columns": 1
+   "columns": 1,
+   "description": "Shift = the Shift Type of this row (decides the punch window and the shift hours)."
   },
   {
    "fieldname": "attendance_status",
@@ -68,25 +69,27 @@
   {
    "fieldname": "in_time",
    "fieldtype": "Time",
-   "label": "IN Time",
+   "label": "IN",
    "in_list_view": 1,
-   "columns": 1
+   "columns": 1,
+   "description": "IN = IN time on the shift date."
   },
   {
    "fieldname": "out_time",
    "fieldtype": "Time",
-   "label": "OUT Time",
+   "label": "OUT",
    "in_list_view": 1,
-   "columns": 1
+   "columns": 1,
+   "description": "OUT = OUT time (on the next day when OUT +1 is ticked)."
   },
   {
    "fieldname": "out_next_day",
    "fieldtype": "Check",
-   "label": "OUT next day",
+   "label": "OUT +1",
    "in_list_view": 1,
    "columns": 1,
    "default": "0",
-   "description": "OUT is on the day after the shift date (overnight). Ticked automatically when OUT is before IN or the OUT punch is after midnight."
+   "description": "OUT +1 = OUT next day: OUT is on the day after the shift date (overnight). Ticked automatically when OUT is before IN or the OUT punch is after midnight."
   },
   {
    "fieldname": "column_break_t1",
@@ -114,10 +117,11 @@
   {
    "fieldname": "worked_hours",
    "fieldtype": "Float",
-   "label": "Worked Hours",
+   "label": "Hrs",
    "read_only": 1,
    "in_list_view": 1,
-   "columns": 1
+   "columns": 1,
+   "description": "Hrs = Worked Hours from IN to OUT (OUT on the next day when OUT +1 is ticked)."
   },
   {
    "fieldname": "ot_eligible",
@@ -146,22 +150,22 @@
   {
    "fieldname": "normal_ot_hours",
    "fieldtype": "Float",
-   "label": "Normal OT",
+   "label": "N.OT",
    "permlevel": 1,
    "in_list_view": 1,
    "precision": "2",
    "columns": 1,
-   "description": "Approved Normal OT hours (defaults to the calculated value)."
+   "description": "N.OT = Normal OT: Approved Normal OT hours (defaults to the calculated value)."
   },
   {
    "fieldname": "double_ot_hours",
    "fieldtype": "Float",
-   "label": "Double OT",
+   "label": "D.OT",
    "permlevel": 1,
    "in_list_view": 1,
    "precision": "2",
    "columns": 1,
-   "description": "Approved Double OT hours (holiday / weekly off; defaults to the calculated value)."
+   "description": "D.OT = Double OT: Approved Double OT hours (holiday / weekly off; defaults to the calculated value)."
   },
   {
    "fieldname": "shift_hours",
@@ -218,5 +222,5 @@
   }
  ],
  "permissions": [],
- "modified": "2026-11-10 13:30:00.000000"
+ "modified": "2026-11-10 14:00:00.000000"
 }

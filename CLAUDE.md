@@ -126,7 +126,9 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   **Mark days in order**: D+1 only knows D's night shift from D's SUBMITTED marker (or default_shift). Saving /
   submitting a marker whose previous day (same branch) is not submitted shows a warning (never blocks); the form
   shows the previous day's status (`slhrm.api.marker_previous_day`). Marker grid: Employee Name only (the
-  Employee link is in the row editor); per-row OT lock = `grid_row.toggle_editable` (v16 has no
+  Employee link is in the row editor); short labels Shift / IN / OUT / OUT +1 / Hrs / N.OT / D.OT with the full
+  meaning in each field's description (Frappe v16 has no grid-only label; row editors copy grid.docfields), grid
+  columns sum to 10 (Employee Name 2, others 1); per-row OT lock = `grid_row.toggle_editable` (v16 has no
   `grid_form.set_df_property`).
 - Shift Types (2026-11-10, no employee assigned yet): Dawn Shift 03-12, Early Shift 06-15, Day Shift 08-17,
   Morning Shift 10-19, Noon Shift 12-21, Evening Shift 15-24 (ends 00:00 next day), Night Shift 21-06; all auto
