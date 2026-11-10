@@ -128,6 +128,18 @@ def used_by_other_markers(punch_names, date_str):
                                   (date_str, tuple(punch_names))))
 
 
+def previous_day_marker(branch, company, date_str):
+    """Status of the previous day's Attendance Marker for the branch: Submitted / Draft / Cancelled / Not created."""
+    prev = str(add_days(date_str, -1))
+    filters = {"branch": branch, "date": prev}
+    if company:
+        filters["company"] = company
+    rows = frappe.get_all("Attendance Marker", filters=filters, fields=["name", "docstatus"], order_by="docstatus desc, modified desc")
+    best = next((r for r in rows if r.docstatus == 1), None) or next((r for r in rows if r.docstatus == 0), None) or (rows[0] if rows else None)
+    status = {1: "Submitted", 0: "Draft", 2: "Cancelled"}.get(best.docstatus) if best else "Not created"
+    return frappe._dict(date=prev, status=status, name=best.name if best else None)
+
+
 def combine(date_value, time_value, next_day=False):
     """datetime of a row's Time value on the shift date (or the next day)."""
     if time_value in (None, ""):

@@ -361,6 +361,17 @@ def recalc_attendance_row(employee, date, shift):
 
 
 @frappe.whitelist()
+def marker_previous_day(branch, date, company=None):
+    """Previous day's Attendance Marker status for the form banner (read-only)."""
+    from slhrm.attendance import previous_day_marker
+
+    frappe.has_permission("Attendance Marker", "read", throw=True)
+    if not branch or not date:
+        return None
+    return previous_day_marker(branch, company, str(date))
+
+
+@frappe.whitelist()
 def calc_attendance_times(employee, date, shift=None, in_time=None, out_time=None, out_next_day=0):
     """Attendance Marker row edited by hand (no punches needed): worked hours + calculated OT for
     IN = date + in_time, OUT = (date + 1 if out_next_day) + out_time. OUT before IN on the same day

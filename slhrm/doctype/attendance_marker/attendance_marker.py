@@ -12,6 +12,7 @@ from slhrm.attendance import (
     get_settings,
     get_shift_info,
     out_is_next_day,
+    previous_day_marker,
     span_hours,
 )
 from slhrm.overtime import calculate_ot_hours
@@ -25,6 +26,19 @@ class AttendanceMarker(Document):
         self._validate_details_not_empty()
         self._validate_employee_company()
         self._apply_overtime()
+        self._warn_previous_day()
+
+    def _warn_previous_day(self):
+        """Warn (never block) when the previous day's marker of this branch is not submitted: that day's
+        night shifts are only known to this day's punch windows from a submitted marker."""
+        if not self.branch or not self.date:
+            return
+        prev = previous_day_marker(self.branch, self.company, str(self.date))
+        if prev.status != "Submitted":
+            frappe.msgprint(
+                _("Previous day {0} not submitted — night shifts from that day may claim punches from this day.").format(
+                    frappe.format_value(prev.date, {"fieldtype": "Date"})),
+                title=_("Previous day"), indicator="orange")
 
     def before_submit(self):
         self.approved_by = frappe.session.user

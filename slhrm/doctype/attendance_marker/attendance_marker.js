@@ -24,14 +24,17 @@ frappe.ui.form.on("Attendance Marker", {
 		frm.set_df_property("company", "read_only", 1);
 		update_summary(frm);
 		lock_ineligible_rows(frm);
+		show_previous_day(frm);
 	},
 
 	date(frm) {
 		auto_load_data(frm);
+		show_previous_day(frm);
 	},
 
 	branch(frm) {
 		auto_load_data(frm);
+		show_previous_day(frm);
 	},
 });
 
@@ -49,11 +52,10 @@ frappe.ui.form.on("Attendance Marker Detail", {
 		if (frm.doc.date && row.shift_date !== frm.doc.date) {
 			frappe.model.set_value(cdt, cdn, "shift_date", frm.doc.date);
 		}
+		// per-row OT lock (row editor + grid cells); v16 grid_form has no set_df_property
 		const grid_row = frm.fields_dict.attendance_details.grid.get_row(cdn);
-		if (grid_row && grid_row.grid_form) {
-			OT_FIELDS.forEach((f) =>
-				grid_row.grid_form.set_df_property(f, "read_only", row.ot_eligible ? 0 : 1)
-			);
+		if (grid_row && grid_row.toggle_editable) {
+			OT_FIELDS.forEach((f) => grid_row.toggle_editable(f, !!row.ot_eligible));
 		}
 	},
 
@@ -280,6 +282,31 @@ function auto_load_data(frm) {
 		},
 		error() {
 			frm._loading = false;
+		},
+	});
+}
+
+// ── Previous day's marker (night shifts of that day may reach into this day) ──
+
+function show_previous_day(frm) {
+	if (!frm.doc.date || !frm.doc.branch) {
+		frm.set_intro("");
+		return;
+	}
+	frappe.call({
+		method: "slhrm.api.marker_previous_day",
+		args: { branch: frm.doc.branch, date: frm.doc.date, company: frm.doc.company || "" },
+		callback(r) {
+			const p = r.message;
+			if (!p) return;
+			const day = frappe.datetime.str_to_user(p.date);
+			if (p.status === "Submitted") {
+				frm.set_intro(__("Previous day {0}: marker {1} submitted.", [day, p.name]), "green");
+			} else {
+				frm.set_intro(__("Previous day {0}: {1}. Night shifts from that day may claim punches from this day — submit it first.",
+					[day, p.status === "Draft" ? __("marker {0} is still a draft", [p.name]) :
+						p.status === "Cancelled" ? __("marker {0} is cancelled", [p.name]) : __("no marker")]), "orange");
+			}
 		},
 	});
 }

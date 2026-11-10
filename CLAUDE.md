@@ -122,7 +122,15 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   server whenever OUT < IN). IN = shift date + in_time, OUT = (D+1 if ticked) + out_time — `attendance.combine` /
   `span_hours` everywhere (worked hours, OT, HRMS Attendance on submit). Manual edits: `slhrm.api.calc_attendance_times`
   (no writes); > 16 h → warning, not blocked. Known limit: an IN after midnight (late start of a night shift) is
-  still on the shift date. Rows keep `calc_normal_ot`/`calc_double_ot` (server-computed) and approved
+  still on the shift date (accepted limit, Raj 2026-11-10).
+  **Mark days in order**: D+1 only knows D's night shift from D's SUBMITTED marker (or default_shift). Saving /
+  submitting a marker whose previous day (same branch) is not submitted shows a warning (never blocks); the form
+  shows the previous day's status (`slhrm.api.marker_previous_day`). Marker grid: Employee Name only (the
+  Employee link is in the row editor); per-row OT lock = `grid_row.toggle_editable` (v16 has no
+  `grid_form.set_df_property`).
+- Shift Types (2026-11-10, no employee assigned yet): Dawn Shift 03-12, Early Shift 06-15, Day Shift 08-17,
+  Morning Shift 10-19, Noon Shift 12-21, Evening Shift 15-24 (ends 00:00 next day), Night Shift 21-06; all auto
+  attendance 0, no holiday list (Company Holiday List Assignment applies). Rows keep `calc_normal_ot`/`calc_double_ot` (server-computed) and approved
   `normal_ot_hours`/`double_ot_hours`.
 - Worksheet sums submitted markers' approved hours (`slhrm/payroll_ot.py`), rates from overtime.py.
   On submit: one Additional Salary per employee per OT type (components in SLHRM Settings,
@@ -194,7 +202,10 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   dev / test sites: `create()` refuses unless site_config has `"slhrm_allow_demo": 1` (absent = refused;
   never set it on production) and also refuses if non-DEMO Employees exist.
 - **Tests on production use throwaway data only**: create the minimum records, run the check, delete
-  them and print proof that each one is gone (plus no Error Log rows left behind).
+  them and print proof that each one is gone (plus no Error Log rows left behind). **Teardown via
+  `slhrm.testing.delete_throwaway(doctype, name)`** (cancel + permanent delete, no "Deleted Document" copy and no
+  "Deleted" Comment); the "counts before = after" proof MUST include `Deleted Document` and `Comment` (and Version).
+  Name every test record with a marker (`T27-…`, `SLHRMT…`) so it can be told apart from real data.
 - `...create`, `...report`, `...preview_payroll`, `...remove` (`--kwargs '{"dry_run": 1}'` lists every
   record, counts per doctype, and every record OUTSIDE the set that links into it).
 - Every created doc is listed in the private File `slhrm_demo_manifest.json`; `remove()` deletes those
