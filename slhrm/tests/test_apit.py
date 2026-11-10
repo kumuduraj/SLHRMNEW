@@ -17,7 +17,7 @@ class TestAPIT(UnitTestCase):
     def test_first_band(self):
         amount, bands = calc_apit(220000, SLABS)
         self.assertEqual(amount, 4200.0)                         # 6% x 70,000
-        self.assertEqual([b["rate"] for b in bands], [6])
+        self.assertEqual([b["rate"] for b in bands], [0, 6])          # the 0% relief band is reported too
 
     def test_second_band(self):
         self.assertEqual(calc_apit(250000, SLABS)[0], 7999.92)   # 6% x 83,334 + 18% x 16,666
@@ -26,7 +26,7 @@ class TestAPIT(UnitTestCase):
     def test_top_band(self):
         amount, bands = calc_apit(400000, SLABS)                 # 5,000.04 + 7,500.06 + 10,000.08 + 12,500.10 + 36% x 41,665
         self.assertEqual(amount, 49999.68)
-        self.assertEqual(len(bands), 5)
+        self.assertEqual([b["rate"] for b in bands], [0, 6, 18, 24, 30, 36])
 
     def test_band_edges_continuous(self):
         for edge in (233334, 275001, 316668, 358335):
