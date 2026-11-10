@@ -181,6 +181,28 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   The dialog lists kept / added / removable rows with amounts. Saving a package that zeroes or drops
   an existing override shows an "Overrides removed or zeroed" message.
 
+## Salary structure + APIT (v0.1.0)
+- Setup: `bench --site … execute slhrm.salary_setup.apply` (`--kwargs '{"dry_run": 1}'` first). Idempotent; creates
+  missing components, reuses existing ones (only depends_on_payment_days of Basic Salary / Base Allowance and SLHRM's
+  own fields are set on them), fills SLHRM Settings (Normal / Double OT, APIT component, APIT slabs) and updates
+  "Standard Staff Structure" by cancel + amend when no SSA uses it (else "<name> v2").
+- Earnings: Basic Salary, Base Allowance, Vehicle Allowance (package, 0 in the structure, dpd 0), Normal OT /
+  Double OT (worksheet → Additional Salary), Other Allowance (Additional Salary). Deductions: Death Donation 200
+  (structure, dpd 0), No Pay / Other Deduction / Salary Advance / Personal Loan (Additional Salary only),
+  EPF Employee 8% (apply_epf), APIT (apply_apit). Statistical: EPF Employer 12%, ETF Employer 3%.
+- **No Pay is entered manually** (Additional Salary) → Basic / Base Allowance do NOT depend on payment days (no double
+  deduction). Payroll Settings payroll_based_on stays "Leave". Salary Component `slhrm_reduces_epf_base` (No Pay):
+  subtracted from the EPF base AND the APIT taxable amount. OT is never in the EPF base.
+- **APIT** (`slhrm/statutory.py`): taxable = all slip earnings (incl. OT, Other Allowance) − No Pay; progressive sum over
+  SLHRM Settings "APIT Slabs" (child `SLHRM APIT Slab`; set with the latest effective_from ≤ period start), 2 dp;
+  Employee `slhrm_apit_exempt` → 0. `apply_salary_rules` = package overrides → apply_epf → **apply_apit** (real slip
+  before_save / before_submit + preview). Worksheet: preview APIT excludes worksheet OT; row `apit_amount` =
+  APIT(apit_taxable_base + Normal OT + Double OT) replaces it in total_deduction (`payroll_pay.compose_pay`,
+  `_recalculate_all`, `calc_worksheet_row`) → worksheet == final slip. Change slabs in SLHRM Settings, never in code.
+- Worksheet columns: Additional Salary lines have their own component column (no "Additional" bucket); fixed columns
+  (shown even when empty) = `salary_setup.WORKSHEET_FIXED_EARNINGS` / `WORKSHEET_FIXED_DEDUCTIONS`, stored per row in
+  components_json.fixed_columns; the APIT cell = row apit_amount. Python `payroll_table.build_table` and JS mirror.
+
 ## EPF / ETF (v0.0.9, `slhrm/statutory.py`)
 - **One entry point:** `overrides.salary_slip.apply_salary_rules(slip)` = package overrides →
   `statutory.apply_epf`. Hooked on Salary Slip `before_save` AND `before_submit` (submit runs
