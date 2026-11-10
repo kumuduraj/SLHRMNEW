@@ -46,21 +46,15 @@
   {
    "fieldname": "default_ot_rate",
    "fieldtype": "Currency",
-   "label": "Normal OT Rate (per hour)",
-   "description": "Placeholder rate until the Normal OT formula is configured. Editable per employee in the Payroll Worksheet."
-  },
-  {
-   "fieldname": "default_double_ot_rate",
-   "fieldtype": "Currency",
-   "label": "Double OT Rate (per hour)",
-   "description": "Placeholder rate until the Double OT formula is configured (holidays and weekly offs)."
+   "label": "OT Rate (per hour)",
+   "description": "Default OT rate per hour for the Payroll Worksheet (editable per employee there)."
   },
   {
    "fieldname": "overtime_threshold",
    "fieldtype": "Float",
    "label": "Minimum OT Hours",
    "default": "0",
-   "description": "OT below this many hours (per OT type, per day) is not counted. 0 = count all."
+   "description": "OT below this many hours per day is not counted. 0 = count all."
   },
   {
    "fieldname": "column_break_ot1",
@@ -74,18 +68,11 @@
    "description": "OUT punches up to this many minutes after shift end still count (for overtime)."
   },
   {
-   "fieldname": "normal_ot_component",
+   "fieldname": "ot_component",
    "fieldtype": "Link",
    "options": "Salary Component",
-   "label": "Normal OT Salary Component",
-   "description": "Earning component used for the Normal OT Additional Salary created on Payroll Worksheet submit."
-  },
-  {
-   "fieldname": "double_ot_component",
-   "fieldtype": "Link",
-   "options": "Salary Component",
-   "label": "Double OT Salary Component",
-   "description": "Earning component used for the Double OT Additional Salary created on Payroll Worksheet submit."
+   "label": "OT Salary Component",
+   "description": "Earning component (Overtime) used for the OT Additional Salary created on Payroll Worksheet submit."
   },
   {
    "fieldname": "section_break_defaults",
@@ -198,5 +185,5 @@
    "write": 1
   }
  ],
- "modified": "2026-11-10 15:00:00.000000"
+ "modified": "2026-11-10 20:00:00.000000"
 }

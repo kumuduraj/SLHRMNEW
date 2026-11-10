@@ -86,6 +86,28 @@
    "read_only": 1
   },
   {
+   "fieldname": "column_break_s3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "late_in_count",
+   "fieldtype": "Int",
+   "label": "Lates: Late In",
+   "read_only": 1,
+   "description": "Rows with Late In not excused by short leave."
+  },
+  {
+   "fieldname": "column_break_s4",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "early_out_count",
+   "fieldtype": "Int",
+   "label": "Lates: Early Out",
+   "read_only": 1,
+   "description": "Rows with Early Out not excused by short leave."
+  },
+  {
    "fieldname": "section_break_details",
    "fieldtype": "Section Break",
    "label": "Attendance Details"
@@ -152,7 +174,23 @@
    "permlevel": 1,
    "read": 1,
    "write": 0
+  },
+  {
+   "role": "Attendance Supervisor",
+   "permlevel": 0,
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "submit": 1,
+   "print": 1,
+   "report": 1
+  },
+  {
+   "role": "Attendance Supervisor",
+   "permlevel": 1,
+   "read": 1,
+   "write": 1
   }
  ],
- "modified": "2026-11-08 15:00:00.000000"
+ "modified": "2026-11-10 20:00:00.000000"
 }

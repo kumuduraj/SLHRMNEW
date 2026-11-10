@@ -2,12 +2,13 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import cint, flt
+from frappe.utils import cint, flt, now_datetime
 
 from slhrm.attendance import (
     MAX_PLAUSIBLE_HOURS,
     PUNCH_BIOMETRIC,
     combine,
+    day_figures,
     get_holiday_info,
     get_settings,
     get_shift_info,
@@ -15,9 +16,9 @@ from slhrm.attendance import (
     previous_day_marker,
     span_hours,
 )
-from slhrm.overtime import calculate_ot_hours
-
 OT_PERMLEVEL = 1
+SHORT_LEAVE_FIELDS = ("short_leave", "short_leave_min", "short_leave_note")
+LEVEL1_FIELDS = ("ot_hours", *SHORT_LEAVE_FIELDS)  # permlevel 1 in Attendance Marker Detail
 
 
 class AttendanceMarker(Document):
@@ -107,20 +108,22 @@ class AttendanceMarker(Document):
                     )
                 )
 
-    # ── Overtime (server-side; never trust client values) ────────
+    # ── Overtime + early/late (server-side; never trust client values) ──
 
     def _apply_overtime(self):
-        """Recompute worked hours, calculated OT and eligibility for every row.
+        """Recompute worked hours, early/late minutes, short-leave excuses, calculated OT and
+        eligibility for every row, then the Lates counts.
 
-        - eligibility is re-read from Employee
-        - calc_normal_ot / calc_double_ot are recomputed from the row's IN/OUT times,
-          its shift and the employee's holiday list (slhrm.overtime)
-        - users without permlevel-1 write: new rows take the calculated OT; existing
-          rows keep the stored (approved) value
-        - users with permlevel-1 write: their values stand; negatives are rejected
-        - ineligible employees always get 0 / 0
+        - eligibility is re-read from Employee; ineligible employees always get OT 0
+        - calc_ot (system value) is always recomputed (slhrm.attendance.day_figures)
+        - users with permlevel-1 write (HR Manager, Attendance Supervisor, System Manager): their
+          ot_hours / short-leave values stand (negatives rejected); ot_hours != calc_ot records
+          ot_edited_by / ot_edited_on (kept from the stored row when the value did not change)
+        - other users: short-leave fields keep the stored values; ot_hours keeps an edited stored value,
+          otherwise follows calc_ot
         """
         if not self.attendance_details:
+            self.late_in_count = self.early_out_count = 0
             return
 
         settings = get_settings()
@@ -133,20 +136,28 @@ class AttendanceMarker(Document):
         )
         can_edit_ot = self._can_write_ot()
         stored = {}
-        if not can_edit_ot and not self.is_new():
+        if not self.is_new():
             stored = {
                 r.name: r
                 for r in frappe.get_all(
                     "Attendance Marker Detail",
                     filters={"parent": self.name, "parenttype": self.doctype},
-                    fields=["name", "normal_ot_hours", "double_ot_hours"],
+                    fields=["name", *LEVEL1_FIELDS, "ot_edited_by", "ot_edited_on"],
                 )
             }
 
         date_str = str(self.date)
         long_rows = []
+        late_in_count = early_out_count = 0
         for row in self.attendance_details:
             row.shift_date = self.date
+            prev = stored.get(row.name)
+            if not can_edit_ot:
+                for field in SHORT_LEAVE_FIELDS:
+                    row.set(field, prev.get(field) if prev else (0 if field != "short_leave_note" else None))
+            elif cint(row.short_leave_min) < 0:
+                frappe.throw(_("Row {0} ({1}): Short Leave (min) cannot be negative.").format(
+                    row.idx, row.employee_name or row.employee))
             # OUT before IN on the same day is impossible -> OUT is on the next day; no OUT -> no flag
             if not row.out_time:
                 row.out_next_day = 0
@@ -157,47 +168,48 @@ class AttendanceMarker(Document):
             worked = span_hours(date_str, row.in_time, row.out_time, row.out_next_day)
             if worked > MAX_PLAUSIBLE_HOURS:
                 long_rows.append(f"{row.idx}. {row.employee_name or row.employee}: {worked} h")
-            calc = calculate_ot_hours(
-                {
-                    "employee": row.employee, "date": date_str, "ot_eligible": is_eligible,
-                    "shift": row.shift, "shift_hours": shift_info.hours,
-                    "in_time": combine(date_str, row.in_time),
-                    "out_time": combine(date_str, row.out_time, row.out_next_day), "worked_hours": worked,
-                    "is_holiday": None, "holiday_type": get_holiday_info(row.employee, date_str)[1],
-                },
-                settings,
+            fig = day_figures(
+                shift_info, combine(date_str, row.in_time), combine(date_str, row.out_time, row.out_next_day),
+                worked, is_eligible, get_holiday_info(row.employee, date_str)[1], settings,
+                row.short_leave, row.short_leave_min,
             )
+            row.update(fig)
             row.worked_hours = worked
             row.shift_hours = shift_info.hours
             row.ot_eligible = is_eligible
-            row.calc_normal_ot = calc["normal"]
-            row.calc_double_ot = calc["double"]
+            if cint(row.late_in_min) and not cint(row.late_in_excused):
+                late_in_count += 1
+            if cint(row.early_out_min) and not cint(row.early_out_excused):
+                early_out_count += 1
 
             if not is_eligible:
-                row.normal_ot_hours = 0
-                row.double_ot_hours = 0
-                continue
-
-            if not can_edit_ot:
-                prev = stored.get(row.name)
-                if prev:
-                    row.normal_ot_hours = flt(prev.normal_ot_hours)
-                    row.double_ot_hours = flt(prev.double_ot_hours)
-                else:
-                    row.normal_ot_hours = calc["normal"]
-                    row.double_ot_hours = calc["double"]
-                continue
-
-            for field in ("normal_ot_hours", "double_ot_hours"):
-                if flt(row.get(field)) < 0:
-                    frappe.throw(
-                        _("Row {0} ({1}): {2} cannot be negative.").format(
-                            row.idx, row.employee_name or row.employee, row.meta.get_label(field)
-                        )
+                row.ot_hours = 0
+            elif not can_edit_ot:
+                row.ot_hours = flt(prev.ot_hours) if prev and prev.ot_edited_by else fig["calc_ot"]
+            elif flt(row.ot_hours) < 0:
+                frappe.throw(
+                    _("Row {0} ({1}): {2} cannot be negative.").format(
+                        row.idx, row.employee_name or row.employee, row.meta.get_label("ot_hours")
                     )
+                )
+            self._set_ot_edited(row, prev, can_edit_ot)
+
+        self.late_in_count = late_in_count
+        self.early_out_count = early_out_count
         if long_rows:  # warn, don't block (manual overnight entries)
             frappe.msgprint(_("More than {0} worked hours — check IN / OUT and the OUT next day box:").format(MAX_PLAUSIBLE_HOURS)
                             + "<br>" + "<br>".join(long_rows), title=_("Long shifts"), indicator="orange")
+
+    @staticmethod
+    def _set_ot_edited(row, prev, can_edit_ot):
+        """ot_edited_by / ot_edited_on: who set ot_hours away from calc_ot (never from the client)."""
+        if flt(row.ot_hours, 2) == flt(row.calc_ot, 2):
+            row.ot_edited_by = row.ot_edited_on = None
+        elif can_edit_ot and (not prev or flt(prev.ot_hours, 2) != flt(row.ot_hours, 2) or not prev.ot_edited_by):
+            row.ot_edited_by, row.ot_edited_on = frappe.session.user, now_datetime()
+        else:
+            row.ot_edited_by = prev.ot_edited_by if prev else None
+            row.ot_edited_on = prev.ot_edited_on if prev else None
 
     def _can_write_ot(self):
         if frappe.session.user == "Administrator" or self.flags.ignore_permissions:

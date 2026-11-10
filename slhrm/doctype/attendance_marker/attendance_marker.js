@@ -5,13 +5,43 @@
 // OUT < IN; supervisors may tick / untick it. Manual edits recalculate worked hours and OT on the
 // server (slhrm.api.calc_attendance_times) — this file does no time math.
 //
-// OT: calc_normal_ot / calc_double_ot are computed on the server (slhrm.overtime).
-// normal_ot_hours / double_ot_hours (permlevel 1) default to the calculated values and
-// follow recalculations until the user edits them. Ineligible rows stay at 0 (the
-// server enforces this as well).
+// OT (v0.2.0, one OT type): calc_ot is computed on the server (slhrm.overtime): (Early In + Late Out)/60,
+// all worked hours on a holiday. ot_hours (permlevel 1: HR Manager / Attendance Supervisor) defaults to
+// calc_ot and follows recalculations until the user edits it; the server records ot_edited_by / on.
+// Early/late minutes and short-leave excuses come from the server too; this file only shows them:
+// Late In / Early Out are orange in the grid unless excused, and the Lates counts are rows with an
+// un-excused Late In / Early Out.
 
-const OT_FIELDS = ["normal_ot_hours", "double_ot_hours"];
-const CALC_FOR = { normal_ot_hours: "calc_normal_ot", double_ot_hours: "calc_double_ot" };
+const OT_FIELDS = ["ot_hours"];
+const CALC_FOR = { ot_hours: "calc_ot" };
+const FIGURE_FIELDS = ["early_in_min", "late_in_min", "early_out_min", "late_out_min",
+	"late_in_excused", "early_out_excused", "calc_ot"];
+const LATE_FIELDS = { late_in_min: "late_in_excused", early_out_min: "early_out_excused" };
+
+function figures(m) {
+	const out = {};
+	FIGURE_FIELDS.forEach((f) => { out[f] = m[f] || 0; });
+	return out;
+}
+
+// orange Late In / Early Out cells in the grid (not when excused by short leave)
+function set_late_formatters(frm) {
+	const grid = frm.fields_dict.attendance_details && frm.fields_dict.attendance_details.grid;
+	Object.entries(LATE_FIELDS).forEach(([field, excused]) => {
+		const formatter = (value, df, options, doc) => {
+			const v = cint(value);
+			if (!v) return "";
+			if (doc && cint(doc[excused])) {
+				return `<span class="slhrm-excused text-muted" title="${__("Excused (short leave)")}">${v}</span>`;
+			}
+			return `<span class="slhrm-late" style="color: var(--orange-600, #e8590c); font-weight: 600;">${v}</span>`;
+		};
+		const dfs = [frappe.meta.get_docfield("Attendance Marker Detail", field, frm.doc.name),
+			grid && grid.get_docfield(field)];
+		dfs.forEach((df) => { if (df) df.formatter = formatter; });
+		(grid && grid.docfields || []).forEach((df) => { if (df.fieldname === field) df.formatter = formatter; });
+	});
+}
 
 frappe.ui.form.on("Attendance Marker", {
 	setup(frm) {
@@ -20,7 +50,12 @@ frappe.ui.form.on("Attendance Marker", {
 		}
 	},
 
+	onload(frm) {
+		set_late_formatters(frm);
+	},
+
 	refresh(frm) {
+		set_late_formatters(frm);
 		frm.set_df_property("company", "read_only", 1);
 		update_summary(frm);
 		lock_ineligible_rows(frm);
@@ -57,6 +92,15 @@ frappe.ui.form.on("Attendance Marker Detail", {
 		if (grid_row && grid_row.toggle_editable) {
 			OT_FIELDS.forEach((f) => grid_row.toggle_editable(f, !!row.ot_eligible));
 		}
+		show_ot_edited(frm, row);
+	},
+
+	short_leave(frm, cdt, cdn) {
+		recalc_times(frm, cdt, cdn);
+	},
+
+	short_leave_min(frm, cdt, cdn) {
+		recalc_times(frm, cdt, cdn);
 	},
 
 	in_time(frm, cdt, cdn) {
@@ -71,12 +115,8 @@ frappe.ui.form.on("Attendance Marker Detail", {
 		recalc_times(frm, cdt, cdn);
 	},
 
-	normal_ot_hours(frm, cdt, cdn) {
-		guard_ot_value(frm, cdt, cdn, "normal_ot_hours");
-	},
-
-	double_ot_hours(frm, cdt, cdn) {
-		guard_ot_value(frm, cdt, cdn, "double_ot_hours");
+	ot_hours(frm, cdt, cdn) {
+		guard_ot_value(frm, cdt, cdn, "ot_hours");
 	},
 
 	shift(frm, cdt, cdn) {
@@ -89,7 +129,7 @@ frappe.ui.form.on("Attendance Marker Detail", {
 			callback(r) {
 				if (!r.message) return;
 				const m = r.message;
-				const prev_calc = { normal_ot_hours: row.calc_normal_ot, double_ot_hours: row.calc_double_ot };
+				const prev_calc = { ot_hours: row.calc_ot };
 
 				frappe.model.set_value(cdt, cdn, {
 					in_time: m.in_time || "",
@@ -100,8 +140,7 @@ frappe.ui.form.on("Attendance Marker Detail", {
 					worked_hours: m.worked_hours || 0,
 					shift_hours: m.shift_hours || 0,
 					ot_eligible: m.ot_eligible || 0,
-					calc_normal_ot: m.calc_normal_ot || 0,
-					calc_double_ot: m.calc_double_ot || 0,
+					...figures(m),
 					punch_source: m.punch_source || "",
 					attendance_status: m.punch_count > 0 ? "Present" : "Absent",
 				});
@@ -117,6 +156,7 @@ frappe.ui.form.on("Attendance Marker Detail", {
 					}
 				});
 				lock_ineligible_rows(frm);
+				update_summary(frm);
 
 				if (m.warning) {
 					frappe.show_alert({ message: m.warning, indicator: "orange" });
@@ -130,13 +170,14 @@ frappe.ui.form.on("Attendance Marker Detail", {
 function recalc_times(frm, cdt, cdn) {
 	const row = locals[cdt][cdn];
 	if (!row || row.__slhrm_recalc || !row.employee || !frm.doc.date) return;
-	const prev_calc = { normal_ot_hours: row.calc_normal_ot, double_ot_hours: row.calc_double_ot };
+	const prev_calc = { ot_hours: row.calc_ot };
 	const was_next_day = !!row.out_next_day;
 	frappe.call({
 		method: "slhrm.api.calc_attendance_times",
 		args: {
 			employee: row.employee, date: frm.doc.date, shift: row.shift || "",
 			in_time: row.in_time || "", out_time: row.out_time || "", out_next_day: row.out_next_day ? 1 : 0,
+			short_leave: row.short_leave ? 1 : 0, short_leave_min: cint(row.short_leave_min),
 		},
 		callback(r) {
 			const m = r.message;
@@ -148,8 +189,7 @@ function recalc_times(frm, cdt, cdn) {
 				worked_hours: m.worked_hours,
 				shift_hours: m.shift_hours,
 				ot_eligible: m.ot_eligible,
-				calc_normal_ot: m.calc_normal_ot,
-				calc_double_ot: m.calc_double_ot,
+				...figures(m),
 			};
 			if (row.in_time && row.out_time && row.attendance_status === "Absent") {
 				values.attendance_status = "Present";
@@ -242,10 +282,8 @@ function auto_load_data(frm) {
 					worked_hours: m.worked_hours || 0,
 					shift_hours: m.shift_hours || 0,
 					ot_eligible: m.ot_eligible || 0,
-					calc_normal_ot: m.calc_normal_ot || 0,
-					calc_double_ot: m.calc_double_ot || 0,
-					normal_ot_hours: m.ot_eligible ? m.calc_normal_ot || 0 : 0,
-					double_ot_hours: m.ot_eligible ? m.calc_double_ot || 0 : 0,
+					...figures(m),
+					ot_hours: m.ot_eligible ? m.calc_ot || 0 : 0,
 				});
 				if (m.warning) warnings.push(emp.employee_name + ": " + m.warning);
 			});
@@ -311,17 +349,37 @@ function show_previous_day(frm) {
 	});
 }
 
-// ── Summary counter (recalc on status change) ──
+// ── Summary counter (recalc on status / time change; server recounts on save) ──
 
 function update_summary(frm) {
 	const rows = frm.doc.attendance_details || [];
 	let present = 0,
-		absent = 0;
+		absent = 0,
+		late_in = 0,
+		early_out = 0;
 	rows.forEach((row) => {
 		if (row.attendance_status === "Present") present++;
 		else if (row.attendance_status === "Absent") absent++;
+		if (cint(row.late_in_min) && !cint(row.late_in_excused)) late_in++;
+		if (cint(row.early_out_min) && !cint(row.early_out_excused)) early_out++;
 	});
+	if (frm.doc.docstatus !== 0) return;
 	frm.set_value("total_employees", rows.length);
 	frm.set_value("present_count", present);
 	frm.set_value("absent_count", absent);
+	frm.set_value("late_in_count", late_in);
+	frm.set_value("early_out_count", early_out);
+}
+
+// row editor: "OT edited by <user>" beside the OT field when OT differs from OT (calculated)
+function show_ot_edited(frm, row) {
+	const grid_row = frm.fields_dict.attendance_details.grid.get_row(row.name);
+	const field = grid_row && grid_row.grid_form && grid_row.grid_form.fields_dict && grid_row.grid_form.fields_dict.ot_hours;
+	if (!field || !field.set_description) return;
+	if (row.ot_edited_by) {
+		const when = row.ot_edited_on ? frappe.datetime.str_to_user(row.ot_edited_on) : "";
+		field.set_description(__("Edited by {0} {1} — OT (calculated) {2} h", [frappe.utils.escape_html(row.ot_edited_by), when, flt(row.calc_ot)]));
+	} else {
+		field.set_description(__("= OT (calculated). HR Manager / Attendance Supervisor can change it."));
+	}
 }

@@ -3,7 +3,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import cint, flt, get_first_day, get_last_day, nowdate
 
-from slhrm.overtime import calculate_ot_amounts, calculate_ot_rates
+from slhrm.overtime import calculate_ot_amount, calculate_ot_rate
 from slhrm.payroll_ot import get_marker_ot_hours, get_ot_eligibility
 from slhrm.payroll_pay import compose_pay, row_apit
 from slhrm.statutory import apit_component
@@ -15,7 +15,7 @@ MONTH_NAMES = {
 }
 
 OT_PERMLEVEL = 1
-OT_INPUT_FIELDS = ("normal_ot_hours", "normal_ot_rate", "double_ot_hours", "double_ot_rate")
+OT_INPUT_FIELDS = ("ot_hours", "ot_rate")
 
 
 class PayrollWorksheet(Document):
@@ -118,7 +118,7 @@ class PayrollWorksheet(Document):
         - users without permlevel-1 write: new rows take marker hours + default rates,
           existing rows keep the stored (approved) values
         - users with permlevel-1 write: their hours/rates stand; negatives are rejected
-        - amounts always via slhrm.overtime.calculate_ot_amounts
+        - amount always via slhrm.overtime.calculate_ot_amount
         - salary numbers (structure_gross/deduction, loan) come from the HRMS preview stored by
           load/refresh; this method does NOT rebuild the preview (slhrm/payroll_pay.py)
         """
@@ -141,7 +141,7 @@ class PayrollWorksheet(Document):
             if any(row.name not in stored for row in self.employees):
                 marker_hours = get_marker_ot_hours(employees, self.start_date, self.end_date)
 
-        total_ot = total_normal = total_double = total_gross = total_ded = total_net = 0
+        total_ot = total_gross = total_ded = total_net = 0
         has_apit = bool(apit_component())
 
         for row in self.employees:
@@ -156,12 +156,8 @@ class PayrollWorksheet(Document):
                     for field in OT_INPUT_FIELDS:
                         row.set(field, flt(prev.get(field)))
                 else:
-                    hours = (marker_hours or {}).get(row.employee, {})
-                    rates = calculate_ot_rates(row.employee, row.base, settings)
-                    row.normal_ot_hours = flt(hours.get("normal"))
-                    row.double_ot_hours = flt(hours.get("double"))
-                    row.normal_ot_rate = rates["normal_rate"]
-                    row.double_ot_rate = rates["double_rate"]
+                    row.ot_hours = flt((marker_hours or {}).get(row.employee))
+                    row.ot_rate = calculate_ot_rate(row.employee, row.base, settings)
             else:
                 for field in OT_INPUT_FIELDS:
                     if flt(row.get(field)) < 0:
@@ -171,31 +167,21 @@ class PayrollWorksheet(Document):
                             )
                         )
 
-            amounts = calculate_ot_amounts(
-                row.normal_ot_hours, row.double_ot_hours,
-                {"normal_rate": row.normal_ot_rate, "double_rate": row.double_ot_rate},
-            )
-            row.normal_ot_amount = amounts["normal"]
-            row.double_ot_amount = amounts["double"]
-            row.ot_amount = flt(amounts["normal"] + amounts["double"], 2)
+            row.ot_amount = calculate_ot_amount(row.ot_hours, row.ot_rate)
 
             # pay = HRMS preview (structure_gross / structure_deduction / loan) + OT; APIT incl. OT
             apit = row_apit(row, self.start_date) if has_apit else None
             row.update(compose_pay(
-                row.structure_gross, row.structure_deduction, row.normal_ot_amount,
-                row.double_ot_amount, row.loan_deduction, row.apit_preview, apit,
+                row.structure_gross, row.structure_deduction, row.ot_amount,
+                row.loan_deduction, row.apit_preview, apit,
             ))
 
-            total_normal += flt(row.normal_ot_amount)
-            total_double += flt(row.double_ot_amount)
             total_ot += flt(row.ot_amount)
             total_gross += flt(row.total_earning)
             total_ded += flt(row.total_deduction)
             total_net += flt(row.net_pay)
 
         self.total_employees = len(self.employees)
-        self.total_normal_ot_amount = total_normal
-        self.total_double_ot_amount = total_double
         self.total_ot_amount = total_ot
         self.total_gross_pay = total_gross
         self.total_deductions = total_ded
@@ -209,17 +195,16 @@ class PayrollWorksheet(Document):
     # ── OT -> Additional Salary ─────────────────────────────────
 
     def _create_ot_additional_salaries(self):
-        """One submitted Additional Salary per employee per OT type with an amount > 0."""
-        rows = [r for r in self.employees if flt(r.normal_ot_amount) > 0 or flt(r.double_ot_amount) > 0]
+        """One submitted Additional Salary (SLHRM Settings ot_component, "Overtime") per employee with OT > 0."""
+        rows = [r for r in self.employees if flt(r.ot_amount) > 0]
         if not rows:
             return
 
         settings = frappe.get_cached_doc("SLHRM Settings")
-        components = {"normal": settings.normal_ot_component, "double": settings.double_ot_component}
-        if not components["normal"] or not components["double"]:
+        component = settings.ot_component
+        if not component:
             frappe.throw(
-                _("Set both Normal OT and Double OT Salary Components in {0} before submitting a "
-                  "worksheet with overtime.").format(
+                _("Set the OT Salary Component in {0} before submitting a worksheet with overtime.").format(
                     frappe.utils.get_link_to_form("SLHRM Settings", "SLHRM Settings")
                 )
             )
@@ -227,25 +212,21 @@ class PayrollWorksheet(Document):
         currency = self.currency or frappe.get_cached_value("Company", self.company, "default_currency")
         created = []
         for row in rows:
-            for ot_type in ("normal", "double"):
-                amount = flt(row.get(f"{ot_type}_ot_amount"))
-                if amount <= 0:
-                    continue
-                ads = frappe.new_doc("Additional Salary")
-                ads.employee = row.employee
-                ads.company = self.company
-                ads.currency = currency
-                ads.salary_component = components[ot_type]
-                ads.amount = amount
-                ads.payroll_date = self.end_date
-                ads.overwrite_salary_structure_amount = 1
-                ads.ref_doctype = self.doctype
-                ads.ref_docname = self.name
-                # authorised by submitting this worksheet (HR Manager / System Manager)
-                ads.flags.ignore_permissions = True
-                ads.insert()
-                ads.submit()
-                created.append(ads.name)
+            ads = frappe.new_doc("Additional Salary")
+            ads.employee = row.employee
+            ads.company = self.company
+            ads.currency = currency
+            ads.salary_component = component
+            ads.amount = flt(row.ot_amount)
+            ads.payroll_date = self.end_date
+            ads.overwrite_salary_structure_amount = 1
+            ads.ref_doctype = self.doctype
+            ads.ref_docname = self.name
+            # authorised by submitting this worksheet (HR Manager / System Manager)
+            ads.flags.ignore_permissions = True
+            ads.insert()
+            ads.submit()
+            created.append(ads.name)
 
         if created:
             frappe.msgprint(

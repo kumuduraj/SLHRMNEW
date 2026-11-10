@@ -40,7 +40,7 @@ STRUCTURE = "DEMO Monthly"
 LT_LWP, LT_CASUAL = "DEMO LWP", "DEMO Casual"
 C = {
     "basic": ("DEMO Basic", "DBAS"), "bra": ("DEMO BRA", "DBRA"), "aa": ("DEMO Attendance Allowance", "DAA"),
-    "not": ("DEMO Normal OT", "DNOT"), "dot": ("DEMO Double OT", "DDOT"),
+    "ot": ("DEMO Overtime", "DOT"),
     "epf": ("DEMO EPF Employee 8%", "DEPF"), "epf_er": ("DEMO EPF Employer 12%", "DEPFR"),
     "etf": ("DEMO ETF Employer 3%", "DETF"),
 }
@@ -53,8 +53,7 @@ EPF_FLAGS = {
     C["etf"][0]: {"slhrm_epf_applicable": 0, "slhrm_epf_rate": 3},
 }
 SLHRM_SETTINGS = {
-    "normal_ot_component": C["not"][0], "double_ot_component": C["dot"][0],
-    "default_ot_rate": 300, "default_double_ot_rate": 600, "overtime_threshold": 0.5,
+    "ot_component": C["ot"][0], "default_ot_rate": 300, "overtime_threshold": 0.5,
 }
 
 # code, last name, branch, shift, ot_eligible, app_checkin, extra roles, base (None = no SSA), designation
@@ -220,8 +219,7 @@ def create():
     comp("basic", "Earning", depends_on_payment_days=1)
     comp("bra", "Earning", depends_on_payment_days=1)
     comp("aa", "Earning", depends_on_payment_days=0)
-    comp("not", "Earning", depends_on_payment_days=0)
-    comp("dot", "Earning", depends_on_payment_days=0)
+    comp("ot", "Earning", depends_on_payment_days=0)
     # EPF/ETF formulas use the already prorated Basic + BRA, so they follow payment days without the
     # flag; HRMS rejects formula components with depends_on_payment_days (it would prorate twice).
     comp("epf", "Deduction", depends_on_payment_days=0)
@@ -349,8 +347,7 @@ def create():
                     "attendance_source": ("App" if mm["punch_source"] == "App" else "Biometric") if mm["punch_count"] else "Manual",
                     "punch_source": mm["punch_source"], "in_time": mm["in_time"], "out_time": mm["out_time"],
                     "auto_in_time": mm["in_time"], "auto_out_time": mm["out_time"],
-                    "normal_ot_hours": mm["calc_normal_ot"] if mm["ot_eligible"] else 0,
-                    "double_ot_hours": mm["calc_double_ot"] if mm["ot_eligible"] else 0,
+                    "ot_hours": mm["calc_ot"] if mm["ot_eligible"] else 0,
                 })
                 refs += [r for r in data["punch_refs"] if r["employee"] == e.name]
             if not rows:
@@ -436,19 +433,19 @@ def report(print_out=True):
     ot = {}
     if emp_names:
         for r in frappe.db.sql(
-            """SELECT amd.employee, SUM(amd.normal_ot_hours) n, SUM(amd.double_ot_hours) d, COUNT(*) days
+            """SELECT amd.employee, SUM(amd.ot_hours) n, COUNT(*) days
                FROM `tabAttendance Marker Detail` amd JOIN `tabAttendance Marker` am ON am.name = amd.parent
                WHERE am.docstatus = 1 AND am.date BETWEEN %s AND %s AND amd.employee IN %s
                GROUP BY amd.employee""", (OCT_START, OCT_END, emp_names), as_dict=True):
-            ot[r.employee] = (flt(r.n, 2), flt(r.d, 2), r.days)
+            ot[r.employee] = (flt(r.n, 2), r.days)
     logins = []
     for code, last, branch, shift, ot_el, app, roles, base, dsg in EMPLOYEES:
         emp = E.get(code)
-        n, d, days = ot.get(emp, (0, 0, 0))
+        n, days = ot.get(emp, (0, 0))
         logins.append({"code": code, "employee": emp, "user": EMAIL.format(code.lower()), "password": PASSWORD,
                        "roles": ", ".join(["Employee", *roles]), "branch": branch, "shift": shift,
                        "ot_eligible": ot_el, "app_checkin": app, "base": base or "NO SSA",
-                       "oct_marker_days(submitted)": days, "oct_normal_ot_h": n, "oct_double_ot_h": d})
+                       "oct_marker_days(submitted)": days, "oct_ot_h": n})
     live = {dt: frappe.db.count(dt, {"name": ["in", [x[1] for x in m.data["created"] if x[0] == dt]]})
             for dt in counts}
     out = {"created_by_manifest": counts, "still_existing": live, "employees": logins}
@@ -463,12 +460,12 @@ def preview_payroll(branch=BR_FACTORY, payroll_month="10", payroll_year=2026):
 
     data = load_payroll_data(branch, _company(), payroll_month, payroll_year)
     rows = data.get("employees", [])
-    print(f"{'employee':16} {'name':22} {'pay/work days':>13} {'normal OT':>10} {'double OT':>10} "
+    print(f"{'employee':16} {'name':22} {'pay/work days':>13} {'OT':>10} "
           f"{'salary gross':>13} {'gross':>12} {'deductions':>11} {'net':>12}  error")
     for r in rows:
         print(f"{r['employee']:16} {(r['employee_name'] or '')[:22]:22} "
               f"{flt(r['payment_days']):>6.1f}/{flt(r['total_working_days']):<6.1f} "
-              f"{r['normal_ot_amount']:>10.2f} {r['double_ot_amount']:>10.2f} {r['structure_gross']:>13.2f} "
+              f"{r['ot_amount']:>10.2f} {r['structure_gross']:>13.2f} "
               f"{r['total_earning']:>12.2f} {r['total_deduction']:>11.2f} {r['net_pay']:>12.2f}  {r['row_error'] or ''}")
     print("summary:", json.dumps(data.get("summary"), default=str))
     return data.get("summary")

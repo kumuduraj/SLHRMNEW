@@ -129,18 +129,6 @@
    "read_only": 1
   },
   {
-   "fieldname": "total_normal_ot_amount",
-   "fieldtype": "Currency",
-   "label": "Total Normal OT",
-   "read_only": 1
-  },
-  {
-   "fieldname": "total_double_ot_amount",
-   "fieldtype": "Currency",
-   "label": "Total Double OT",
-   "read_only": 1
-  },
-  {
    "fieldname": "column_break_s1",
    "fieldtype": "Column Break"
   },
@@ -278,6 +266,6 @@
    "write": 0
   }
  ],
- "modified": "2026-11-08 21:30:00.000000",
+ "modified": "2026-11-10 20:00:00.000000",
  "default_print_format": "Payroll Worksheet"
 }

@@ -11,9 +11,9 @@ Layout (left -> right):
   EARNINGS: base component first, then the fixed columns (components_json.fixed_columns: Basic Salary,
             Base Allowance, Vehicle Allowance, Other Allowance — shown even when empty), then any other
             earning component in a row. Additional Salary lines go to their OWN component column (v0.1.0). |
-  NORMAL OT: Hrs, Rate, Amount | DOUBLE OT: Hrs, Rate, Amount | GROSS |
+  OT: Hrs, Rate, Amount | GROSS |
   DEDUCTIONS: fixed columns (Death Donation, No Pay, Other Deduction, Salary Advance, Personal Loan,
-            EPF Employee 8%, APIT), then other deduction components (+ Loan if > 0). The APIT cell is the
+            Staff Bill, EPF Employee 8%, APIT), then other deduction components (+ Loan if > 0). The APIT cell is the
             row's apit_amount (APIT incl. worksheet OT), not the preview value. |
   TOTAL DED | NET PAY |
   EMPLOYER (statistical components, e.g. employer EPF 12% / ETF 3%; collapsible in the form)
@@ -23,7 +23,7 @@ import json
 
 from frappe.utils import flt
 
-NO_TOTAL = {"normal_ot_rate", "double_ot_rate", "total_working_days", "payment_days", "lwp_days"}  # money + hours only
+NO_TOTAL = {"ot_rate", "total_working_days", "payment_days", "lwp_days"}  # money + hours only
 
 
 def _get(row, key):
@@ -86,14 +86,10 @@ def build_table(rows):
         ]},
         {"key": "earnings", "label": "EARNINGS",
          "columns": [{"key": f"E::{c}", "label": c, "type": "currency", "tooltip": tip(c)} for c in earn_comps]},
-        {"key": "normal_ot", "label": "NORMAL OT", "columns": [
-            {"key": "normal_ot_hours", "label": "Hrs", "type": "float"},
-            {"key": "normal_ot_rate", "label": "Rate", "type": "currency"},
-            {"key": "normal_ot_amount", "label": "Amount", "type": "currency"}]},
-        {"key": "double_ot", "label": "DOUBLE OT", "columns": [
-            {"key": "double_ot_hours", "label": "Hrs", "type": "float"},
-            {"key": "double_ot_rate", "label": "Rate", "type": "currency"},
-            {"key": "double_ot_amount", "label": "Amount", "type": "currency"}]},
+        {"key": "ot", "label": "OT", "columns": [
+            {"key": "ot_hours", "label": "Hrs", "type": "float"},
+            {"key": "ot_rate", "label": "Rate", "type": "currency"},
+            {"key": "ot_amount", "label": "Amount", "type": "currency"}]},
         {"key": "gross", "label": "", "columns": [{"key": "total_earning", "label": "GROSS", "type": "currency"}]},
         {"key": "deductions", "label": "DEDUCTIONS",
          "columns": [{"key": f"D::{c}", "label": c, "type": "currency", "tooltip": tip(c)} for c in ded_comps]
@@ -113,9 +109,8 @@ def build_table(rows):
             "idx": i, "employee_name": _get(r, "employee_name") or _get(r, "employee"),
             "employee": _get(r, "employee"), "row_error": _get(r, "row_error") or "",
         }
-        for key in ("total_working_days", "payment_days", "lwp_days", "normal_ot_hours", "normal_ot_rate",
-                    "normal_ot_amount", "double_ot_hours", "double_ot_rate", "double_ot_amount", "total_earning",
-                    "total_deduction", "net_pay", "loan_deduction"):
+        for key in ("total_working_days", "payment_days", "lwp_days", "ot_hours", "ot_rate", "ot_amount",
+                    "total_earning", "total_deduction", "net_pay", "loan_deduction"):
             cells[key] = flt(_get(r, key))
         for prefix, kind in (("E", "earnings"), ("D", "deductions")):
             for line in b.get(kind, []):

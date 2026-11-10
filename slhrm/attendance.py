@@ -13,14 +13,14 @@ shift end and this shift's start, and between this shift's end and the next day'
 overlap are not guessed: no automatic IN/OUT, warning "Overlapping shifts". Punches used by another
 date's submitted Attendance Marker are skipped.
 IN = D + in_time, OUT = (D + 1 if out_next_day else D) + out_time (combine / span_hours).
-OT hours come from slhrm.overtime (the only OT math).
+OT hours and early/late minutes come from slhrm.overtime (the only OT math) via day_figures().
 """
 from datetime import datetime, timedelta
 
 import frappe
 from frappe.utils import add_days, cint, flt, get_datetime, getdate
 
-from slhrm.overtime import calculate_ot_hours
+from slhrm.overtime import calculate_ot_hours, early_late_minutes, excused
 
 DEFAULT_WINDOW_BEFORE = 120
 DEFAULT_OT_WINDOW_AFTER = 360
@@ -245,6 +245,20 @@ def fetch_punches(employees, range_start, range_end, device_id=None):
 # ── Day computation ─────────────────────────────────────────────
 
 
+def day_figures(shift_info, in_dt, out_dt, worked, ot_eligible, holiday_type, settings,
+                short_leave=0, short_leave_min=0):
+    """Early/late minutes, short-leave excuses and calculated OT for one employee-day.
+    shift_info from get_shift_info (start/end None = no shift); in_dt / out_dt datetimes or None."""
+    mins = early_late_minutes(shift_info.start, shift_info.end, in_dt, out_dt) if shift_info.start else \
+        dict.fromkeys(("early_in_min", "late_in_min", "early_out_min", "late_out_min"), 0)
+    late_ok, early_ok = excused(mins["late_in_min"], mins["early_out_min"], short_leave, short_leave_min)
+    calc_ot = calculate_ot_hours({
+        "ot_eligible": ot_eligible, "worked_hours": worked, "holiday_type": holiday_type,
+        "early_in_min": mins["early_in_min"], "late_out_min": mins["late_out_min"],
+    }, settings)
+    return dict(mins, late_in_excused=late_ok, early_out_excused=early_ok, calc_ot=calc_ot)
+
+
 def compute_day(employee, date_str, shift_info, punches, ot_eligible, holiday, settings=None):
     """Compute IN/OUT, worked hours, OT and punch refs for one employee-day."""
     settings = settings or get_settings()
@@ -259,15 +273,8 @@ def compute_day(employee, date_str, shift_info, punches, ot_eligible, holiday, s
     punch_source = "Both" if len(sources) > 1 else (next(iter(sources)) if sources else "")
 
     is_holiday, holiday_type = holiday
-    ot = calculate_ot_hours(
-        {
-            "employee": employee, "date": date_str, "ot_eligible": ot_eligible,
-            "shift": shift_info.shift, "shift_hours": shift_info.hours,
-            "in_time": in_dt, "out_time": out_dt, "worked_hours": worked,
-            "is_holiday": is_holiday, "holiday_type": holiday_type,
-        },
-        settings,
-    )
+    figures = day_figures(shift_info, in_dt, out_dt, worked, ot_eligible,
+                          holiday_type or ("holiday" if is_holiday else None), settings)
 
     refs = []
     for i, p in enumerate(in_window):
@@ -293,8 +300,7 @@ def compute_day(employee, date_str, shift_info, punches, ot_eligible, holiday, s
         "shift_hours": shift_info.hours,
         "shift": shift_info.shift,
         "ot_eligible": 1 if cint(ot_eligible) else 0,
-        "calc_normal_ot": ot["normal"],
-        "calc_double_ot": ot["double"],
+        **figures,
         "is_holiday": 1 if is_holiday else 0,
         "holiday_type": holiday_type,
         "punch_source": punch_source,

@@ -102,7 +102,7 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   returns its earnings/deductions/gross/net/payment days/LWP. **The preview must never write:** no
   insert/save/commit, no `slip.validate()` (check_existing throws), no `get_emp_and_working_day_details`
   (loan accrual writes when lending is installed); every preview runs inside a savepoint that is rolled
-  back. `slhrm/payroll_pay.py`: gross = preview gross + Normal OT + Double OT; deductions = preview
+  back. `slhrm/payroll_pay.py`: gross = preview gross + OT; deductions = preview
   deductions (+ loan); net = gross − deductions. Additional Salary is already inside the preview
   (display totals only); the worksheet's own OT Additional Salary is dropped from previews.
 - OT edits (`calc_worksheet_row`, `_recalculate_all`) never rebuild previews; "Refresh Salary Data"
@@ -133,10 +133,10 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - Shift Types (2026-11-10, hours first so the grid shows the hours; no employee assigned yet): 03-12 Dawn,
   06-15 Early, 08-17 Day, 10-19 Morning, 12-21 Noon, 15-24 Evening (ends 00:00 next day), 21-06 Night; all auto
   attendance 0, no holiday list (Company Holiday List Assignment applies). HRMS ships Shift Type without
-  allow_rename: rename only while nothing references a shift, with `frappe.rename_doc(..., merge=False, force=True)`. Rows keep `calc_normal_ot`/`calc_double_ot` (server-computed) and approved
-  `normal_ot_hours`/`double_ot_hours`.
+  allow_rename: rename only while nothing references a shift, with `frappe.rename_doc(..., merge=False, force=True)`. Rows keep `calc_ot` (server-computed) and approved
+  `ot_hours` (v0.2.0, one OT type).
 - Worksheet sums submitted markers' approved hours (`slhrm/payroll_ot.py`), rates from overtime.py.
-  On submit: one Additional Salary per employee per OT type (components in SLHRM Settings,
+  On submit: one Additional Salary per employee with OT (SLHRM Settings ot_component,
   `ref_doctype`/`ref_docname` = the worksheet). On cancel: blocked if a submitted Salary Slip uses it,
   else the Additional Salary is cancelled + deleted. `load_payroll_data` excludes Additional Salary
   with `ref_doctype = 'Payroll Worksheet'` (no double count).
@@ -184,10 +184,10 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 ## Salary structure + APIT (v0.1.0)
 - Setup: `bench --site … execute slhrm.salary_setup.apply` (`--kwargs '{"dry_run": 1}'` first). Idempotent; creates
   missing components, reuses existing ones (only depends_on_payment_days of Basic Salary / Base Allowance and SLHRM's
-  own fields are set on them), fills SLHRM Settings (Normal / Double OT, APIT component, APIT slabs) and updates
+  own fields are set on them), fills SLHRM Settings (OT component Overtime, APIT component, APIT slabs) and updates
   "Standard Staff Structure" by cancel + amend when no SSA uses it (else "<name> v2").
-- Earnings: Basic Salary, Base Allowance, Vehicle Allowance (package, 0 in the structure, dpd 0), Normal OT /
-  Double OT (worksheet → Additional Salary), Other Allowance (Additional Salary). Deductions: Death Donation 200
+- Earnings: Basic Salary, Base Allowance, Vehicle Allowance (package, 0 in the structure, dpd 0), Overtime
+  (worksheet → Additional Salary; v0.2.0 renamed from Normal OT, Double OT retired), Other Allowance (Additional Salary). Deductions: Death Donation 200
   (structure, dpd 0), No Pay / Other Deduction / Salary Advance / Personal Loan (Additional Salary only),
   EPF Employee 8% (apply_epf), APIT (apply_apit). Statistical: EPF Employer 12%, ETF Employer 3%.
 - **No Pay is entered manually** (Additional Salary) → Basic / Base Allowance do NOT depend on payment days (no double
@@ -197,7 +197,7 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   SLHRM Settings "APIT Slabs" (child `SLHRM APIT Slab`; set with the latest effective_from ≤ period start), 2 dp;
   Employee `slhrm_apit_exempt` → 0. `apply_salary_rules` = package overrides → apply_epf → **apply_apit** (real slip
   before_save / before_submit + preview). Worksheet: preview APIT excludes worksheet OT; row `apit_amount` =
-  APIT(apit_taxable_base + Normal OT + Double OT) replaces it in total_deduction (`payroll_pay.compose_pay`,
+  APIT(apit_taxable_base + OT) replaces it in total_deduction (`payroll_pay.compose_pay`,
   `_recalculate_all`, `calc_worksheet_row`) → worksheet == final slip. Change slabs in SLHRM Settings, never in code. Slabs = annual table / 12 with EXACT thresholds
   (150,000 / 233,333.33 / 275,000 / 316,666.67 / 358,333.33; Raj 2026-11-10) so each full band yields 5,000 / 7,500 /
   10,000 / 12,500; reload with `salary_setup.replace_apit_slabs`.
@@ -440,3 +440,18 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 
 ## Known open items (not yet fixed)
 - `SLHRM Settings` fields never read by code: `auto_mark_attendance`, `auto_create_payroll_on_submit`.
+
+## Single OT, early/late, short leave, Attendance Supervisor (v0.2.0)
+- ONE OT type everywhere ("OT"; component "Overtime"). `slhrm/overtime.py`: per row whole minutes early_in / late_in /
+  early_out / late_out from shift start/end and IN/OUT (incl. OUT +1); OT = (early_in + late_out)/60 on a working day,
+  all worked hours on a holiday / weekly off, 0 without shift times, Minimum OT Hours still applies. One entry point
+  `attendance.day_figures` (loader, `calc_attendance_times`, marker `_apply_overtime`). Patch v0_2_0.merge_double_ot
+  added old double hours into OT and dropped the old columns.
+- Marker grid (10 cols): Employee Name 2, Shift, IN, OUT, OUT +1, Hrs, Late In, Early Out, OT. Late In / Early Out orange
+  (docfield formatter) unless excused. Short leave (row, permlevel 1): allowance used by Late In first, then Early Out;
+  excused values are not counted in the parent "Lates" counts (late_in_count / early_out_count).
+- Role "Attendance Supervisor" (install.ensure_roles): Attendance Marker create/write/submit + permlevel 1 (ot_hours,
+  short leave). No worksheet / pay permissions. ot_hours != calc_ot → ot_edited_by / ot_edited_on set by the server
+  (kept while the value is unchanged); Version (track_changes) keeps the history. Users without level-1 write: ot_hours
+  follows calc_ot unless a level-1 user edited it.
+- Staff Bill (SB): deduction via Additional Salary, worksheet fixed column; not EPF base, not APIT-deductible.

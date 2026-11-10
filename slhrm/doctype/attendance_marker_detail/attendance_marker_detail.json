@@ -51,8 +51,7 @@
    "label": "Status",
    "options": "\nPresent\nAbsent\nOn Leave\nHalf Day",
    "default": "Present",
-   "in_list_view": 1,
-   "columns": 1
+   "in_list_view": 0
   },
   {
    "fieldname": "section_break_times",
@@ -130,49 +129,133 @@
    "read_only": 1
   },
   {
-   "fieldname": "calc_normal_ot",
+   "fieldname": "shift_hours",
    "fieldtype": "Float",
-   "label": "Calculated Normal OT",
+   "label": "Shift Hours",
    "read_only": 1,
-   "precision": "2"
+   "hidden": 1
   },
   {
-   "fieldname": "calc_double_ot",
-   "fieldtype": "Float",
-   "label": "Calculated Double OT",
+   "fieldname": "section_break_lates",
+   "fieldtype": "Section Break",
+   "label": "Early / Late"
+  },
+  {
+   "fieldname": "early_in_min",
+   "fieldtype": "Int",
+   "label": "Early In (min)",
    "read_only": 1,
-   "precision": "2"
+   "description": "Minutes the IN is before the shift start."
+  },
+  {
+   "fieldname": "late_in_min",
+   "fieldtype": "Int",
+   "label": "Late In",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Late In = minutes the IN is after the shift start (orange unless excused by short leave)."
+  },
+  {
+   "fieldname": "late_in_excused",
+   "fieldtype": "Check",
+   "label": "Late In excused",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_lt1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "early_out_min",
+   "fieldtype": "Int",
+   "label": "Early Out",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Early Out = minutes the OUT is before the shift end (orange unless excused by short leave)."
+  },
+  {
+   "fieldname": "early_out_excused",
+   "fieldtype": "Check",
+   "label": "Early Out excused",
+   "read_only": 1
+  },
+  {
+   "fieldname": "late_out_min",
+   "fieldtype": "Int",
+   "label": "Late Out (min)",
+   "read_only": 1,
+   "description": "Minutes the OUT is after the shift end."
+  },
+  {
+   "fieldname": "column_break_lt2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "short_leave",
+   "fieldtype": "Check",
+   "label": "Short Leave",
+   "permlevel": 1,
+   "default": "0",
+   "description": "Ticked: Late In / Early Out up to Short Leave (min) are excused (Late In first, then Early Out)."
+  },
+  {
+   "fieldname": "short_leave_min",
+   "fieldtype": "Int",
+   "label": "Short Leave (min)",
+   "permlevel": 1,
+   "depends_on": "eval:doc.short_leave"
+  },
+  {
+   "fieldname": "short_leave_note",
+   "fieldtype": "Small Text",
+   "label": "Short Leave Note",
+   "permlevel": 1,
+   "depends_on": "eval:doc.short_leave"
+  },
+  {
+   "fieldname": "section_break_ot",
+   "fieldtype": "Section Break",
+   "label": "Overtime"
+  },
+  {
+   "fieldname": "calc_ot",
+   "fieldtype": "Float",
+   "label": "OT (calculated)",
+   "read_only": 1,
+   "precision": "2",
+   "description": "System OT hours: (Early In + Late Out) / 60 on a working day, all worked hours on a holiday / weekly off; below the Minimum OT Hours (SLHRM Settings) = 0."
   },
   {
    "fieldname": "column_break_c1",
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "normal_ot_hours",
+   "fieldname": "ot_hours",
    "fieldtype": "Float",
-   "label": "N.OT",
+   "label": "OT",
    "permlevel": 1,
    "in_list_view": 1,
    "precision": "2",
    "columns": 1,
-   "description": "N.OT = Normal OT: Approved Normal OT hours (defaults to the calculated value)."
+   "description": "OT = approved OT hours (defaults to OT (calculated)). HR Manager / Attendance Supervisor can change it; the change is recorded below and in the version history."
   },
   {
-   "fieldname": "double_ot_hours",
-   "fieldtype": "Float",
-   "label": "D.OT",
-   "permlevel": 1,
-   "in_list_view": 1,
-   "precision": "2",
-   "columns": 1,
-   "description": "D.OT = Double OT: Approved Double OT hours (holiday / weekly off; defaults to the calculated value)."
-  },
-  {
-   "fieldname": "shift_hours",
-   "fieldtype": "Float",
-   "label": "Shift Hours",
+   "fieldname": "ot_edited_by",
+   "fieldtype": "Link",
+   "options": "User",
+   "label": "OT edited by",
    "read_only": 1,
-   "hidden": 1
+   "depends_on": "eval:doc.ot_edited_by",
+   "description": "Set when OT differs from OT (calculated)."
+  },
+  {
+   "fieldname": "ot_edited_on",
+   "fieldtype": "Datetime",
+   "label": "OT edited on",
+   "read_only": 1,
+   "depends_on": "eval:doc.ot_edited_by"
   },
   {
    "fieldname": "section_break_leave",
@@ -222,5 +305,5 @@
   }
  ],
  "permissions": [],
- "modified": "2026-11-10 14:00:00.000000"
+ "modified": "2026-11-10 20:00:00.000000"
 }

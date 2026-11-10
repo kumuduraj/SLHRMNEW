@@ -6,16 +6,15 @@
 const ROW_FIELDS = [
     'employee', 'employee_name', 'designation', 'salary_structure', 'base',
     'total_working_days', 'payment_days', 'lwp_days', 'present_days', 'absent_days', 'leave_days',
-    'ot_eligible', 'normal_ot_hours', 'normal_ot_rate', 'normal_ot_amount',
-    'double_ot_hours', 'double_ot_rate', 'double_ot_amount', 'ot_amount',
+    'ot_eligible', 'ot_hours', 'ot_rate', 'ot_amount',
     'structure_gross', 'structure_deduction', 'loan_deduction',
     'additional_earning_total', 'additional_deduction_total',
     'total_earning', 'total_deduction', 'net_pay', 'row_error', 'components_json'
 ];
 const SALARY_FIELDS = ROW_FIELDS.filter(f => ![
-    'employee', 'ot_eligible', 'normal_ot_hours', 'normal_ot_rate', 'double_ot_hours', 'double_ot_rate'
+    'employee', 'ot_eligible', 'ot_hours', 'ot_rate'
 ].includes(f));
-const OT_INPUTS = ['normal_ot_hours', 'normal_ot_rate', 'double_ot_hours', 'double_ot_rate'];
+const OT_INPUTS = ['ot_hours', 'ot_rate'];
 const JOB_TIMEOUT_MS = 15 * 60 * 1000;
 const MONTH_NAMES = ['', 'January', 'February', 'March', 'April', 'May', 'June',
                      'July', 'August', 'September', 'October', 'November', 'December'];
@@ -284,7 +283,7 @@ function apply_payload(frm, data, mode) {
             const e = by_emp[row.employee];
             if (!e) return;
             SALARY_FIELDS.forEach(f => { row[f] = e[f]; });
-            ['ot_eligible', 'normal_ot_amount', 'double_ot_amount', 'ot_amount'].forEach(f => { row[f] = e[f]; });
+            ['ot_eligible', 'ot_amount'].forEach(f => { row[f] = e[f]; });
             if (!e.ot_eligible) OT_INPUTS.forEach(f => { row[f] = 0; });
         });
     }
@@ -344,7 +343,7 @@ function set_dates(frm) {
 // Values come only from the stored HRMS preview breakdown (row.components_json) and the row's
 // OT / total fields; the JS adds column sums for the totals row, nothing else.
 
-const NO_TOTAL = ['normal_ot_rate', 'double_ot_rate', 'total_working_days', 'payment_days', 'lwp_days'];  // money + hours only
+const NO_TOTAL = ['ot_rate', 'total_working_days', 'payment_days', 'lwp_days'];  // money + hours only
 
 function parse_breakdown(row) {
     let b = {};
@@ -384,12 +383,9 @@ function build_table(rows) {
             { key: 'total_working_days', label: 'Working Days', type: 'float' },
             { key: 'payment_days', label: 'Payment Days', type: 'float' }, { key: 'lwp_days', label: 'LWP', type: 'float' }] },
         { key: 'earnings', label: 'EARNINGS', columns: earn.map(c => ({ key: 'E::' + c, label: c, type: 'currency', tooltip: tip(c) })) },
-        { key: 'normal_ot', label: 'NORMAL OT', columns: [
-            { key: 'normal_ot_hours', label: 'Hrs', type: 'float' }, { key: 'normal_ot_rate', label: 'Rate', type: 'currency' },
-            { key: 'normal_ot_amount', label: 'Amount', type: 'currency' }] },
-        { key: 'double_ot', label: 'DOUBLE OT', columns: [
-            { key: 'double_ot_hours', label: 'Hrs', type: 'float' }, { key: 'double_ot_rate', label: 'Rate', type: 'currency' },
-            { key: 'double_ot_amount', label: 'Amount', type: 'currency' }] },
+        { key: 'ot', label: 'OT', columns: [
+            { key: 'ot_hours', label: 'Hrs', type: 'float' }, { key: 'ot_rate', label: 'Rate', type: 'currency' },
+            { key: 'ot_amount', label: 'Amount', type: 'currency' }] },
         { key: 'gross', label: '', columns: [{ key: 'total_earning', label: 'GROSS', type: 'currency' }] },
         { key: 'deductions', label: 'DEDUCTIONS', columns: ded.map(c => ({ key: 'D::' + c, label: c, type: 'currency', tooltip: tip(c) }))
             .concat(has_loan ? [{ key: 'loan_deduction', label: 'Loan', type: 'currency' }] : []) },
@@ -403,8 +399,7 @@ function build_table(rows) {
 
     const out_rows = rows.map((r, i) => {
         const cells = { idx: i + 1, employee_name: r.employee_name || r.employee, employee: r.employee, row_error: r.row_error || '', name: r.name };
-        ['total_working_days', 'payment_days', 'lwp_days', 'normal_ot_hours', 'normal_ot_rate', 'normal_ot_amount',
-         'double_ot_hours', 'double_ot_rate', 'double_ot_amount', 'total_earning', 'total_deduction', 'net_pay', 'loan_deduction']
+        ['total_working_days', 'payment_days', 'lwp_days', 'ot_hours', 'ot_rate', 'ot_amount', 'total_earning', 'total_deduction', 'net_pay', 'loan_deduction']
             .forEach(k => { cells[k] = flt(r[k]); });
         const b = parsed[i];
         [['E', 'earnings'], ['D', 'deductions']].forEach(([p, kind]) => b[kind].forEach(l => {
@@ -430,16 +425,14 @@ function build_table(rows) {
 
 function refresh_doc_totals(frm) {
     // Aggregates server-computed row values for the summary (server recomputes on save).
-    const t = { ot: 0, normal: 0, double: 0, gross: 0, ded: 0, net: 0 };
+    const t = { ot: 0, gross: 0, ded: 0, net: 0 };
     (frm.doc.employees || []).forEach(e => {
-        t.ot += flt(e.ot_amount); t.normal += flt(e.normal_ot_amount); t.double += flt(e.double_ot_amount);
+        t.ot += flt(e.ot_amount);
         t.gross += flt(e.total_earning); t.ded += flt(e.total_deduction); t.net += flt(e.net_pay);
     });
     frm.set_value('total_employees', (frm.doc.employees || []).length);
     frm.set_value('employees_with_ssa', (frm.doc.employees || []).filter(e => e.salary_structure).length);
     frm.set_value('total_ot_amount', t.ot);
-    frm.set_value('total_normal_ot_amount', t.normal);
-    frm.set_value('total_double_ot_amount', t.double);
     frm.set_value('total_gross_pay', t.gross);
     frm.set_value('total_deductions', t.ded);
     frm.set_value('total_net_pay', t.net);
@@ -453,7 +446,7 @@ function can_edit_ot(frm) {
 
 
 const GROUP_STYLE = {
-    info: '#1a237e', earnings: '#1b5e20', normal_ot: '#4a148c', double_ot: '#880e4f', gross: '#0d47a1',
+    info: '#1a237e', earnings: '#1b5e20', ot: '#4a148c', gross: '#0d47a1',
     deductions: '#b71c1c', total_ded: '#0d47a1', net: '#1b5e20', employer: '#e65100'
 };
 
@@ -591,7 +584,7 @@ function render_payroll_table(frm) {
     });
     html += '</tr></tbody></table></div>';
     html += '<p class="text-muted small">' +
-        __('Salary columns are HRMS Salary Slip previews (structure, payment days / LWP, Additional Salary, package overrides) — calculated on the server, never saved. Gross = HRMS gross + Normal OT + Double OT. "-" = component not on that employee\'s slip.') +
+        __('Salary columns are HRMS Salary Slip previews (structure, payment days / LWP, Additional Salary, package overrides) — calculated on the server, never saved. Gross = HRMS gross + OT. "-" = component not on that employee\'s slip.') +
         '<br>' + __('Tax/statutory components are calculated on the final Salary Slip including OT.') + '</p>';
 
     wrapper.$wrapper.html(html);

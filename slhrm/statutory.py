@@ -20,7 +20,7 @@ v0.1.0: deduction rows whose component has slhrm_reduces_epf_base (No Pay) are S
 base and from the APIT taxable amount.
 
 APIT (monthly Advance Personal Income Tax, SLHRM-calculated):
-  taxable = all earnings on the slip (not do_not_include_in_total; incl. Normal / Double OT and Other
+  taxable = all earnings on the slip (not do_not_include_in_total; incl. OT and Other
             Allowance) - deductions flagged slhrm_reduces_epf_base (No Pay)
   APIT    = progressive sum over the SLHRM Settings "APIT Slab" rows (slab set with the latest
             effective_from <= the period start), rounded to 2 dp; 0 for Employee.slhrm_apit_exempt
@@ -179,12 +179,12 @@ def apit_taxable(slip, flags=None):
     return flt(max(0.0, sum(flt(r.amount) for r in rows) - reductions(slip, flags)), 2)
 
 
-def worksheet_apit(taxable_base, normal_ot=0, double_ot=0, employee=None, on_date=None):
-    """APIT for a worksheet row: preview taxable (without worksheet OT) + Normal OT + Double OT —
+def worksheet_apit(taxable_base, ot_amount=0, employee=None, on_date=None):
+    """APIT for a worksheet row: preview taxable (without worksheet OT) + OT —
     the same amount the final slip computes once the OT arrives as Additional Salary."""
     if not apit_component() or is_apit_exempt(employee):
         return 0.0
-    amount, _bands = calc_apit(flt(taxable_base) + flt(normal_ot) + flt(double_ot), apit_slabs(on_date))
+    amount, _bands = calc_apit(flt(taxable_base) + flt(ot_amount), apit_slabs(on_date))
     return amount
 
 

@@ -41,7 +41,7 @@
     "default": "0",
     "in_standard_filter": 1,
     "insert_after": "slhrm_biometric_device_name",
-    "description": "Only eligible employees get Normal/Double OT in Attendance Marker and Payroll Worksheet.",
+    "description": "Only eligible employees get OT in Attendance Marker and Payroll Worksheet.",
     "name": "Employee-slhrm_ot_eligible"
   },
   {

@@ -107,51 +107,26 @@
    "read_only": 1
   },
   {
-   "fieldname": "normal_ot_hours",
+   "fieldname": "ot_hours",
    "fieldtype": "Float",
-   "label": "Normal OT Hours",
+   "label": "OT Hours",
    "permlevel": 1,
    "precision": "2"
   },
   {
-   "fieldname": "normal_ot_rate",
+   "fieldname": "ot_rate",
    "fieldtype": "Currency",
-   "label": "Normal OT Rate (per hr)",
+   "label": "OT Rate (per hr)",
    "permlevel": 1
-  },
-  {
-   "fieldname": "normal_ot_amount",
-   "fieldtype": "Currency",
-   "label": "Normal OT Amount",
-   "read_only": 1
   },
   {
    "fieldname": "column_break_o1",
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "double_ot_hours",
-   "fieldtype": "Float",
-   "label": "Double OT Hours",
-   "permlevel": 1,
-   "precision": "2"
-  },
-  {
-   "fieldname": "double_ot_rate",
-   "fieldtype": "Currency",
-   "label": "Double OT Rate (per hr)",
-   "permlevel": 1
-  },
-  {
-   "fieldname": "double_ot_amount",
-   "fieldtype": "Currency",
-   "label": "Double OT Amount",
-   "read_only": 1
-  },
-  {
    "fieldname": "ot_amount",
    "fieldtype": "Currency",
-   "label": "Total OT Amount",
+   "label": "OT Amount",
    "read_only": 1,
    "in_list_view": 1
   },
@@ -232,7 +207,7 @@
    "fieldtype": "Currency",
    "label": "APIT (incl. OT)",
    "read_only": 1,
-   "description": "APIT on APIT Taxable + Normal OT + Double OT — what the final Salary Slip deducts."
+   "description": "APIT on APIT Taxable + OT — what the final Salary Slip deducts."
   },
   {
    "fieldname": "column_break_r1",
@@ -267,5 +242,5 @@
   }
  ],
  "permissions": [],
- "modified": "2026-11-10 15:00:00.000000"
+ "modified": "2026-11-10 20:00:00.000000"
 }

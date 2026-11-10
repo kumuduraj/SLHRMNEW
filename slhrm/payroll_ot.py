@@ -17,14 +17,13 @@ def get_ot_eligibility(employees):
 
 
 def get_marker_ot_hours(employees, start_date, end_date):
-    """{employee: {"normal": h, "double": h}} summed from submitted Attendance Markers."""
+    """{employee: OT hours} summed from submitted Attendance Markers (ot_hours)."""
     if not employees:
         return {}
     rows = frappe.db.sql(
         """
         SELECT amd.employee,
-               SUM(IFNULL(amd.normal_ot_hours, 0)) AS normal,
-               SUM(IFNULL(amd.double_ot_hours, 0)) AS `double`
+               SUM(IFNULL(amd.ot_hours, 0)) AS ot_hours
         FROM `tabAttendance Marker Detail` amd
         INNER JOIN `tabAttendance Marker` am ON am.name = amd.parent
         WHERE amd.employee IN %(employees)s
@@ -35,4 +34,4 @@ def get_marker_ot_hours(employees, start_date, end_date):
         {"employees": list(employees), "start": start_date, "end": end_date},
         as_dict=True,
     )
-    return {r.employee: {"normal": flt(r.normal, 2), "double": flt(r.double, 2)} for r in rows}
+    return {r.employee: flt(r.ot_hours, 2) for r in rows}

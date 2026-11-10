@@ -1,5 +1,6 @@
 [pre_model_sync]
 slhrm.patches.v0_0_3.rename_biometric_fields
+slhrm.patches.v0_2_0.create_attendance_supervisor_role
 
 [post_model_sync]
 slhrm.patches.v0_0_2.remove_legacy_ssa_components
@@ -9,3 +10,4 @@ slhrm.patches.v0_0_4.migrate_worksheet_ot_fields
 slhrm.patches.v0_0_6.rename_worksheet_structure_fields
 slhrm.patches.v0_0_10.backfill_ssa_package_snapshot
 slhrm.patches.v0_0_15.set_served_branches
+slhrm.patches.v0_2_0.merge_double_ot

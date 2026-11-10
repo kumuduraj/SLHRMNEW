@@ -5,14 +5,14 @@
                                                     days, Additional Salary, package overrides)
     structure_deduction = preview.total_deduction
     loan_deduction      = preview.total_loan_repayment (0 without the lending app)
-    total_earning       = structure_gross + normal OT + double OT
+    total_earning       = structure_gross + OT
     total_deduction     = structure_deduction + loan_deduction
     net_pay             = total_earning - total_deduction
 
 additional_earning_total / additional_deduction_total = preview rows linked to an Additional
 Salary — display only (already inside the preview, never added again).
 APIT (v0.1.0): the preview's APIT excludes worksheet OT; the row's apit_amount is recomputed on
-apit_taxable_base + Normal OT + Double OT (slhrm.statutory.worksheet_apit) and replaces the preview
+apit_taxable_base + OT (slhrm.statutory.worksheet_apit) and replaces the preview
 APIT inside total_deduction — the same amount the final slip computes (OT arrives as Additional Salary).
 EPF never includes OT (OT components are not EPF-applicable).
 """
@@ -21,20 +21,20 @@ import json
 import frappe
 from frappe.utils import cint, flt
 
-from slhrm.overtime import calculate_ot_amounts, calculate_ot_rates
+from slhrm.overtime import calculate_ot_amount, calculate_ot_rate
 from slhrm.payroll_ot import get_marker_ot_hours
 from slhrm.payroll_preview import build_previews
 from slhrm.statutory import worksheet_apit
 
 PRECISION = 2
-OT_INPUT_FIELDS = ("normal_ot_hours", "normal_ot_rate", "double_ot_hours", "double_ot_rate")
+OT_INPUT_FIELDS = ("ot_hours", "ot_rate")
 
 
-def compose_pay(structure_gross=0, structure_deduction=0, normal_ot_amount=0, double_ot_amount=0,
-                loan_deduction=0, apit_preview=0, apit_amount=None):
+def compose_pay(structure_gross=0, structure_deduction=0, ot_amount=0, loan_deduction=0,
+                apit_preview=0, apit_amount=None):
     """apit_amount=None: no APIT adjustment. Else the preview APIT (inside structure_deduction) is
     replaced by apit_amount (APIT including the worksheet OT)."""
-    earning = flt(structure_gross) + flt(normal_ot_amount) + flt(double_ot_amount)
+    earning = flt(structure_gross) + flt(ot_amount)
     deduction = flt(structure_deduction) + flt(loan_deduction)
     out = {}
     if apit_amount is not None:
@@ -45,9 +45,9 @@ def compose_pay(structure_gross=0, structure_deduction=0, normal_ot_amount=0, do
 
 
 def row_apit(row, on_date):
-    """Final APIT for a worksheet row (dict or child doc) incl. its OT amounts."""
+    """Final APIT for a worksheet row (dict or child doc) incl. its OT amount."""
     g = row.get if isinstance(row, dict) else (lambda k, _r=row: getattr(_r, k, None))
-    return worksheet_apit(g("apit_taxable_base"), g("normal_ot_amount"), g("double_ot_amount"), g("employee"), on_date)
+    return worksheet_apit(g("apit_taxable_base"), g("ot_amount"), g("employee"), on_date)
 
 
 def salary_fields_from_preview(preview):
@@ -96,7 +96,7 @@ def fixed_columns():
 
 def build_rows(employees, company, start_date, end_date, ot_inputs=None, progress=None):
     """Worksheet rows for `employees` (list of dicts: name, employee_name, designation,
-    slhrm_ot_eligible). `ot_inputs` {employee: {normal_ot_hours, ...}} keeps existing OT edits
+    slhrm_ot_eligible). `ot_inputs` {employee: {ot_hours, ot_rate}} keeps existing OT edits
     (refresh); otherwise OT hours come from submitted markers and rates from overtime.py.
 
     Returns (rows, lines) where lines = {"earnings": [...], "deductions": [...]} for the
@@ -119,23 +119,17 @@ def build_rows(employees, company, start_date, end_date, ot_inputs=None, progres
         elif ot_inputs is not None:
             ot = {f: flt((ot_inputs.get(e["name"]) or {}).get(f)) for f in OT_INPUT_FIELDS}
         else:
-            hours = marker_hours.get(e["name"], {})
-            rates = calculate_ot_rates(e["name"], base, settings)
-            ot = {"normal_ot_hours": flt(hours.get("normal")), "double_ot_hours": flt(hours.get("double")),
-                  "normal_ot_rate": rates["normal_rate"], "double_ot_rate": rates["double_rate"]}
-        amounts = calculate_ot_amounts(ot["normal_ot_hours"], ot["double_ot_hours"],
-                                       {"normal_rate": ot["normal_ot_rate"], "double_rate": ot["double_ot_rate"]})
+            ot = {"ot_hours": flt(marker_hours.get(e["name"])), "ot_rate": calculate_ot_rate(e["name"], base, settings)}
 
         row = {
             "employee": e["name"], "employee_name": e.get("employee_name"), "designation": e.get("designation") or "",
             "base": flt(base, PRECISION), "ot_eligible": eligible, **ot,
-            "normal_ot_amount": amounts["normal"], "double_ot_amount": amounts["double"],
-            "ot_amount": flt(amounts["normal"] + amounts["double"], PRECISION),
+            "ot_amount": calculate_ot_amount(ot["ot_hours"], ot["ot_rate"]),
             **salary,
         }
         apit = row_apit(row, start_date) if p.get("apit_component") else None
-        row.update(compose_pay(row["structure_gross"], row["structure_deduction"], row["normal_ot_amount"],
-                               row["double_ot_amount"], row["loan_deduction"], row["apit_preview"], apit))
+        row.update(compose_pay(row["structure_gross"], row["structure_deduction"], row["ot_amount"],
+                               row["loan_deduction"], row["apit_preview"], apit))
         rows.append(row)
 
         for r in p.earnings:
@@ -160,8 +154,6 @@ def summarize(rows):
         "employees_with_ssa": sum(1 for r in rows if r.get("salary_structure")),
         "rows_with_error": sum(1 for r in rows if r.get("row_error")),
         "total_ot_amount": total("ot_amount"),
-        "total_normal_ot_amount": total("normal_ot_amount"),
-        "total_double_ot_amount": total("double_ot_amount"),
         "total_gross_pay": total("total_earning"),
         "total_deductions": total("total_deduction"),
         "total_net_pay": total("net_pay"),
