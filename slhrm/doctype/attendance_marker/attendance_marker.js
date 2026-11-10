@@ -24,8 +24,18 @@ function figures(m) {
 	return out;
 }
 
+// grid headers may wrap onto two lines ("Early Out" at 1366 px) instead of being cut off
+function ensure_grid_style() {
+	if (document.getElementById("slhrm-marker-grid-style")) return;
+	$('<style id="slhrm-marker-grid-style">')
+		.text('[data-fieldname="attendance_details"] .grid-heading-row .grid-static-col .static-area' +
+			"{ white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.15; }")
+		.appendTo("head");
+}
+
 // orange Late In / Early Out cells in the grid (not when excused by short leave)
 function set_late_formatters(frm) {
+	ensure_grid_style();
 	const grid = frm.fields_dict.attendance_details && frm.fields_dict.attendance_details.grid;
 	Object.entries(LATE_FIELDS).forEach(([field, excused]) => {
 		const formatter = (value, df, options, doc) => {
