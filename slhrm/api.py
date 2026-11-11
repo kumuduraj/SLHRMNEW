@@ -391,9 +391,9 @@ def marker_previous_day(branch, date, company=None):
 
 @frappe.whitelist()
 def calc_attendance_times(employee, date, shift=None, in_time=None, out_time=None, out_next_day=0,
-                          short_leave=0, short_leave_min=0):
+                          short_leave=0, short_leave_min=0, status=None):
     """Attendance Marker row edited by hand (no punches needed): worked hours, early/late minutes,
-    short-leave excuses and calculated OT for IN = date + in_time, OUT = (date + 1 if out_next_day)
+    short-leave excuses, calculated OT and short hours for the row's status (default Present) for IN = date + in_time, OUT = (date + 1 if out_next_day)
     + out_time. OUT before IN on the same day is impossible, so out_next_day is returned ticked then.
     Nothing is written."""
     from slhrm.attendance import (MAX_PLAUSIBLE_HOURS, combine, day_figures, get_holiday_info, get_settings,
@@ -412,7 +412,8 @@ def calc_attendance_times(employee, date, shift=None, in_time=None, out_time=Non
     info = get_shift_info(shift, str(date), settings)
     worked = span_hours(date, in_time, out_time, nxt)
     fig = day_figures(info, combine(date, in_time), combine(date, out_time, nxt), worked, cint(emp.slhrm_ot_eligible),
-                      get_holiday_info(emp.name, str(date))[1], settings, cint(short_leave), cint(short_leave_min))
+                      get_holiday_info(emp.name, str(date))[1], settings, cint(short_leave), cint(short_leave_min),
+                      status or "Present")
     return {
         "out_next_day": nxt, "worked_hours": worked, "shift_hours": info.hours,
         "ot_eligible": 1 if cint(emp.slhrm_ot_eligible) else 0,
@@ -637,11 +638,12 @@ def load_payroll_data(branch, company, payroll_month, payroll_year):
 @frappe.whitelist()
 def refresh_salary_data(company, payroll_month, payroll_year, rows):
     """"Refresh Salary Data": rebuild the HRMS previews for the given worksheet rows, keeping
-    their OT hours/rate. rows: JSON [{employee, ot_hours, ot_rate}]. Eligibility is re-read from Employee."""
+    their OT / short hours (rate recomputed; No Pay days re-read from the markers). rows: JSON
+    [{employee, ot_hours, short_hours}]. Eligibility is re-read from Employee."""
     frappe.has_permission("Payroll Worksheet", "write", throw=True)
     start_date, end_date = _payroll_period(payroll_month, payroll_year)
     rows = json.loads(rows) if isinstance(rows, str) else rows or []
-    ot_inputs = {r["employee"]: {f: flt(r.get(f)) for f in ("ot_hours", "ot_rate")}
+    ot_inputs = {r["employee"]: {f: flt(r.get(f)) for f in ("ot_hours", "short_hours")}
                  for r in rows if r.get("employee")}
     employees = _employee_details(list(ot_inputs))
     if len(employees) > PAYROLL_BACKGROUND_THRESHOLD:
@@ -667,24 +669,23 @@ def download_worksheet_xlsx(name):
 
 @frappe.whitelist()
 def calc_worksheet_row(employee, structure_gross=0, structure_deduction=0, loan_deduction=0,
-                       ot_hours=0, ot_rate=0, apit_taxable_base=None, apit_preview=0, start_date=None):
-    """OT + totals for one row (inline OT editor). Does NOT rebuild the salary preview.
+                       ot_hours=0, short_hours=0, basic_salary=0, apit_taxable_base=None, apit_preview=0,
+                       start_date=None, **kwargs):
+    """OT + totals for one row (inline hours editor). Does NOT rebuild the salary preview.
+    Net OT, short balance, rate (Basic / 200 x 1.5) and amount from slhrm.overtime (payroll_pay.ot_fields).
     With apit_taxable_base (stored row value) the row's APIT is recomputed including the OT."""
-    from slhrm.overtime import calculate_ot_amount
     from slhrm.payroll_ot import get_ot_eligibility
-    from slhrm.payroll_pay import compose_pay
+    from slhrm.payroll_pay import compose_pay, ot_fields
     from slhrm.statutory import apit_component, worksheet_apit
 
     frappe.has_permission("Payroll Worksheet", "read", throw=True)
     eligible = cint(get_ot_eligibility([employee]).get(employee))
-    if not eligible:
-        ot_hours = ot_rate = 0
-    amount = calculate_ot_amount(ot_hours, ot_rate)
+    ot = ot_fields(employee, eligible, ot_hours, short_hours, basic_salary)
     return {
         "ot_eligible": eligible,
-        "ot_amount": amount,
-        **compose_pay(structure_gross, structure_deduction, amount, loan_deduction,
-                      apit_preview, (worksheet_apit(apit_taxable_base, amount, employee, start_date)
+        **ot,
+        **compose_pay(structure_gross, structure_deduction, ot["ot_amount"], loan_deduction,
+                      apit_preview, (worksheet_apit(apit_taxable_base, ot["ot_amount"], employee, start_date)
                                      if apit_taxable_base not in (None, "") and start_date and apit_component() else None)),
     }
 

@@ -16,6 +16,7 @@ from slhrm.attendance import (
     previous_day_marker,
     span_hours,
 )
+from slhrm.overtime import HRMS_STATUS, STATUS_LEAVE, STATUS_NO_PAY, STATUS_PRESENT, STATUS_SHORT_LEAVE, STATUSES
 OT_PERMLEVEL = 1
 SHORT_LEAVE_FIELDS = ("short_leave", "short_leave_min", "short_leave_note")
 LEVEL1_FIELDS = ("ot_hours", *SHORT_LEAVE_FIELDS)  # permlevel 1 in Attendance Marker Detail
@@ -148,16 +149,22 @@ class AttendanceMarker(Document):
 
         date_str = str(self.date)
         long_rows = []
-        late_in_count = early_out_count = no_shift_count = 0
+        late_in_count = early_out_count = no_shift_count = present = absent = no_pay = 0
         for row in self.attendance_details:
             row.shift_date = self.date
             prev = stored.get(row.name)
+            row.attendance_status = row.attendance_status or STATUS_PRESENT
+            if row.attendance_status not in STATUSES:
+                frappe.throw(_("Row {0} ({1}): Status must be one of {2}.").format(
+                    row.idx, row.employee_name or row.employee, ", ".join(STATUSES)))
             if not can_edit_ot:
                 for field in SHORT_LEAVE_FIELDS:
                     row.set(field, prev.get(field) if prev else (0 if field != "short_leave_note" else None))
             elif cint(row.short_leave_min) < 0:
                 frappe.throw(_("Row {0} ({1}): Short Leave (min) cannot be negative.").format(
                     row.idx, row.employee_name or row.employee))
+            elif row.attendance_status == STATUS_SHORT_LEAVE:
+                row.short_leave = 1  # status Short Leave = present with approved short-leave minutes
             # OUT before IN on the same day is impossible -> OUT is on the next day; no OUT -> no flag
             if not row.out_time:
                 row.out_next_day = 0
@@ -171,7 +178,7 @@ class AttendanceMarker(Document):
             fig = day_figures(
                 shift_info, combine(date_str, row.in_time), combine(date_str, row.out_time, row.out_next_day),
                 worked, is_eligible, get_holiday_info(row.employee, date_str)[1], settings,
-                row.short_leave, row.short_leave_min,
+                row.short_leave, row.short_leave_min, row.attendance_status,
             )
             row.update(fig)
             row.worked_hours = worked
@@ -182,6 +189,9 @@ class AttendanceMarker(Document):
             if cint(row.early_out_min) and not cint(row.early_out_excused):
                 early_out_count += 1
             no_shift_count += cint(row.no_shift)
+            present += row.attendance_status in (STATUS_PRESENT, STATUS_SHORT_LEAVE)
+            absent += row.attendance_status == "Absent"
+            no_pay += row.attendance_status == STATUS_NO_PAY
 
             if not is_eligible:
                 row.ot_hours = 0
@@ -200,6 +210,8 @@ class AttendanceMarker(Document):
         self.late_in_count = late_in_count
         self.early_out_count = early_out_count
         self.no_shift_count = no_shift_count
+        self.total_employees = len(self.attendance_details)
+        self.present_count, self.absent_count, self.no_pay_count = present, absent, no_pay
         if long_rows:  # warn, don't block (manual overnight entries)
             frappe.msgprint(_("More than {0} worked hours — check IN / OUT and the OUT next day box:").format(MAX_PLAUSIBLE_HOURS)
                             + "<br>" + "<br>".join(long_rows), title=_("Long shifts"), indicator="orange")
@@ -235,14 +247,16 @@ class AttendanceMarker(Document):
                         )
                     )
 
-            # Skip Holiday status - not valid in core Attendance
-            if row.attendance_status == "Holiday":
+            status = HRMS_STATUS.get(row.attendance_status)
+            if not status:
                 continue
 
             att = frappe.new_doc("Attendance")
             att.employee = row.employee
             att.attendance_date = self.date
-            att.status = row.attendance_status
+            # HRMS has no No Pay / Short Leave: No Pay -> Absent (payroll_based_on Leave: no pay cut by HRMS;
+            # the worksheet deducts No Pay), Short Leave -> Present, Leave -> On Leave
+            att.status = status
             att.shift = row.shift
             # IN = shift date + in_time; OUT = (shift date + 1 if "OUT next day") + out_time
             if row.in_time:
@@ -250,7 +264,7 @@ class AttendanceMarker(Document):
             if row.out_time:
                 att.out_time = combine(self.date, row.out_time, row.out_next_day)
             att.working_hours = row.worked_hours
-            att.leave_type = row.leave_type
+            att.leave_type = row.leave_type if row.attendance_status == STATUS_LEAVE else None
             att.company = self.company
             att.flags.ignore_permissions = True
             att.submit()

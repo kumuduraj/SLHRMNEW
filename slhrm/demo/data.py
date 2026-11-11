@@ -53,7 +53,7 @@ EPF_FLAGS = {
     C["etf"][0]: {"slhrm_epf_applicable": 0, "slhrm_epf_rate": 3},
 }
 SLHRM_SETTINGS = {
-    "ot_component": C["ot"][0], "default_ot_rate": 300, "overtime_threshold": 0.5,
+    "ot_component": C["ot"][0], "standard_day_hours": 9, "ot_min_daily_hours": 1,
 }
 
 # code, last name, branch, shift, ot_eligible, app_checkin, extra roles, base (None = no SSA), designation

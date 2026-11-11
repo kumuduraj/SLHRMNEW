@@ -13,14 +13,14 @@ shift end and this shift's start, and between this shift's end and the next day'
 overlap are not guessed: no automatic IN/OUT, warning "Overlapping shifts". Punches used by another
 date's submitted Attendance Marker are skipped.
 IN = D + in_time, OUT = (D + 1 if out_next_day else D) + out_time (combine / span_hours).
-OT hours and early/late minutes come from slhrm.overtime (the only OT math) via day_figures().
+OT hours, short hours and early/late minutes come from slhrm.overtime (the only OT math) via day_figures().
 """
 from datetime import datetime, timedelta
 
 import frappe
 from frappe.utils import add_days, cint, flt, get_datetime, getdate
 
-from slhrm.overtime import calculate_ot_hours, early_late_minutes, excused
+from slhrm.overtime import STATUS_ABSENT, STATUS_PRESENT, WORKED_STATUSES, calculate_day_hours, early_late_minutes, excused
 
 DEFAULT_WINDOW_BEFORE = 120
 DEFAULT_OT_WINDOW_AFTER = 360
@@ -246,20 +246,22 @@ def fetch_punches(employees, range_start, range_end, device_id=None):
 
 
 def day_figures(shift_info, in_dt, out_dt, worked, ot_eligible, holiday_type, settings,
-                short_leave=0, short_leave_min=0):
-    """Early/late minutes, short-leave excuses and calculated OT for one employee-day.
-    shift_info from get_shift_info (start/end None = no shift); in_dt / out_dt datetimes or None.
-    Holiday / weekly off: all worked hours are OT, so no early/late minutes (nothing counts as late)."""
+                short_leave=0, short_leave_min=0, status=STATUS_PRESENT):
+    """Early/late minutes (information), short-leave excuses, calculated OT and short hours for one employee-day
+    (rule: slhrm.overtime.calculate_day_hours). shift_info from get_shift_info (start/end None = no shift);
+    in_dt / out_dt datetimes or None. Holiday / weekly off: all worked hours are OT, no early/late minutes."""
+    status = status or STATUS_PRESENT
     working_day = holiday_type not in ("weekly_off", "holiday")
     mins = early_late_minutes(shift_info.start, shift_info.end, in_dt, out_dt) if shift_info.start and working_day else \
         dict.fromkeys(("early_in_min", "late_in_min", "early_out_min", "late_out_min"), 0)
     late_ok, early_ok = excused(mins["late_in_min"], mins["early_out_min"], short_leave, short_leave_min)
-    calc_ot = calculate_ot_hours({
-        "ot_eligible": ot_eligible, "worked_hours": worked, "holiday_type": holiday_type,
-        "early_in_min": mins["early_in_min"], "late_out_min": mins["late_out_min"],
+    hours = calculate_day_hours({
+        "status": status, "ot_eligible": ot_eligible, "worked_hours": worked, "holiday_type": holiday_type,
+        "has_shift": bool(shift_info.start), "short_leave": short_leave, "short_leave_min": short_leave_min,
     }, settings)
-    no_shift = 1 if working_day and not shift_info.start else 0  # warning: OT and late/early not calculated
-    return dict(mins, late_in_excused=late_ok, early_out_excused=early_ok, calc_ot=calc_ot, no_shift=no_shift)
+    # warning: OT / short hours not calculated (only where they would count)
+    no_shift = 1 if working_day and not shift_info.start and status in WORKED_STATUSES else 0
+    return dict(mins, late_in_excused=late_ok, early_out_excused=early_ok, no_shift=no_shift, **hours)
 
 
 def compute_day(employee, date_str, shift_info, punches, ot_eligible, holiday, settings=None):
@@ -276,8 +278,9 @@ def compute_day(employee, date_str, shift_info, punches, ot_eligible, holiday, s
     punch_source = "Both" if len(sources) > 1 else (next(iter(sources)) if sources else "")
 
     is_holiday, holiday_type = holiday
+    status = STATUS_PRESENT if in_window else STATUS_ABSENT  # same default as the marker form
     figures = day_figures(shift_info, in_dt, out_dt, worked, ot_eligible,
-                          holiday_type or ("holiday" if is_holiday else None), settings)
+                          holiday_type or ("holiday" if is_holiday else None), settings, status=status)
 
     refs = []
     for i, p in enumerate(in_window):
@@ -304,6 +307,7 @@ def compute_day(employee, date_str, shift_info, punches, ot_eligible, holiday, s
         "shift": shift_info.shift,
         "ot_eligible": 1 if cint(ot_eligible) else 0,
         **figures,
+        "attendance_status": status,
         "is_holiday": 1 if is_holiday else 0,
         "holiday_type": holiday_type,
         "punch_source": punch_source,

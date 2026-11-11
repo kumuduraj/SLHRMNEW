@@ -15,19 +15,39 @@ APIT (v0.1.0): the preview's APIT excludes worksheet OT; the row's apit_amount i
 apit_taxable_base + OT (slhrm.statutory.worksheet_apit) and replaces the preview
 APIT inside total_deduction — the same amount the final slip computes (OT arrives as Additional Salary).
 EPF never includes OT (OT components are not EPF-applicable).
+
+OT (v0.3.0): ot_hours / short_hours = sums of the submitted markers (editable, permlevel 1); net_ot_hours =
+max(0, OT - short); short_balance = max(0, short - OT) (information only); ot_rate = Basic / 200 x 1.5
+(overtime.calculate_ot_rate, Basic = basic_salary from the preview); ot_amount = net_ot_hours x ot_rate.
+No Pay: no_pay_days = marker rows with status No Pay; the amount (days x per-day formula) is put into the preview
+as a No Pay deduction (slhrm.payroll_preview), so EPF / APIT / total_deduction already include it; on submit it
+becomes a No Pay Additional Salary (dropped from later previews like the OT one).
 """
 import json
 
 import frappe
 from frappe.utils import cint, flt
 
-from slhrm.overtime import calculate_ot_amount, calculate_ot_rate
-from slhrm.payroll_ot import get_marker_ot_hours
+from slhrm.overtime import calculate_ot_amount, calculate_ot_rate, net_ot_hours, short_balance
+from slhrm.payroll_ot import get_marker_totals
 from slhrm.payroll_preview import build_previews
 from slhrm.statutory import worksheet_apit
 
 PRECISION = 2
-OT_INPUT_FIELDS = ("ot_hours", "ot_rate")
+OT_INPUT_FIELDS = ("ot_hours", "short_hours")  # editable (permlevel 1); the rate is never an input
+
+
+def ot_fields(employee, eligible, ot_hours, short_hours, basic_salary, settings=None):
+    """OT columns of one worksheet row (single place: slhrm.overtime)."""
+    if not cint(eligible):
+        return {"ot_hours": 0.0, "short_hours": 0.0, "net_ot_hours": 0.0, "short_balance": 0.0,
+                "ot_rate": 0.0, "ot_amount": 0.0}
+    ot_hours, short_hours = max(0.0, flt(ot_hours, 2)), max(0.0, flt(short_hours, 2))
+    net = net_ot_hours(ot_hours, short_hours)
+    rate = calculate_ot_rate(employee, basic_salary, settings)
+    return {"ot_hours": ot_hours, "short_hours": short_hours, "net_ot_hours": net,
+            "short_balance": short_balance(ot_hours, short_hours), "ot_rate": rate,
+            "ot_amount": calculate_ot_amount(net, rate)}
 
 
 def compose_pay(structure_gross=0, structure_deduction=0, ot_amount=0, loan_deduction=0,
@@ -70,6 +90,10 @@ def salary_fields_from_preview(preview):
         "row_error": preview.error or "",
         "apit_taxable_base": flt(preview.get("apit_taxable_base"), PRECISION),
         "apit_preview": flt(preview.get("apit_preview"), PRECISION),
+        "basic_salary": flt(preview.get("basic_salary"), PRECISION),
+        "no_pay_days": flt(preview.get("no_pay_days")),
+        "no_pay_rate": flt(preview.get("no_pay_rate"), PRECISION),
+        "no_pay_amount": flt(preview.get("no_pay_amount"), PRECISION),
         # per-row breakdown so saved / submitted worksheets render without recomputing
         "components_json": json.dumps({
             "earnings": [{"component": r["component"], "amount": r["amount"], "additional_salary": r["additional_salary"]}
@@ -97,15 +121,17 @@ def fixed_columns():
 
 def build_rows(employees, company, start_date, end_date, ot_inputs=None, progress=None):
     """Worksheet rows for `employees` (list of dicts: name, employee_name, designation,
-    slhrm_ot_eligible). `ot_inputs` {employee: {ot_hours, ot_rate}} keeps existing OT edits
-    (refresh); otherwise OT hours come from submitted markers and rates from overtime.py.
+    slhrm_ot_eligible). `ot_inputs` {employee: {ot_hours, short_hours}} keeps existing hour edits
+    (refresh); otherwise the hours come from submitted markers. Rates always from overtime.py; No Pay days
+    always from the submitted markers (also on refresh).
 
     Returns (rows, lines) where lines = {"earnings": [...], "deductions": [...]} for the
     worksheet's component tables (display).
     """
     names = [e["name"] for e in employees]
-    previews = build_previews(names, company, start_date, end_date, progress=progress)
-    marker_hours = get_marker_ot_hours(names, start_date, end_date) if ot_inputs is None else {}
+    marker = get_marker_totals(names, start_date, end_date)
+    previews = build_previews(names, company, start_date, end_date, progress=progress,
+                              no_pay_days={n: m.no_pay_days for n, m in marker.items()})
     settings = frappe.get_cached_doc("SLHRM Settings")
 
     rows, earnings, deductions = [], [], []
@@ -113,19 +139,13 @@ def build_rows(employees, company, start_date, end_date, ot_inputs=None, progres
         p = previews[e["name"]]
         salary = salary_fields_from_preview(p)
         eligible = cint(e.get("slhrm_ot_eligible"))
-        base = flt(p.base)  # SSA base (display + OT rate input); pay itself comes from the preview
-
-        if not eligible:
-            ot = dict.fromkeys(OT_INPUT_FIELDS, 0.0)
-        elif ot_inputs is not None:
-            ot = {f: flt((ot_inputs.get(e["name"]) or {}).get(f)) for f in OT_INPUT_FIELDS}
-        else:
-            ot = {"ot_hours": flt(marker_hours.get(e["name"])), "ot_rate": calculate_ot_rate(e["name"], base, settings)}
+        base = flt(p.base)  # SSA base (display); pay itself comes from the preview
+        src = (ot_inputs.get(e["name"]) or {}) if ot_inputs is not None else (marker.get(e["name"]) or {})
+        ot = ot_fields(e["name"], eligible, src.get("ot_hours"), src.get("short_hours"), salary["basic_salary"], settings)
 
         row = {
             "employee": e["name"], "employee_name": e.get("employee_name"), "designation": e.get("designation") or "",
             "base": flt(base, PRECISION), "ot_eligible": eligible, **ot,
-            "ot_amount": calculate_ot_amount(ot["ot_hours"], ot["ot_rate"]),
             **salary,
         }
         apit = row_apit(row, start_date) if p.get("apit_component") else None
@@ -155,6 +175,7 @@ def summarize(rows):
         "employees_with_ssa": sum(1 for r in rows if r.get("salary_structure")),
         "rows_with_error": sum(1 for r in rows if r.get("row_error")),
         "total_ot_amount": total("ot_amount"),
+        "total_no_pay_amount": total("no_pay_amount"),
         "total_gross_pay": total("total_earning"),
         "total_deductions": total("total_deduction"),
         "total_net_pay": total("net_pay"),

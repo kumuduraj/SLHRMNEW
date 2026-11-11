@@ -109,15 +109,53 @@
   {
    "fieldname": "ot_hours",
    "fieldtype": "Float",
-   "label": "OT Hours",
+   "label": "OT Hrs",
    "permlevel": 1,
-   "precision": "2"
+   "precision": "2",
+   "description": "Sum of the approved daily OT of the submitted Attendance Markers. HR Manager can change it."
+  },
+  {
+   "fieldname": "short_hours",
+   "fieldtype": "Float",
+   "label": "Short Hrs",
+   "permlevel": 1,
+   "precision": "2",
+   "description": "Sum of the daily short hours of the submitted Attendance Markers. HR Manager can change it."
+  },
+  {
+   "fieldname": "net_ot_hours",
+   "fieldtype": "Float",
+   "label": "Net OT Hrs",
+   "read_only": 1,
+   "precision": "2",
+   "description": "max(0, OT Hrs − Short Hrs)."
+  },
+  {
+   "fieldname": "short_balance",
+   "fieldtype": "Float",
+   "label": "Short balance (info)",
+   "read_only": 1,
+   "precision": "2",
+   "description": "Short Hrs − OT Hrs when short is larger. Information only — not deducted from pay."
+  },
+  {
+   "fieldname": "column_break_o2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "basic_salary",
+   "fieldtype": "Currency",
+   "label": "Basic Salary (period)",
+   "read_only": 1,
+   "description": "Package Basic Salary of the period (not prorated) — input of the OT rate."
   },
   {
    "fieldname": "ot_rate",
    "fieldtype": "Currency",
    "label": "OT Rate (per hr)",
-   "permlevel": 1
+   "permlevel": 1,
+   "read_only": 1,
+   "description": "Basic Salary / 200 × 1.5 (Basic = package Basic of the period, not prorated)."
   },
   {
    "fieldname": "column_break_o1",
@@ -128,7 +166,38 @@
    "fieldtype": "Currency",
    "label": "OT Amount",
    "read_only": 1,
-   "in_list_view": 1
+   "in_list_view": 1,
+   "description": "Net OT Hrs × OT Rate."
+  },
+  {
+   "fieldname": "section_break_np",
+   "fieldtype": "Section Break",
+   "label": "No Pay"
+  },
+  {
+   "fieldname": "no_pay_days",
+   "fieldtype": "Float",
+   "label": "No Pay Days",
+   "read_only": 1,
+   "description": "Attendance Marker rows with status No Pay (submitted markers of the month)."
+  },
+  {
+   "fieldname": "no_pay_rate",
+   "fieldtype": "Currency",
+   "label": "No Pay per day",
+   "read_only": 1,
+   "description": "SLHRM Settings No Pay per day formula (default (Basic Salary + Base Allowance) / 30)."
+  },
+  {
+   "fieldname": "column_break_np1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "no_pay_amount",
+   "fieldtype": "Currency",
+   "label": "No Pay Amount",
+   "read_only": 1,
+   "description": "No Pay Days × per-day rate. Included in the deductions (and lowers the EPF base and APIT taxable); becomes a No Pay Additional Salary on submit."
   },
   {
    "fieldname": "section_break_pay",
@@ -242,5 +311,5 @@
   }
  ],
  "permissions": [],
- "modified": "2026-11-10 20:00:00.000000"
+ "modified": "2026-11-11 14:00:00.000000"
 }

@@ -49,9 +49,11 @@
    "fieldname": "attendance_status",
    "fieldtype": "Select",
    "label": "Status",
-   "options": "\nPresent\nAbsent\nOn Leave\nHalf Day",
+   "options": "\nPresent\nAbsent\nLeave\nNo Pay\nShort Leave",
    "default": "Present",
-   "in_list_view": 0
+   "in_list_view": 1,
+   "columns": 1,
+   "description": "Present / Short Leave: OT and short hours count. Short Leave = present with approved short-leave minutes. No Pay: a no-pay day (deducted on the Payroll Worksheet; no OT, no short hours). Absent / Leave: no OT, no short hours (Leave follows HRMS leave)."
   },
   {
    "fieldname": "section_break_times",
@@ -160,8 +162,7 @@
    "fieldtype": "Int",
    "label": "Late In",
    "read_only": 1,
-   "in_list_view": 1,
-   "columns": 1,
+   "in_list_view": 0,
    "description": "Late In = minutes the IN is after the shift start (orange unless excused by short leave)."
   },
   {
@@ -179,8 +180,7 @@
    "fieldtype": "Int",
    "label": "Early Out",
    "read_only": 1,
-   "in_list_view": 1,
-   "columns": 1,
+   "in_list_view": 0,
    "description": "Early Out = minutes the OUT is before the shift end (orange unless excused by short leave)."
   },
   {
@@ -233,7 +233,17 @@
    "label": "OT (calculated)",
    "read_only": 1,
    "precision": "2",
-   "description": "System OT hours: (Early In + Late Out) / 60 on a working day, all worked hours on a holiday / weekly off; below the Minimum OT Hours (SLHRM Settings) = 0."
+   "description": "Working day: worked − standard day (9 h) when that is at least the daily OT minimum (1 h) — all of it; else 0. Holiday / weekly off: all worked hours (same minimum). Only for Present / Short Leave."
+  },
+  {
+   "fieldname": "short_hours",
+   "fieldtype": "Float",
+   "label": "Short",
+   "read_only": 1,
+   "in_list_view": 1,
+   "columns": 1,
+   "precision": "2",
+   "description": "Short hours: standard day (9 h) − worked − approved short-leave minutes (never below 0). Working days, status Present / Short Leave only. Netted against OT on the Payroll Worksheet."
   },
   {
    "fieldname": "column_break_c1",
@@ -247,7 +257,7 @@
    "in_list_view": 1,
    "precision": "2",
    "columns": 1,
-   "description": "OT = approved OT hours (defaults to OT (calculated)). HR Manager / Attendance Supervisor can change it; the change is recorded below and in the version history."
+   "description": "= OT (calculated). HR Manager / Attendance Supervisor can change it."
   },
   {
    "fieldname": "ot_edited_by",
@@ -275,7 +285,7 @@
    "fieldtype": "Link",
    "label": "Leave Type",
    "options": "Leave Type",
-   "depends_on": "eval:doc.attendance_status=='On Leave'"
+   "depends_on": "eval:doc.attendance_status=='Leave'"
   },
   {
    "fieldname": "leave_application",
@@ -313,5 +323,5 @@
   }
  ],
  "permissions": [],
- "modified": "2026-11-10 22:00:00.000000"
+ "modified": "2026-11-11 14:00:00.000000"
 }

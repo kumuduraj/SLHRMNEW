@@ -5,8 +5,9 @@
 // OUT < IN; supervisors may tick / untick it. Manual edits recalculate worked hours and OT on the
 // server (slhrm.api.calc_attendance_times) — this file does no time math.
 //
-// OT (v0.2.0, one OT type): calc_ot is computed on the server (slhrm.overtime): (Early In + Late Out)/60,
-// all worked hours on a holiday. ot_hours (permlevel 1: HR Manager / Attendance Supervisor) defaults to
+// OT / short hours (v0.3.0): computed on the server (slhrm.overtime.calculate_day_hours): standard day 9 h;
+// OT = worked − 9 when >= 1 h (all of it), short = 9 − worked − short-leave minutes; holiday: all worked hours
+// are OT (>= 1 h). Only for status Present / Short Leave (Absent, Leave, No Pay: 0). ot_hours (permlevel 1: HR Manager / Attendance Supervisor) defaults to
 // calc_ot and follows recalculations until the user edits it; the server records ot_edited_by / on.
 // Early/late minutes and short-leave excuses come from the server too; this file only shows them:
 // Late In / Early Out are orange in the grid unless excused, and the Lates counts are rows with an
@@ -15,7 +16,8 @@
 const OT_FIELDS = ["ot_hours"];
 const CALC_FOR = { ot_hours: "calc_ot" };
 const FIGURE_FIELDS = ["early_in_min", "late_in_min", "early_out_min", "late_out_min",
-	"late_in_excused", "early_out_excused", "calc_ot", "no_shift"];
+	"late_in_excused", "early_out_excused", "calc_ot", "short_hours", "no_shift"];
+const WORKED_STATUSES = ["Present", "Short Leave"];
 const LATE_FIELDS = { late_in_min: "late_in_excused", early_out_min: "early_out_excused" };
 
 function figures(m) {
@@ -122,7 +124,14 @@ frappe.ui.form.on("Attendance Marker", {
 });
 
 frappe.ui.form.on("Attendance Marker Detail", {
-	attendance_status(frm) {
+	attendance_status(frm, cdt, cdn) {
+		const row = locals[cdt][cdn];
+		// Short Leave = present with approved short-leave minutes (permlevel 1 fields)
+		if (row.attendance_status === "Short Leave" && !row.short_leave && frm.perm && frm.perm[1] && frm.perm[1].write) {
+			frappe.model.set_value(cdt, cdn, "short_leave", 1);  // triggers recalc_times
+		} else {
+			recalc_times(frm, cdt, cdn);
+		}
 		update_summary(frm);
 	},
 
@@ -190,7 +199,9 @@ frappe.ui.form.on("Attendance Marker Detail", {
 					ot_eligible: m.ot_eligible || 0,
 					...figures(m),
 					punch_source: m.punch_source || "",
-					attendance_status: m.punch_count > 0 ? "Present" : "Absent",
+					// keep a status the user chose (Leave / No Pay / Short Leave); Present / Absent follow the punches
+					attendance_status: ["Present", "Absent", ""].includes(row.attendance_status || "")
+						? (m.punch_count > 0 ? "Present" : "Absent") : row.attendance_status,
 				});
 
 				// dirty flag: only follow the calculation if the user hasn't changed the value
@@ -226,6 +237,7 @@ function recalc_times(frm, cdt, cdn) {
 			employee: row.employee, date: frm.doc.date, shift: row.shift || "",
 			in_time: row.in_time || "", out_time: row.out_time || "", out_next_day: row.out_next_day ? 1 : 0,
 			short_leave: row.short_leave ? 1 : 0, short_leave_min: cint(row.short_leave_min),
+			status: (row.in_time && row.out_time && row.attendance_status === "Absent") ? "Present" : (row.attendance_status || "Present"),
 		},
 		callback(r) {
 			const m = r.message;
@@ -403,12 +415,14 @@ function update_summary(frm) {
 	const rows = frm.doc.attendance_details || [];
 	let present = 0,
 		absent = 0,
+		no_pay = 0,
 		late_in = 0,
 		early_out = 0,
 		no_shift = 0;
 	rows.forEach((row) => {
-		if (row.attendance_status === "Present") present++;
+		if (WORKED_STATUSES.includes(row.attendance_status)) present++;
 		else if (row.attendance_status === "Absent") absent++;
+		else if (row.attendance_status === "No Pay") no_pay++;
 		if (cint(row.late_in_min) && !cint(row.late_in_excused)) late_in++;
 		if (cint(row.early_out_min) && !cint(row.early_out_excused)) early_out++;
 		if (cint(row.no_shift)) no_shift++;
@@ -417,6 +431,7 @@ function update_summary(frm) {
 	frm.set_value("total_employees", rows.length);
 	frm.set_value("present_count", present);
 	frm.set_value("absent_count", absent);
+	frm.set_value("no_pay_count", no_pay);
 	frm.set_value("late_in_count", late_in);
 	frm.set_value("early_out_count", early_out);
 	frm.set_value("no_shift_count", no_shift);

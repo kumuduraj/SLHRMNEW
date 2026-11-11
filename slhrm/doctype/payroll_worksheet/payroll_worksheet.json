@@ -129,6 +129,12 @@
    "read_only": 1
   },
   {
+   "fieldname": "total_no_pay_amount",
+   "fieldtype": "Currency",
+   "label": "Total No Pay",
+   "read_only": 1
+  },
+  {
    "fieldname": "column_break_s1",
    "fieldtype": "Column Break"
   },
@@ -266,6 +272,6 @@
    "write": 0
   }
  ],
- "modified": "2026-11-10 20:00:00.000000",
+ "modified": "2026-11-11 14:00:00.000000",
  "default_print_format": "Payroll Worksheet"
 }

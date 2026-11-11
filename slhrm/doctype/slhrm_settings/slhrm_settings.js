@@ -4,5 +4,6 @@ frappe.ui.form.on("SLHRM Settings", {
 		["ot_component"].forEach((field) => {
 			frm.set_query(field, () => ({ filters: { type: "Earning", disabled: 0 } }));
 		});
+		frm.set_query("no_pay_component", () => ({ filters: { type: "Deduction", disabled: 0 } }));
 	},
 });

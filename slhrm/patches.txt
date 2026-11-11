@@ -13,3 +13,4 @@ slhrm.patches.v0_0_10.backfill_ssa_package_snapshot
 slhrm.patches.v0_0_15.set_served_branches
 slhrm.patches.v0_2_0.merge_double_ot
 slhrm.patches.v0_2_1.copy_device_ids
+slhrm.patches.v0_3_0.day_rule_settings

@@ -2,19 +2,22 @@
 //
 // Salary numbers come from HRMS's own Salary Slip calculation (in-memory preview on the server,
 // never saved) + OT. This file only displays server values; it does no pay math.
+// v0.3.0: OT Hrs / Short Hrs (editable, permlevel 1) -> Net OT, Short balance, OT Rate (Basic / 200 x 1.5) and
+// OT Amount from the server (slhrm.api.calc_worksheet_row); No Pay days / amount come with the HRMS preview.
 
 const ROW_FIELDS = [
     'employee', 'employee_name', 'designation', 'salary_structure', 'base',
     'total_working_days', 'payment_days', 'lwp_days', 'present_days', 'absent_days', 'leave_days',
-    'ot_eligible', 'ot_hours', 'ot_rate', 'ot_amount',
+    'ot_eligible', 'ot_hours', 'short_hours', 'net_ot_hours', 'short_balance', 'basic_salary', 'ot_rate', 'ot_amount',
+    'no_pay_days', 'no_pay_rate', 'no_pay_amount',
     'structure_gross', 'structure_deduction', 'loan_deduction',
+    'apit_taxable_base', 'apit_preview', 'apit_amount',
     'additional_earning_total', 'additional_deduction_total',
     'total_earning', 'total_deduction', 'net_pay', 'row_error', 'components_json'
 ];
-const SALARY_FIELDS = ROW_FIELDS.filter(f => ![
-    'employee', 'ot_eligible', 'ot_hours', 'ot_rate'
-].includes(f));
-const OT_INPUTS = ['ot_hours', 'ot_rate'];
+const OT_INPUTS = ['ot_hours', 'short_hours'];
+const OT_RESULTS = ['ot_eligible', 'net_ot_hours', 'short_balance', 'ot_rate', 'ot_amount'];
+const SALARY_FIELDS = ROW_FIELDS.filter(f => !['employee'].concat(OT_INPUTS, OT_RESULTS).includes(f));
 const JOB_TIMEOUT_MS = 15 * 60 * 1000;
 const MONTH_NAMES = ['', 'January', 'February', 'March', 'April', 'May', 'June',
                      'July', 'August', 'September', 'October', 'November', 'December'];
@@ -283,7 +286,7 @@ function apply_payload(frm, data, mode) {
             const e = by_emp[row.employee];
             if (!e) return;
             SALARY_FIELDS.forEach(f => { row[f] = e[f]; });
-            ['ot_eligible', 'ot_amount'].forEach(f => { row[f] = e[f]; });
+            OT_RESULTS.concat(['apit_amount', 'total_earning', 'total_deduction', 'net_pay']).forEach(f => { row[f] = e[f]; });
             if (!e.ot_eligible) OT_INPUTS.forEach(f => { row[f] = 0; });
         });
     }
@@ -343,7 +346,9 @@ function set_dates(frm) {
 // Values come only from the stored HRMS preview breakdown (row.components_json) and the row's
 // OT / total fields; the JS adds column sums for the totals row, nothing else.
 
-const NO_TOTAL = ['ot_rate', 'total_working_days', 'payment_days', 'lwp_days'];  // money + hours only
+const NO_TOTAL = ['ot_rate', 'total_working_days', 'payment_days', 'lwp_days', 'no_pay_days'];  // money + hours only
+const OT_KEYS = ['ot_hours', 'short_hours', 'net_ot_hours', 'short_balance', 'ot_rate', 'ot_amount'];
+const NO_PAY_KEYS = ['no_pay_days', 'no_pay_amount'];
 
 function parse_breakdown(row) {
     let b = {};
@@ -388,8 +393,15 @@ function build_table(rows) {
             { key: 'payment_days', label: 'Payment Days', type: 'float' }, { key: 'lwp_days', label: 'LWP', type: 'float' }] },
         { key: 'earnings', label: 'EARNINGS', columns: earn.map(c => ({ key: 'E::' + c, label: c, type: 'currency', tooltip: tip(c) })) },
         { key: 'ot', label: 'OT', columns: [
-            { key: 'ot_hours', label: 'Hrs', type: 'float' }, { key: 'ot_rate', label: 'Rate', type: 'currency' },
-            { key: 'ot_amount', label: 'Amount', type: 'currency' }] },
+            { key: 'ot_hours', label: 'OT Hrs', type: 'float' },
+            { key: 'short_hours', label: 'Short Hrs', type: 'float' },
+            { key: 'net_ot_hours', label: 'Net OT Hrs', type: 'float', tooltip: 'max(0, OT Hrs − Short Hrs)' },
+            { key: 'short_balance', label: 'Short Bal.', type: 'float', tooltip: 'Short Hrs − OT Hrs — information only, not deducted' },
+            { key: 'ot_rate', label: 'OT Rate', type: 'currency', tooltip: 'Basic Salary / 200 × 1.5' },
+            { key: 'ot_amount', label: 'OT Amount', type: 'currency', tooltip: 'Net OT Hrs × OT Rate' }] },
+        { key: 'no_pay', label: 'NO PAY', columns: [
+            { key: 'no_pay_days', label: 'No Pay Days', type: 'float' },
+            { key: 'no_pay_amount', label: 'No Pay Amount', type: 'currency', tooltip: 'No Pay Days × per-day rate — included in DEDUCTIONS / No Pay' }] },
         { key: 'gross', label: '', columns: [{ key: 'total_earning', label: 'GROSS', type: 'currency' }] },
         { key: 'deductions', label: 'DEDUCTIONS', columns: ded.map(c => ({ key: 'D::' + c, label: c, type: 'currency', tooltip: tip(c) }))
             .concat(has_loan ? [{ key: 'loan_deduction', label: 'Loan', type: 'currency' }] : []) },
@@ -403,7 +415,7 @@ function build_table(rows) {
 
     const out_rows = rows.map((r, i) => {
         const cells = { idx: i + 1, employee_name: r.employee_name || r.employee, employee: r.employee, row_error: r.row_error || '', name: r.name };
-        ['total_working_days', 'payment_days', 'lwp_days', 'ot_hours', 'ot_rate', 'ot_amount', 'total_earning', 'total_deduction', 'net_pay', 'loan_deduction']
+        ['total_working_days', 'payment_days', 'lwp_days'].concat(OT_KEYS, NO_PAY_KEYS, ['total_earning', 'total_deduction', 'net_pay', 'loan_deduction'])
             .forEach(k => { cells[k] = flt(r[k]); });
         const b = parsed[i];
         [['E', 'earnings'], ['D', 'deductions']].forEach(([p, kind]) => b[kind].forEach(l => {
@@ -429,14 +441,15 @@ function build_table(rows) {
 
 function refresh_doc_totals(frm) {
     // Aggregates server-computed row values for the summary (server recomputes on save).
-    const t = { ot: 0, gross: 0, ded: 0, net: 0 };
+    const t = { ot: 0, no_pay: 0, gross: 0, ded: 0, net: 0 };
     (frm.doc.employees || []).forEach(e => {
-        t.ot += flt(e.ot_amount);
+        t.ot += flt(e.ot_amount); t.no_pay += flt(e.no_pay_amount);
         t.gross += flt(e.total_earning); t.ded += flt(e.total_deduction); t.net += flt(e.net_pay);
     });
     frm.set_value('total_employees', (frm.doc.employees || []).length);
     frm.set_value('employees_with_ssa', (frm.doc.employees || []).filter(e => e.salary_structure).length);
     frm.set_value('total_ot_amount', t.ot);
+    frm.set_value('total_no_pay_amount', t.no_pay);
     frm.set_value('total_gross_pay', t.gross);
     frm.set_value('total_deductions', t.ded);
     frm.set_value('total_net_pay', t.net);
@@ -444,13 +457,13 @@ function refresh_doc_totals(frm) {
 
 
 function can_edit_ot(frm) {
-    // OT hours/rates are permlevel 1 (HR Manager / System Manager); server enforces too
+    // OT / short hours are permlevel 1 (HR Manager / System Manager); server enforces too
     return frm.doc.docstatus === 0 && !!(frm.perm && frm.perm[1] && frm.perm[1].write);
 }
 
 
 const GROUP_STYLE = {
-    info: '#1a237e', earnings: '#1b5e20', ot: '#4a148c', gross: '#0d47a1',
+    info: '#1a237e', earnings: '#1b5e20', ot: '#4a148c', no_pay: '#6d4c41', gross: '#0d47a1',
     deductions: '#b71c1c', total_ded: '#0d47a1', net: '#1b5e20', employer: '#e65100'
 };
 
@@ -589,6 +602,7 @@ function render_payroll_table(frm) {
     html += '</tr></tbody></table></div>';
     html += '<p class="text-muted small">' +
         __('Salary columns are HRMS Salary Slip previews (structure, payment days / LWP, Additional Salary, package overrides) — calculated on the server, never saved. Gross = HRMS gross + OT. "-" = component not on that employee\'s slip.') +
+        '<br>' + __('OT Amount = Net OT Hrs (OT − Short) × OT Rate (Basic / 200 × 1.5). Short balance is information only. No Pay Amount (No Pay days × per-day rate) is already inside DEDUCTIONS / No Pay and lowers the EPF base and APIT.') +
         '<br>' + __('Tax/statutory components are calculated on the final Salary Slip including OT.') + '</p>';
 
     wrapper.$wrapper.html(html);
@@ -609,7 +623,7 @@ function render_payroll_table(frm) {
             employee: row.employee, structure_gross: row.structure_gross || 0,
             structure_deduction: row.structure_deduction || 0, loan_deduction: row.loan_deduction || 0,
             apit_taxable_base: row.apit_taxable_base || 0, apit_preview: row.apit_preview || 0,
-            start_date: frm.doc.start_date || ''
+            basic_salary: row.basic_salary || 0, start_date: frm.doc.start_date || ''
         };
         OT_INPUTS.forEach(f => { args[f] = row[f] || 0; });
         args[field] = value;

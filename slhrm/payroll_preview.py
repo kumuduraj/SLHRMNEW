@@ -20,6 +20,7 @@ import frappe
 from frappe.utils import flt, getdate
 
 from slhrm.overrides.salary_slip import apply_salary_rules
+from slhrm.overtime import OT_BASIC_ABBR, calculate_no_pay_amount, calculate_no_pay_rate
 
 WORKSHEET_DOCTYPE = "Payroll Worksheet"
 
@@ -118,13 +119,38 @@ def _drop_worksheet_ot(slip):
     slip.set_net_pay()
 
 
-def build_preview(employee, company, start_date, end_date):
+def period_values(slip):
+    """{abbreviation: unprorated period amount} of the slip's structure / package earnings (no Additional
+    Salary rows), plus "base" — the inputs of the OT rate (Basic) and the No Pay per-day formula."""
+    values = {}
+    for r in slip.get("earnings") or []:
+        if r.additional_salary or r.do_not_include_in_total or not r.abbr:
+            continue
+        values[r.abbr] = flt(values.get(r.abbr)) + flt(r.default_amount if r.default_amount is not None else r.amount)
+    return values
+
+
+def add_no_pay(slip, amount, component):
+    """The worksheet's own No Pay (days x per-day rate) as a deduction row of the preview — the same row the
+    final slip gets from the worksheet's No Pay Additional Salary, so EPF and APIT see it the same way."""
+    row = slip.append("deductions", {})
+    row.salary_component = component
+    row.abbr = frappe.get_cached_value("Salary Component", component, "salary_component_abbr")
+    row.depends_on_payment_days = 0
+    row.amount = row.default_amount = flt(amount, 2)
+    row.additional_amount = 0
+    return row
+
+
+def build_preview(employee, company, start_date, end_date, no_pay_days=0):
     """HRMS Salary Slip numbers for one employee and period, computed in memory only.
 
     Returns a dict: earnings / deductions [{component, abbr, amount, additional_salary,
     depends_on_payment_days}], gross_pay, total_deduction, net_pay, total_loan_repayment,
     total_working_days, payment_days, absent_days, leave_without_pay, salary_structure, base (SSA),
-    employer [{component, abbr, amount}] (statistical, not in totals), base_component, error.
+    employer [{component, abbr, amount}] (statistical, not in totals), base_component, error,
+    basic_salary (package Basic of the period, unprorated — OT rate input), no_pay_days / no_pay_rate /
+    no_pay_amount (the worksheet's No Pay, already inside deductions / EPF / APIT of this preview).
     """
     from hrms.payroll.doctype.salary_structure.salary_structure import make_salary_slip
 
@@ -133,6 +159,7 @@ def build_preview(employee, company, start_date, end_date):
         total_loan_repayment=0.0, total_working_days=0.0, payment_days=0.0, absent_days=0.0,
         leave_without_pay=0.0, salary_structure="", base=0.0, employer=[], base_component=None, error=None,
         apit_component=None, apit_taxable_base=0.0, apit_preview=0.0, apit_exempt=0,
+        basic_salary=0.0, no_pay_days=flt(no_pay_days), no_pay_rate=0.0, no_pay_amount=0.0,
     )
     savepoint = f"slhrm_preview_{frappe.generate_hash(length=8)}"
     messages_before = len(frappe.local.message_log or [])
@@ -165,6 +192,22 @@ def build_preview(employee, company, start_date, end_date):
         ))
         _drop_worksheet_ot(slip)
         rules = apply_salary_rules(slip)  # package overrides -> EPF/ETF -> APIT (same entry point as the real slip)
+        values = dict(period_values(slip), base=result.base)
+        result.basic_salary = flt(values.get(OT_BASIC_ABBR), 2)
+        settings = frappe.get_cached_doc("SLHRM Settings")
+        try:
+            rate = calculate_no_pay_rate(values, settings)
+        except Exception as e:
+            if flt(no_pay_days) > 0:
+                raise frappe.ValidationError(f"No Pay per day formula (SLHRM Settings): {e}") from e
+            rate = 0.0
+        result.no_pay_rate = flt(rate, 2)
+        result.no_pay_amount = calculate_no_pay_amount(no_pay_days, rate)
+        if result.no_pay_amount > 0:
+            if not settings.no_pay_component:
+                raise frappe.ValidationError("Set the No Pay Salary Component in SLHRM Settings.")
+            add_no_pay(slip, result.no_pay_amount, settings.no_pay_component)
+            rules = apply_salary_rules(slip)  # idempotent: EPF base / APIT taxable now reduced by the No Pay
         employer = _merge_employer(employer, rules["employer"])
         apit = rules.get("apit") or {}
 
@@ -195,12 +238,12 @@ def build_preview(employee, company, start_date, end_date):
     return result
 
 
-def build_previews(employees, company, start_date, end_date, progress=None):
-    """{employee: preview}; one employee's error never stops the others."""
+def build_previews(employees, company, start_date, end_date, progress=None, no_pay_days=None):
+    """{employee: preview}; one employee's error never stops the others. no_pay_days {employee: days}."""
     out = {}
     total = len(employees)
     for i, emp in enumerate(employees, 1):
-        out[emp] = build_preview(emp, company, start_date, end_date)
+        out[emp] = build_preview(emp, company, start_date, end_date, (no_pay_days or {}).get(emp, 0))
         if progress:
             progress(i, total)
     return out

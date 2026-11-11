@@ -86,6 +86,17 @@
    "read_only": 1
   },
   {
+   "fieldname": "column_break_np",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "no_pay_count",
+   "fieldtype": "Int",
+   "label": "No Pay",
+   "read_only": 1,
+   "description": "Rows with status No Pay (deducted on the Payroll Worksheet)."
+  },
+  {
    "fieldname": "column_break_s3",
    "fieldtype": "Column Break"
   },
@@ -203,5 +214,5 @@
    "write": 1
   }
  ],
- "modified": "2026-11-10 22:00:00.000000"
+ "modified": "2026-11-11 14:00:00.000000"
 }

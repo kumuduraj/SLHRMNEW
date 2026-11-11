@@ -44,17 +44,20 @@
    "label": "Overtime"
   },
   {
-   "fieldname": "default_ot_rate",
-   "fieldtype": "Currency",
-   "label": "OT Rate (per hour)",
-   "description": "Default OT rate per hour for the Payroll Worksheet (editable per employee there)."
+   "fieldname": "standard_day_hours",
+   "fieldtype": "Float",
+   "label": "Standard Day (hours)",
+   "default": "9",
+   "precision": "2",
+   "description": "Worked hours of a normal day. Above it: OT (see Minimum Daily OT). Below it: short hours."
   },
   {
-   "fieldname": "overtime_threshold",
+   "fieldname": "ot_min_daily_hours",
    "fieldtype": "Float",
-   "label": "Minimum OT Hours",
-   "default": "0",
-   "description": "OT below this many hours per day is not counted. 0 = count all."
+   "label": "Minimum Daily OT (hours)",
+   "default": "1",
+   "precision": "2",
+   "description": "A day's extra hours (worked − standard day; on a holiday all worked hours) count as OT only when at least this many — then ALL of them (10:15 worked = 1.25 h OT; 9:30 worked = 0). 0 = no minimum."
   },
   {
    "fieldname": "column_break_ot1",
@@ -73,6 +76,29 @@
    "options": "Salary Component",
    "label": "OT Salary Component",
    "description": "Earning component (Overtime) used for the OT Additional Salary created on Payroll Worksheet submit."
+  },
+  {
+   "fieldname": "section_break_no_pay",
+   "fieldtype": "Section Break",
+   "label": "No Pay"
+  },
+  {
+   "fieldname": "no_pay_component",
+   "fieldtype": "Link",
+   "options": "Salary Component",
+   "label": "No Pay Salary Component",
+   "description": "Deduction component (No Pay) for the No Pay Additional Salary created on Payroll Worksheet submit."
+  },
+  {
+   "fieldname": "column_break_np1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "no_pay_day_formula",
+   "fieldtype": "Data",
+   "label": "No Pay per day formula",
+   "default": "(BS + BA) / 30",
+   "description": "Per-day No Pay amount; use salary component abbreviations (BS = Basic Salary, BA = Base Allowance, VA = Vehicle Allowance; the period's package amounts, not prorated) and base. No Pay = No Pay days (marker status No Pay) × this. PLACEHOLDER default — to be confirmed."
   },
   {
    "fieldname": "section_break_defaults",
@@ -185,5 +211,5 @@
    "write": 1
   }
  ],
- "modified": "2026-11-10 20:00:00.000000"
+ "modified": "2026-11-11 14:00:00.000000"
 }
