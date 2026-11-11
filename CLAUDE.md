@@ -439,11 +439,11 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   handoff + branch-scoped/cutoff docs) carries an old PWA message → write a NEW, uniquely named message file for
   every commit and read `git log -1 --format=%B` BEFORE `git push`.
 
-## Handoff — current state (2026-11-11, v0.3.0, prod = upstream/master = dev)
+## Handoff — current state (2026-11-11, v0.3.1, prod = upstream/master = dev)
 - Audit trail of every phase: `~/slhrm_audit_20261108.md` (… "Phase 3.0 result", "Phase 3.0 completion after
   restart", "Phase 3.1 result", "Phase 3.2 result", "Phase 3.3 result", … "Phase 3.4 result"). Read the last sections before starting.
-- Version 0.3.0 (`slhrm/__init__.py`, pyproject / setup.py / setup.cfg in step). Last deploy + restart 2026-11-11
-  08:07 UTC; all GILLSHR processes confirmed.
+- Version 0.3.1 (`slhrm/__init__.py`, pyproject / setup.py / setup.cfg in step). Last deploy + restart 2026-11-11
+  08:22 UTC; all GILLSHR processes confirmed.
 - **Employees:** 118 active — DUTCHPUB 45, FORTFUSION 35, BRITISHPUB 22, ALIYA 16. No DEMO data. No user logins
   yet (prod has no outgoing email → temporary passwords). 3 DUTCHPUB employees created from device users with
   placeholder data (HR-EMP-00155 Raveesha 3095, -00156 Dilith 501, -00157 Buddhika Rupasinghe 575; Comment on each).
@@ -457,7 +457,8 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   holiday: all worked hours ≥ 1.0 h. **OT rate DONE: Basic / 200 × 1.5.** No Pay from marker status No Pay × per-day
   formula (placeholder `(BS + BA) / 30`). 118 packages are still 0 amounts → OT rate and No Pay are 0 until HR imports.
 - **Attendance:** 7 Shift Types (03-12 Dawn … 21-06 Night) exist, but **no employee has a shift** → every marker row is
-  "No shift" (no OT, no late/early; with no shift the punch window is the whole day, so some rows show ~24 h).
+  "No shift" (no late/early; OT / short from worked hours since v0.3.1; with no shift the punch window is the whole day, so
+  some rows show ~24 h — check IN / OUT before submitting).
   Role "Attendance Supervisor" exists (no user has it yet); supervisors are scoped by a User Permission on Branch.
 - **Holidays:** HRMS v16 uses Holiday List Assignment only. One company assignment: "Holidays 2026-2027 - GHPL"
   (from 2026-04-01) with **5 public holidays and no weekly offs**.
@@ -469,8 +470,8 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - **Open — waiting for Raj / HR:**
   - **No Pay per-day formula — PENDING Raj's confirmation.** Placeholder SLHRM Settings `no_pay_day_formula` =
     `(BS + BA) / 30` (Basic Salary + Base Allowance, 30 days). Change it in SLHRM Settings (no code change needed).
-  - **Shifts on employees** — without a shift a working day gives no OT and no short hours (v0.3.0 keeps the v0.2.1
-    "No shift" rule); confirm whether the 9-hour rule should apply without a shift.
+  - Shifts on employees: no longer needed for OT / short hours (v0.3.1, 9-hour rule applies without a shift); still
+    needed for late/early minutes and a tight punch window (no shift = whole calendar day).
   - **GL accounts** on salary components before any Payroll Entry (none set). Earnings: Basic Salary, Base Allowance,
     Vehicle Allowance, Other Allowance, Overtime (+ unused HRMS defaults Basic, Arrear, Leave Encashment). Deductions:
     EPF Employee 8%, APIT, Death Donation, No Pay, Other Deduction, Salary Advance, Personal Loan, Staff Bill (+ unused
@@ -481,7 +482,7 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
     `bench execute slhrm.biometric.device_id_collisions --kwargs '{"serial": "…"}'` (collisions = re-enrol on site;
     similar / no_name = HR checks) → `backfill --device N` → enable in the agent config. FORTFUSION has no device.
   - **HR data items:**
-    - Shifts: set `default_shift` (or Shift Assignments) for every employee — needed for OT and late/early.
+    - Shifts: set `default_shift` (or Shift Assignments) for every employee — needed for late/early and the punch window.
     - Supervisor branch permissions: give each supervisor the role "Attendance Supervisor" + a User Permission
       (Allow: Branch, value: their branch).
     - Holiday list assignment: complete "Holidays 2026-2027 - GHPL" (weekly offs, Poya days …) or assign per-branch /
@@ -530,6 +531,7 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   supervisor's branch) per supervisor**; `api._check_branch_allowed` applies it to load_attendance_data /
   recalc_attendance_row / calc_attendance_times (they read with get_all).
 - Working day without a shift: row `no_shift` (orange "No shift" in the Shift cell), parent `no_shift_count` ("No shift").
+  Since v0.3.1 a warning only: OT / short hours still come from the worked hours.
 
 ## Payslip lines + salary package import (v0.2.2, Raj 2026-11-11)
 - **Every payslip line is in the structure** ("Standard Staff Structure", `salary_setup.STRUCTURE_ROWS`, order =
@@ -572,8 +574,9 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   Leave** (Absent, Leave, No Pay → OT 0, short 0): worked = OUT − IN (incl. OUT +1); working day: extra = worked −
   `standard_day_hours` (9); extra ≥ `ot_min_daily_hours` (1.0) → OT = ALL of the extra (10:15 worked → 1.25), else 0;
   short = 9 − worked − approved short-leave minutes / 60 (floor 0, no minimum). Holiday / weekly off: all worked hours are
-  OT with the same ≥ 1.0 rule, short 0. Working day without a shift → 0 / 0 + "No shift" warning (decision kept from v0.2.1;
-  NOTE every prod employee still has no shift). Not OT-eligible → OT 0, short still shown. Settings `standard_day_hours` /
+  OT with the same ≥ 1.0 rule, short 0. **Working day without a shift (v0.3.1, Raj 2026-11-11): the same rule on the worked
+  hours** (IN / OUT pairing within the day — no shift = whole-day punch window — OUT +1 if ticked); early/late minutes stay
+  blank and the "No shift" warning stays. Not OT-eligible → OT 0, short still shown. Settings `standard_day_hours` /
   `ot_min_daily_hours` replace `overtime_threshold`; `default_ot_rate` is gone (old Singles values left inert).
 - **Statuses** (Marker Detail `attendance_status`): Present, Absent, Leave, No Pay, Short Leave. Short Leave = present with
   approved `short_leave_min` (the server ticks `short_leave` for level-1 users; the minutes also excuse Late In / Early Out).
