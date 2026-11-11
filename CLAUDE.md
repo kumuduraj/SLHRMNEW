@@ -27,6 +27,17 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   Unit tests assert every forbidden method raises and every pyzk method is classified. Never import pyzk in a
   helper script — use the agent. Wrong clock / users on a device → tell Raj; it's fixed on site.
 
+## Session rule — root vs rajerp (Raj, 2026-11-11, standing for all SLHRM sessions)
+- Start every task with `id`.
+- **`id` is root:** allowed, but run EVERY command via `sudo -u rajerp -H bash -lc '…'`. Never write, create or move
+  any file as root. Never run python / bench / git directly as root — not even read-only, and never from inside an
+  app folder (a root `python3` in `apps/frappe/frappe` imported frappe's `types` package and wrote root-owned
+  `__pycache__/*.pyc` there, 2026-11-10).
+- **`id` is rajerp:** run commands directly.
+- Task start: create a rajerp-owned marker (`touch ~/cc-tmp/task_start_<date>_<task>` as rajerp). Task end:
+  `find /home/rajerp -newer <marker> ! -user rajerp -not -path '*/frappe-bench/logs/*'` must print nothing; if it
+  does, replace the file with a rajerp-owned copy (or remove a stray cache file as rajerp) or report it.
+
 ## Production
 - Bench `/home/rajerp/GILLSHR`, user `rajerp`, site `hrm.gillsinternational.com`.
 - App checkout: `/home/rajerp/GILLSHR/apps/slhrm` (production mode under supervisor).
@@ -78,8 +89,9 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - Device endpoints (`device_ingest`, `device_heartbeat`, legacy `device_punch`, `device_punch_bulk`) are
   `allow_guest`; they must call `_validate_device_api_key()` first, and that check must fail closed
   (disabled/unset/wrong → 403). New endpoints pass `header_only=True` (key only in `X-Device-Key`).
-- `install.execute` / `install.after_migrate` only ensure the SLHRM Module Def via the API. Keep them
-  idempotent and API-based, on SLHRM-owned records only; no raw SQL, no file writes into the app.
+- `install.execute` / `install.after_migrate` only ensure the SLHRM Module Def, the "Attendance Supervisor" role
+  (v0.2.0) and the Custom DocPerm base copy (v0.2.1) via the API. Keep them idempotent and API-based; no raw SQL, no
+  file writes into the app.
 - Custom fields carry the `slhrm_` prefix (Employee: `slhrm_biometric_section`,
   `slhrm_biometric_device_id`, `slhrm_biometric_device_name`, `slhrm_epf_no` = EPF No., after Employee
   Number — HRMS v16 Employee has no EPF/provident-fund field). Check that every `insert_after`
@@ -127,8 +139,8 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   **Mark days in order**: D+1 only knows D's night shift from D's SUBMITTED marker (or default_shift). Saving /
   submitting a marker whose previous day (same branch) is not submitted shows a warning (never blocks); the form
   shows the previous day's status (`slhrm.api.marker_previous_day`). Marker grid: Employee Name only (the
-  Employee link is in the row editor); short labels Shift / IN / OUT / OUT +1 / Hrs / N.OT / D.OT with the full
-  meaning in each field's description (Frappe v16 has no grid-only label; row editors copy grid.docfields), grid
+  Employee link is in the row editor); short labels Shift / IN / OUT / OUT +1 / Hrs / Late In / Early Out / OT (v0.2.0)
+  with the full meaning in each field's description (Frappe v16 has no grid-only label; row editors copy grid.docfields), grid
   columns sum to 10 (Employee Name 2, others 1); per-row OT lock = `grid_row.toggle_editable` (v16 has no
   `grid_form.set_df_property`).
 - Shift Types (2026-11-10, hours first so the grid shows the hours; no employee assigned yet): 03-12 Dawn,
@@ -338,9 +350,9 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   Rotate: generate `secrets.token_urlsafe(32)` in one process → save on SLHRM Settings (device_api_enabled = 1) →
   write the config → verify no key 403 / wrong key 403 / agent heartbeat 200 (show only length + first 4 chars).
 - Mapping screen: Script Report "Unmatched Device Users" (`slhrm/report/`, module symlink `slhrm/slhrm/report`);
-  "Map to Employee" = `slhrm.biometric.map_device_user` (refuses an employee of a branch the device does not
-  serve, and an id held by another active employee of its served branches; the picker offers only served branches);
-  columns Employee No. Hit / Reason show rule (b) live; the dialog pre-fills the number hit.
+  "Map to Employee" = `slhrm.biometric.map_device_user` (v0.2.1: any branch — another branch is matched as
+  "other branch"; refuses an id held by anyone else); columns Employee No. Hit / Reason show rule (b) live; the dialog
+  pre-fills the number hit. Report "Device Users Other Branch" lists other-branch matches.
 - Agent scheduler (2026-11-09): rajerp crontab `*/5 … slhrm_agent.py --config ~/slhrm-agent/config.json run` (log
   `~/slhrm-agent/agent.log`); only devices with `enabled: true` in the config are read (DUTCHPUB). DUTCHPUB backfilled
   (27 975 records from 2025-11-04; re-send = all duplicate). `backfill --device N [--resend]` for new devices. Unit tests: `python3 -m unittest discover -s
@@ -420,25 +432,49 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   handoff + branch-scoped/cutoff docs) carries an old PWA message → write a NEW, uniquely named message file for
   every commit and read `git log -1 --format=%B` BEFORE `git push`.
 
-## Handoff — current state (2026-11-09, v0.0.14, prod = upstream/master)
-- Audit trail of every phase: `~/slhrm_audit_20261108.md` (Phase 1.x … "Phase 2.2 result (part 2)").
-- Prod has 94 real employees (20 DUTCHPUB, 22 BRITISHPUB, 16 ALIYA, 36 FORTFUSION), no DEMO data, no user logins yet.
-- Doubled employee names FIXED 2026-11-09 (last_name cleared where == first_name, 94/94; script archived in
-  `~/cc-tmp/archive_names_fix_20261109/`).
-- **Biometric:** only DUTCHPUB is enabled (device details: Biometric Device record + ~/slhrm-agent/config.json); agent every 5 min
-  (rajerp crontab). Cutoff 2026-11-01 on both sides; rows before it deleted (backup in ~/cc-tmp). Settings:
-  device API on, match by employee number ON, Biometric Start Date 2026-11-01.
-  6 DUTCHPUB employees linked by employee number (375, 431, 456, 472, 477, 515); every other device user is
-  Unmatched → HR maps them in **Unmatched Device Users**.
-- Old tool (hr.gillsinternational.com, `attendance_device_id`, no branch filter) has no pub employees; no site on this
-  server holds DUTCHPUB/BRITISHPUB/ALIYA/FORTFUSION device ids — mapping is manual.
+## Handoff — current state (2026-11-11, v0.2.1, prod = upstream/master = dev)
+- Audit trail of every phase: `~/slhrm_audit_20261108.md` (… "Phase 3.0 result", "Phase 3.0 completion after
+  restart", "Phase 3.1 result", "Phase 3.2 result"). Read the last sections before starting.
+- Version 0.2.1 (`slhrm/__init__.py`, pyproject / setup.py / setup.cfg in step). Last deploy + restart 2026-11-10
+  14:10 UTC; all GILLSHR processes confirmed.
+- **Employees:** 118 active — DUTCHPUB 45, FORTFUSION 35, BRITISHPUB 22, ALIYA 16. No DEMO data. No user logins
+  yet (prod has no outgoing email → temporary passwords). 3 DUTCHPUB employees created from device users with
+  placeholder data (HR-EMP-00155 Raveesha 3095, -00156 Dilith 501, -00157 Buddhika Rupasinghe 575; Comment on each).
+- **Payroll (v0.1.0–v0.2.0):** "Standard Staff Structure-1" + components (Overtime, Staff Bill, APIT with exact
+  monthly slabs, EPF/ETF via `slhrm.statutory`). No Employee Salary Package, SSA, marker or worksheet exists yet.
+  ONE OT type: (Early In + Late Out)/60 on a working day, all hours on a holiday/weekly off; OT rate = SLHRM Settings
+  `default_ot_rate` (currently **0**), Minimum OT Hours 0.
+- **Attendance:** 7 Shift Types (03-12 Dawn … 21-06 Night) exist, but **no employee has a shift** → every marker row is
+  "No shift" (no OT, no late/early; with no shift the punch window is the whole day, so some rows show ~24 h).
+  Role "Attendance Supervisor" exists (no user has it yet); supervisors are scoped by a User Permission on Branch.
+- **Holidays:** HRMS v16 uses Holiday List Assignment only. One company assignment: "Holidays 2026-2027 - GHPL"
+  (from 2026-04-01) with **5 public holidays and no weekly offs**.
+- **Biometric:** only DUTCHPUB (serves DUTCHPUB + FORTFUSION) is registered and enabled; agent every 5 min (rajerp
+  crontab, `~/slhrm-agent/`). Cutoff 2026-11-01. Device id = `Employee.attendance_device_id` ("Attendance Device ID
+  (all devices)", unique company-wide; 50 employees have one). Punches: ~3,100 matched (Pending), 173 Unmatched
+  (device users 571, 572, 576, 13426 — names on the device are "NN-…"). 322 Shanaka (ALIYA) matches as other branch.
+  DUTCHPUB clock ~11 min slow (−670 s) — fix on site; the agent never sets device time.
 - **Open — waiting for Raj / HR:**
-  - HR maps DUTCHPUB device users (report). HR to confirm the link of device user 477 (its employee number
-    belongs to a different person on hr.gillsinternational.com); device user 507 stays unmatched (name differs).
-  - DUTCHPUB clock ~11 min slow (−670 s): fix on site; the agent never sets device time.
-  - BRITISHPUB and ALIYA: unreachable from the VPS; need network access + comm
-    passwords, then register → `backfill --device N` → enable in config. FORTFUSION has no device.
-  - OT formulas in `slhrm/overtime.py` are still PLACEHOLDERS.
+  - **OT rate formula** (today a flat SLHRM Settings rate, 0). `overtime.calculate_ot_rate(employee, base, settings)` is
+    the one place to implement it.
+  - **GL accounts** on salary components before any Payroll Entry (none set). Earnings: Basic Salary, Base Allowance,
+    Vehicle Allowance, Other Allowance, Overtime (+ unused HRMS defaults Basic, Arrear, Leave Encashment). Deductions:
+    EPF Employee 8%, APIT, Death Donation, No Pay, Other Deduction, Salary Advance, Personal Loan, Staff Bill (+ unused
+    Income Tax). EPF Employer 12% / ETF Employer 3% only if an employer-contribution JV is wanted. Payroll Payable
+    default: 2120 - Payroll Payable - GHPL.
+  - **BRITISHPUB / ALIYA devices:** unreachable from the VPS; need network access + comm keys (passwords). Then:
+    register the Biometric Device (branch, served branches, timezone) → agent `sync_users` (read-only) →
+    `bench execute slhrm.biometric.device_id_collisions --kwargs '{"serial": "…"}'` (collisions = re-enrol on site;
+    similar / no_name = HR checks) → `backfill --device N` → enable in the agent config. FORTFUSION has no device.
+  - **HR data items:**
+    - Shifts: set `default_shift` (or Shift Assignments) for every employee — needed for OT and late/early.
+    - Supervisor branch permissions: give each supervisor the role "Attendance Supervisor" + a User Permission
+      (Allow: Branch, value: their branch).
+    - Holiday list assignment: complete "Holidays 2026-2027 - GHPL" (weekly offs, Poya days …) or assign per-branch /
+      per-employee lists where branches differ (Holiday List Assignment).
+    - Placeholder employee details: gender / DOB / date of joining for HR-EMP-00155, -00156, -00157 (and the earlier
+      DUTCHPUB new employees with the same Comment).
+    - Device users 571, 572, 576, 13426: identify on site, then "Map to Employee" in Unmatched Device Users.
 
 ## Known open items (not yet fixed)
 - `SLHRM Settings` fields never read by code: `auto_mark_attendance`, `auto_create_payroll_on_submit`.
