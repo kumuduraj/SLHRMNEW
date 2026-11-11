@@ -544,4 +544,9 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   on the active structure → the package makes the SSA; empty Basic → skipped; identical row → unchanged). Desk:
   Employee Salary Package list → "Import Salary Packages" (HR Manager / System Manager): private upload → preview →
   Apply; the uploaded file is deleted after Apply / Cancel.
+- **Placeholder packages** (2026-11-11): `salary_import.assign_placeholders(dry_run)` gives every Active employee without a
+  package one with 0 amounts from 2026-10-01 (SSA base 0, Comment "Placeholder 0 amounts …"). The package's "at least one
+  earning > 0" rule is skipped ONLY via `doc.flags.allow_zero_amounts` (set by that tool); HR edits still need an amount.
+  A later import with the SAME Effective From replaces the 0 SSA (cancel + recreate); a 0 package pays Death Donation
+  200 only → net −200 until the real amounts are imported.
 

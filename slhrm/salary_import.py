@@ -8,6 +8,10 @@ Desk: Employee Salary Package list → "Import Salary Packages" (HR Manager / Sy
 preview_import (dry run) → apply_import → the uploaded file is deleted.
 
 Never invents salaries: the template's amount columns are empty; a row without Basic Salary is skipped and listed.
+Placeholders (`assign_placeholders`, bench execute): every Active employee without a package gets one with Basic /
+Base Allowance / Vehicle Allowance = 0 from DEFAULT_EFFECTIVE (SSA base 0) + a Comment; a later import with the SAME
+Effective From replaces that SSA (package rule: same from_date → cancel + recreate), a later date adds a new one.
+
 Idempotent: a row equal to the employee's package (amounts, Effective From, structure, APIT exempt) → "unchanged",
 nothing saved. A changed amount with a new Effective From → new SSA from that date; earlier SSAs stay (package rules).
 """
@@ -304,6 +308,64 @@ def run(file, dry_run=True):
     return {"structure": struct, "dry_run": bool(dry), "rows": results,
             "skipped": [r for r in results if r.action == "skipped"],
             "totals": sorted(totals.values(), key=lambda t: t["branch"]), "counts": counts}
+
+
+# ── placeholder packages (amounts to follow) ────────────────────
+
+PLACEHOLDER_COMMENT = ("Placeholder 0 amounts — real salary via Import Salary Packages, same Effective From {0} "
+                       "replaces this assignment.")
+
+
+def assign_placeholders(dry_run=1, effective_from=DEFAULT_EFFECTIVE, employees=None):
+    """Every Active employee (or `employees`) WITHOUT an Employee Salary Package gets one on the active structure:
+    Basic / Base Allowance / Vehicle Allowance = 0, Effective From `effective_from`, APIT exempt No, and a Comment.
+    The package creates the SSA (base 0) the normal way. Employees that already have a package are skipped + listed.
+    dry_run=1 validates every package (package rules, period open, SSA plan) without writing.
+    Returns {structure, dry_run, counts, per_branch, skipped, errors}."""
+    dry, struct, eff = cint(dry_run), structure(), getdate(effective_from)
+    filters = {"status": "Active"}
+    if employees:
+        filters["name"] = ["in", list(employees) if not isinstance(employees, str) else [employees]]
+    emps = frappe.get_all("Employee", filters=filters, fields=["name", "employee_name", "branch", "company", "slhrm_apit_exempt"],
+                          order_by="branch asc, employee_name asc")
+    counts, per_branch, skipped, errors = {}, {}, [], []
+    for e in emps:
+        br = per_branch.setdefault(e.branch or "-", {"branch": e.branch or "-", "active": 0, "created": 0, "skipped": 0, "error": 0})
+        br["active"] += 1
+        if frappe.db.exists("Employee Salary Package", {"employee": e.name}):
+            skipped.append({"employee": e.name, "employee_name": e.employee_name, "branch": e.branch})
+            br["skipped"] += 1
+            counts["skipped"] = counts.get("skipped", 0) + 1
+            continue
+        doc, _existing = _build_package(e, {c: 0 for c in AMOUNT_COLUMNS}, eff, struct)
+        doc.flags.allow_zero_amounts = True
+        frappe.flags.mute_messages = True
+        try:
+            frappe.db.savepoint("slhrm_placeholder")
+            if dry:
+                doc.validate()
+            else:
+                doc.insert()
+                doc.add_comment("Comment", PLACEHOLDER_COMMENT.format(eff.isoformat()))
+                if cint(e.slhrm_apit_exempt):
+                    emp = frappe.get_doc("Employee", e.name)
+                    emp.slhrm_apit_exempt = 0
+                    emp.save()
+                frappe.db.release_savepoint("slhrm_placeholder")
+            br["created"] += 1
+            counts["created" if not dry else "would create"] = counts.get("created" if not dry else "would create", 0) + 1
+        except Exception as ex:
+            frappe.db.rollback(save_point="slhrm_placeholder")
+            errors.append({"employee": e.name, "employee_name": e.employee_name, "branch": e.branch,
+                           "error": frappe.utils.strip_html(cstr(ex))[:300] or type(ex).__name__})
+            br["error"] += 1
+            counts["error"] = counts.get("error", 0) + 1
+        finally:
+            frappe.flags.mute_messages = False
+    if not dry:
+        frappe.db.commit()
+    return {"structure": struct, "dry_run": bool(dry), "effective_from": eff.isoformat(), "counts": counts,
+            "per_branch": sorted(per_branch.values(), key=lambda b: b["branch"]), "skipped": skipped, "errors": errors}
 
 
 # ── Desk endpoints (HR Manager / System Manager) ────────────────

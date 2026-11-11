@@ -104,7 +104,8 @@ class EmployeeSalaryPackage(Document):
             row.salary_component_type == "Earning" and row.override and flt(row.amount) > 0
             for row in self.components
         )
-        if not has_earning:
+        # placeholder packages (amounts to follow) set this flag; HR edits still need a real amount
+        if not has_earning and not self.flags.allow_zero_amounts:
             frappe.throw(
                 _("At least one Earning component must have an amount greater than zero."),
                 title=_("No Earnings"),
