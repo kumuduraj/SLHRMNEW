@@ -99,9 +99,9 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 
 ## Overtime (OT) flow
 `Attendance Marker` → `Payroll Worksheet` → `Additional Salary` → `Salary Slip`
-- **`slhrm/overtime.py` is the only OT math** (pure functions: `early_late_minutes`, `excused`, `calculate_ot_hours`,
-  `calculate_ot_rate`, `calculate_ot_amount`; v0.2.0 rule, see the v0.2.0 section; the OT RATE is still SLHRM Settings
-  default_ot_rate). Never compute OT
+- **`slhrm/overtime.py` is the only OT / short / No Pay math** (pure functions: `calculate_day_hours`, `net_ot_hours`,
+  `short_balance`, `calculate_ot_rate`, `calculate_ot_amount`, `calculate_no_pay_rate`, `calculate_no_pay_amount`,
+  `early_late_minutes`, `excused`; v0.3.0 rule, see "9-hour day … (v0.3.0)"). Never compute OT
   anywhere else — the worksheet JS calls `slhrm.api.calc_worksheet_row`. Unit tests: `slhrm/tests/test_overtime.py`
   (UnitTestCase only; run with `CI=1 bench --site … run-tests --app slhrm --module
   slhrm.tests.test_overtime --skip-before-tests` — do not set `allow_tests` on production).
@@ -139,8 +139,8 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   **Mark days in order**: D+1 only knows D's night shift from D's SUBMITTED marker (or default_shift). Saving /
   submitting a marker whose previous day (same branch) is not submitted shows a warning (never blocks); the form
   shows the previous day's status (`slhrm.api.marker_previous_day`). Marker grid: Employee Name only (the
-  Employee link is in the row editor); short labels Shift / IN / OUT / OUT +1 / Hrs / Late In / Early Out / OT (v0.2.0)
-  with the full meaning in each field's description (Frappe v16 has no grid-only label; row editors copy grid.docfields), grid
+  Employee link is in the row editor); short labels Shift / Status / IN / OUT / OUT +1 / Hrs / Short / OT (v0.3.0; Late In /
+  Early Out moved to the row editor) with the full meaning in each field's description (Frappe v16 has no grid-only label; row editors copy grid.docfields), grid
   columns sum to 10 (Employee Name 2, others 1); per-row OT lock = `grid_row.toggle_editable` (v16 has no
   `grid_form.set_df_property`).
 - Shift Types (2026-11-10, hours first so the grid shows the hours; no employee assigned yet): 03-12 Dawn,
@@ -148,12 +148,13 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   attendance 0, no holiday list (Company Holiday List Assignment applies). HRMS ships Shift Type without
   allow_rename: rename only while nothing references a shift, with `frappe.rename_doc(..., merge=False, force=True)`. Rows keep `calc_ot` (server-computed) and approved
   `ot_hours` (v0.2.0, one OT type).
-- Worksheet sums submitted markers' approved hours (`slhrm/payroll_ot.py`), rates from overtime.py.
-  On submit: one Additional Salary per employee with OT (SLHRM Settings ot_component,
-  `ref_doctype`/`ref_docname` = the worksheet). On cancel: blocked if a submitted Salary Slip uses it,
+- Worksheet sums submitted markers' approved OT, short hours and No Pay days (`payroll_ot.get_marker_totals`), rates from
+  overtime.py. On submit: per employee one Additional Salary "Overtime" (ot_amount > 0, SLHRM Settings ot_component) and one
+  "No Pay" (no_pay_amount > 0, no_pay_component), `ref_doctype`/`ref_docname` = the worksheet. On cancel: blocked if a submitted Salary Slip uses it,
   else the Additional Salary is cancelled + deleted. `load_payroll_data` excludes Additional Salary
   with `ref_doctype = 'Payroll Worksheet'` (no double count).
-- **Permlevel 1** = OT hours/rates on Marker Detail and Worksheet Employee: read for HR roles, write only
+- **Permlevel 1** = OT hours (+ short leave) on Marker Detail and OT / short hours on Worksheet Employee (the OT rate is
+  read-only, always Basic / 200 × 1.5): read for HR roles, write only
   HR Manager / System Manager. Frappe resets level-1 child fields only for *existing* docs and only
   *before* `validate`, so the controllers enforce it themselves (new rows → calculated values,
   existing rows → stored values, for users without level-1 write).
@@ -205,8 +206,8 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   (worksheet → Additional Salary; v0.2.0 renamed from Normal OT, Double OT retired), Other Allowance (Additional Salary). Deductions: Death Donation 200
   (structure, dpd 0), No Pay / Other Deduction / Salary Advance / Personal Loan (Additional Salary only),
   EPF Employee 8% (apply_epf), APIT (apply_apit). Statistical: EPF Employer 12%, ETF Employer 3%.
-- **No Pay is entered manually** (Additional Salary) → Basic / Base Allowance do NOT depend on payment days (no double
-  deduction). Payroll Settings payroll_based_on stays "Leave". Salary Component `slhrm_reduces_epf_base` (No Pay):
+- **No Pay** = marker status No Pay (worksheet, v0.3.0) and/or manual Additional Salary (adds up) → Basic / Base Allowance do
+  NOT depend on payment days (no double deduction). Payroll Settings payroll_based_on stays "Leave". Salary Component `slhrm_reduces_epf_base` (No Pay):
   subtracted from the EPF base AND the APIT taxable amount. OT is never in the EPF base.
 - **APIT** (`slhrm/statutory.py`): taxable = all slip earnings (incl. OT, Other Allowance) − No Pay; progressive sum over
   SLHRM Settings "APIT Slabs" (child `SLHRM APIT Slab`; set with the latest effective_from ≤ period start), 2 dp;
@@ -438,11 +439,11 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   handoff + branch-scoped/cutoff docs) carries an old PWA message → write a NEW, uniquely named message file for
   every commit and read `git log -1 --format=%B` BEFORE `git push`.
 
-## Handoff — current state (2026-11-11, v0.2.2, prod = upstream/master = dev)
+## Handoff — current state (2026-11-11, v0.3.0, prod = upstream/master = dev)
 - Audit trail of every phase: `~/slhrm_audit_20261108.md` (… "Phase 3.0 result", "Phase 3.0 completion after
-  restart", "Phase 3.1 result", "Phase 3.2 result"). Read the last sections before starting.
-- Version 0.2.2 (`slhrm/__init__.py`, pyproject / setup.py / setup.cfg in step). Last deploy + restart 2026-11-11
-  03:13 UTC; all GILLSHR processes confirmed.
+  restart", "Phase 3.1 result", "Phase 3.2 result", "Phase 3.3 result", … "Phase 3.4 result"). Read the last sections before starting.
+- Version 0.3.0 (`slhrm/__init__.py`, pyproject / setup.py / setup.cfg in step). Last deploy + restart 2026-11-11
+  08:07 UTC; all GILLSHR processes confirmed.
 - **Employees:** 118 active — DUTCHPUB 45, FORTFUSION 35, BRITISHPUB 22, ALIYA 16. No DEMO data. No user logins
   yet (prod has no outgoing email → temporary passwords). 3 DUTCHPUB employees created from device users with
   placeholder data (HR-EMP-00155 Raveesha 3095, -00156 Dilith 501, -00157 Buddhika Rupasinghe 575; Comment on each).
@@ -452,8 +453,9 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   Slip default. No Employee Salary Package, SSA, marker or worksheet exists yet — **HR fills
   `~/cc-tmp/salary_import_template.xlsx`** (118 active employees, amounts empty, Effective From 2026-10-01) and imports
   it (Employee Salary Package list → Import Salary Packages).
-  ONE OT type: (Early In + Late Out)/60 on a working day, all hours on a holiday/weekly off; OT rate = SLHRM Settings
-  `default_ot_rate` (currently **0**), Minimum OT Hours 0.
+  OT (v0.3.0): 9-hour day — extra ≥ 1.0 h is OT (all of it), short hours netted per month (net OT = OT − short, min 0);
+  holiday: all worked hours ≥ 1.0 h. **OT rate DONE: Basic / 200 × 1.5.** No Pay from marker status No Pay × per-day
+  formula (placeholder `(BS + BA) / 30`). 118 packages are still 0 amounts → OT rate and No Pay are 0 until HR imports.
 - **Attendance:** 7 Shift Types (03-12 Dawn … 21-06 Night) exist, but **no employee has a shift** → every marker row is
   "No shift" (no OT, no late/early; with no shift the punch window is the whole day, so some rows show ~24 h).
   Role "Attendance Supervisor" exists (no user has it yet); supervisors are scoped by a User Permission on Branch.
@@ -465,8 +467,10 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   (device users 571, 572, 576, 13426 — names on the device are "NN-…"). 322 Shanaka (ALIYA) matches as other branch.
   DUTCHPUB clock ~11 min slow (−670 s) — fix on site; the agent never sets device time.
 - **Open — waiting for Raj / HR:**
-  - **OT rate formula** (today a flat SLHRM Settings rate, 0). `overtime.calculate_ot_rate(employee, base, settings)` is
-    the one place to implement it.
+  - **No Pay per-day formula — PENDING Raj's confirmation.** Placeholder SLHRM Settings `no_pay_day_formula` =
+    `(BS + BA) / 30` (Basic Salary + Base Allowance, 30 days). Change it in SLHRM Settings (no code change needed).
+  - **Shifts on employees** — without a shift a working day gives no OT and no short hours (v0.3.0 keeps the v0.2.1
+    "No shift" rule); confirm whether the 9-hour rule should apply without a shift.
   - **GL accounts** on salary components before any Payroll Entry (none set). Earnings: Basic Salary, Base Allowance,
     Vehicle Allowance, Other Allowance, Overtime (+ unused HRMS defaults Basic, Arrear, Leave Encashment). Deductions:
     EPF Employee 8%, APIT, Death Donation, No Pay, Other Deduction, Salary Advance, Personal Loan, Staff Bill (+ unused
@@ -490,6 +494,7 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - `SLHRM Settings` fields never read by code: `auto_mark_attendance`, `auto_create_payroll_on_submit`.
 
 ## Single OT, early/late, short leave, Attendance Supervisor (v0.2.0)
+- **The OT formula below is SUPERSEDED by v0.3.0 (9-hour day); early/late minutes stay as information.**
 - ONE OT type everywhere ("OT"; component "Overtime"). `slhrm/overtime.py`: per row whole minutes early_in / late_in /
   early_out / late_out from shift start/end and IN/OUT (incl. OUT +1); OT = (early_in + late_out)/60 on a working day,
   all worked hours on a holiday / weekly off (early/late minutes 0 that day), 0 without shift times, Minimum OT Hours still applies. One entry point
@@ -562,3 +567,34 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - Module Profile "SLHRM Staff" (Shakila) only hides workspaces / sidebar; it is not a permission boundary either.
 - After changing desk_scope: `bench clear-cache` (bootinfo and desktop icons are cached per user).
 
+## 9-hour day, short hours, No Pay from the marker, OT rate (v0.3.0, Phase 3.4, Raj 2026-11-11)
+- **Daily rule** (`overtime.calculate_day_hours`, via `attendance.day_figures`), only for marker status **Present / Short
+  Leave** (Absent, Leave, No Pay → OT 0, short 0): worked = OUT − IN (incl. OUT +1); working day: extra = worked −
+  `standard_day_hours` (9); extra ≥ `ot_min_daily_hours` (1.0) → OT = ALL of the extra (10:15 worked → 1.25), else 0;
+  short = 9 − worked − approved short-leave minutes / 60 (floor 0, no minimum). Holiday / weekly off: all worked hours are
+  OT with the same ≥ 1.0 rule, short 0. Working day without a shift → 0 / 0 + "No shift" warning (decision kept from v0.2.1;
+  NOTE every prod employee still has no shift). Not OT-eligible → OT 0, short still shown. Settings `standard_day_hours` /
+  `ot_min_daily_hours` replace `overtime_threshold`; `default_ot_rate` is gone (old Singles values left inert).
+- **Statuses** (Marker Detail `attendance_status`): Present, Absent, Leave, No Pay, Short Leave. Short Leave = present with
+  approved `short_leave_min` (the server ticks `short_leave` for level-1 users; the minutes also excuse Late In / Early Out).
+  HRMS Attendance on submit (`overtime.HRMS_STATUS`): No Pay → Absent (payroll_based_on Leave → HRMS cuts nothing),
+  Short Leave → Present, Leave → On Leave (leave_type only for Leave). Parent counts present (incl. Short Leave) / absent /
+  `no_pay_count`. The form recalculates on a status change (`calc_attendance_times` takes `status`).
+- **Worksheet** (`payroll_pay.ot_fields`, single place for the row OT math): `ot_hours` / `short_hours` = sums of the
+  submitted markers (permlevel 1, editable, kept on Refresh); `net_ot_hours` = max(0, OT − short); `short_balance` = short − OT
+  (information only, never deducted); `ot_rate` = **Basic / 200 × 1.5** (`overtime.calculate_ot_rate`, Basic =
+  `basic_salary` = unprorated package Basic Salary (abbr BS) of the period from the preview; client values ignored);
+  `ot_amount` = net × rate (rate rounded 2 dp).
+- **No Pay**: `no_pay_days` = submitted marker rows with status No Pay; per-day rate = SLHRM Settings `no_pay_day_formula`
+  (safe_eval over the period's unprorated earnings by abbreviation + `base`; missing abbreviations = 0) — default
+  **`(BS + BA) / 30` is a PLACEHOLDER, pending Raj's confirmation**. Amount = round(days × UNROUNDED rate, 2) (2 × 6,666.67 shown
+  → 13,333.33). `payroll_preview.build_preview(no_pay_days=…)` appends it as a No Pay deduction row and re-runs
+  `apply_salary_rules`, so EPF base, APIT taxable and total_deduction already include it (worksheet == slip). Refresh re-reads
+  the days; submit is refused when the markers' No Pay days differ from the rows ("Refresh Salary Data").
+- Table / Excel / print (`payroll_table` + JS mirror): OT group OT Hrs | Short Hrs | Net OT Hrs | Short Bal. | OT Rate |
+  OT Amount, then NO PAY group No Pay Days | No Pay Amount (information — the amount is in DEDUCTIONS / No Pay).
+- Worksheet JS ROW_FIELDS now carries `apit_taxable_base` / `apit_preview` / `apit_amount` on Load (before v0.3.0 a
+  browser-loaded worksheet saved without them, so its APIT was recomputed on 0 + OT).
+- Lesson (2026-11-11): the Edit / Write TOOLS of a root session write as root — `overtime.py` in the dev clone became
+  root-owned (fixed with a rajerp `cp` + `mv`, identical sha256). Edit files only through `sudo -u rajerp` (script files
+  written with `sudo -u rajerp bash -c 'cat > file' <<'EOF'`, run as rajerp).
