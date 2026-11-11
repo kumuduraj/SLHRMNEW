@@ -127,7 +127,7 @@
    "fieldtype": "Int",
    "label": "No shift",
    "read_only": 1,
-   "description": "Rows on a working day without a Shift (OT and late/early not calculated)."
+   "description": "Rows on a working day without a Shift (late/early not calculated; OT / short from worked hours)."
   },
   {
    "fieldname": "section_break_details",
@@ -214,5 +214,5 @@
    "write": 1
   }
  ],
- "modified": "2026-11-11 14:00:00.000000"
+ "modified": "2026-11-11 15:00:00.000000"
 }

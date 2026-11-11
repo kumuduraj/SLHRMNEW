@@ -12,7 +12,8 @@ v0.3.0 (Phase 3.4) daily rule, per Attendance Marker row:
         OT    = extra when extra >= ot_min_daily_hours (1.0) — ALL of it (10:15 worked -> 1.25); else 0
         short = standard_day_hours - worked - approved short-leave minutes / 60   (floor 0, no minimum)
     holiday / weekly off: OT = all worked hours with the same >= ot_min_daily_hours rule; short 0
-    working day without a shift: OT 0, short 0 (warning "No shift"; HR assigns shifts)
+    working day without a shift: the same rule on the worked hours (v0.3.1, Raj 2026-11-11); early/late minutes stay
+        blank and the row keeps the "No shift" warning
     not OT-eligible: OT 0 (short hours still shown)
 Early In / Late In / Early Out / Late Out minutes are information only (Lates highlighting).
 Short leave (row tick or status Short Leave + minutes): excuses Late In first, then Early Out, and reduces
@@ -109,7 +110,7 @@ def calculate_day_hours(ctx, settings=None):
     """{"calc_ot": h, "short_hours": h} (2 dp) for one employee-day (rule in the module docstring).
 
     ctx keys: status (default Present), worked_hours, ot_eligible, holiday_type ("weekly_off" / "holiday" / None)
-              or is_holiday, has_shift (default True), short_leave, short_leave_min
+              or is_holiday, short_leave, short_leave_min (has_shift is accepted but ignored since v0.3.1)
     """
     zero = {"calc_ot": 0.0, "short_hours": 0.0}
     status = _get(ctx, "status") or STATUS_PRESENT
@@ -122,10 +123,6 @@ def calculate_day_hours(ctx, settings=None):
     if is_holiday_ctx(ctx):
         ot = worked if eligible and worked > 0 and worked + EPSILON >= min_ot else 0.0
         return {"calc_ot": _round(ot), "short_hours": 0.0}
-
-    has_shift = _get(ctx, "has_shift")
-    if has_shift is not None and not has_shift:
-        return zero
 
     std = standard_day_hours(settings)
     extra = worked - std

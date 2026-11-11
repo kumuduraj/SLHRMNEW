@@ -24,7 +24,7 @@ NIGHT = (dt(D, "21:00"), dt(N, "06:00"))    # Night Shift 21-06
 
 
 def day(worked, settings=SETTINGS, **kw):
-    r = calculate_day_hours(dict({"ot_eligible": 1, "worked_hours": worked, "has_shift": True}, **kw), settings)
+    r = calculate_day_hours(dict({"ot_eligible": 1, "worked_hours": worked}, **kw), settings)
     return r["calc_ot"], r["short_hours"]
 
 
@@ -82,7 +82,7 @@ class TestDayRule(UnitTestCase):
         self.assertEqual(day(6, holiday_type="holiday"), (6.0, 0.0))
         self.assertEqual(day(0.75, holiday_type="holiday"), (0.0, 0.0))
         self.assertEqual(day(4, holiday_type="weekly_off"), (4.0, 0.0))
-        self.assertEqual(day(5, is_holiday=True, has_shift=False), (5.0, 0.0))  # holiday: shift not needed
+        self.assertEqual(day(5, is_holiday=True), (5.0, 0.0))
 
     def test_statuses(self):
         for status in ("Absent", "Leave", "No Pay"):
@@ -96,8 +96,9 @@ class TestDayRule(UnitTestCase):
         self.assertEqual(day(8.5, ot_eligible=0), (0.0, 0.5))   # short still shown
         self.assertEqual(day(6, ot_eligible=0, holiday_type="holiday"), (0.0, 0.0))
 
-    def test_no_shift_working_day(self):
-        self.assertEqual(day(11, has_shift=False), (0.0, 0.0))
+    def test_no_shift_same_rule(self):  # v0.3.1: the shift does not matter for OT / short hours
+        self.assertEqual(day(11.25, has_shift=False), (2.25, 0.0))
+        self.assertEqual(day(8.75, has_shift=False), (0.0, 0.25))
 
     def test_settings(self):
         self.assertEqual(day(9.5, frappe._dict(standard_day_hours=8, ot_min_daily_hours=1)), (1.5, 0.0))
@@ -165,9 +166,11 @@ class TestDayFigures(UnitTestCase):
         f = self.fig(*DAY, out="16:45")
         self.assertEqual((f["calc_ot"], f["short_hours"], f["early_out_min"]), (0.0, 0.25, 15))
 
-    def test_no_shift_working_day(self):
+    def test_no_shift_working_day(self):  # v0.3.1: warning kept, early/late blank, OT from worked hours
         f = self.fig(None, None)
-        self.assertEqual((f["no_shift"], f["calc_ot"], f["short_hours"]), (1, 0.0, 0.0))
+        self.assertEqual((f["no_shift"], f["calc_ot"], f["short_hours"], f["late_out_min"], f["early_in_min"]), (1, 2.25, 0.0, 0, 0))
+        f = self.fig(None, None, out="16:45")
+        self.assertEqual((f["no_shift"], f["calc_ot"], f["short_hours"], f["early_out_min"]), (1, 0.0, 0.25, 0))
 
     def test_no_shift_not_flagged_for_absent(self):
         self.assertEqual(self.fig(None, None, status="No Pay")["no_shift"], 0)

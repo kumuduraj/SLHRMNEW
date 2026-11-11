@@ -257,9 +257,9 @@ def day_figures(shift_info, in_dt, out_dt, worked, ot_eligible, holiday_type, se
     late_ok, early_ok = excused(mins["late_in_min"], mins["early_out_min"], short_leave, short_leave_min)
     hours = calculate_day_hours({
         "status": status, "ot_eligible": ot_eligible, "worked_hours": worked, "holiday_type": holiday_type,
-        "has_shift": bool(shift_info.start), "short_leave": short_leave, "short_leave_min": short_leave_min,
+        "short_leave": short_leave, "short_leave_min": short_leave_min,
     }, settings)
-    # warning: OT / short hours not calculated (only where they would count)
+    # warning only (v0.3.1): OT / short hours still come from the worked hours; early/late minutes stay blank
     no_shift = 1 if working_day and not shift_info.start and status in WORKED_STATUSES else 0
     return dict(mins, late_in_excused=late_ok, early_out_excused=early_ok, no_shift=no_shift, **hours)
 

@@ -145,7 +145,7 @@
   {
    "fieldname": "no_shift",
    "fieldtype": "Check",
-   "label": "No shift assigned — OT and late/early not calculated",
+   "label": "No shift assigned — late/early not calculated (OT / short from worked hours)",
    "read_only": 1,
    "depends_on": "eval:doc.no_shift",
    "description": "Working day without a Shift: set the Shift so OT and Late In / Early Out can be calculated."
@@ -323,5 +323,5 @@
   }
  ],
  "permissions": [],
- "modified": "2026-11-11 14:00:00.000000"
+ "modified": "2026-11-11 15:00:00.000000"
 }

@@ -48,7 +48,7 @@ function set_shift_formatter(frm) {
 	const formatter = (value, df, options, doc) => {
 		if (!value && doc && cint(doc.no_shift)) {
 			return `<span class="slhrm-no-shift" style="color: var(--orange-600, #e8590c); font-weight: 600;" title="${
-				__("No shift assigned — OT and late/early not calculated")}">${__("No shift")}</span>`;
+				__("No shift assigned — late/early not calculated (OT / short from worked hours)")}">${__("No shift")}</span>`;
 		}
 		return base(value, df, options, doc);
 	};
