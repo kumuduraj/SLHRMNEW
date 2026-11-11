@@ -430,6 +430,10 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - (v0.0.12) A deliberate `frappe.throw` in a Desk action is an HTTP 417 plus a server traceback in the user's console →
   expected business refusals return a structured `{"refused": msg}`; only permission failures raise.
 
+- (2026-11-11) Deleting "Standard Staff Structure" and then renaming "-2" to that same name in the same run: Frappe's
+  `delete_dynamic_links` job (enqueued after commit) later deleted every Version / Comment pointing at the NAME — i.e.
+  the renamed structure's history (2 Versions + the rename comment) → after deleting a doc, wait until the `default`
+  queue is empty BEFORE renaming another doc to its name.
 - (v0.0.14) A docs commit reused a stale commit-message file from the scratchpad, so 258011c (the CLAUDE.md
   handoff + branch-scoped/cutoff docs) carries an old PWA message → write a NEW, uniquely named message file for
   every commit and read `git log -1 --format=%B` BEFORE `git push`.
