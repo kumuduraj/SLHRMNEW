@@ -550,3 +550,15 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   A later import with the SAME Effective From replaces the 0 SSA (cancel + recreate); a 0 package pays Death Donation
   200 only → net −200 until the real amounts are imported.
 
+## Desk scope — only SLHRM for non-admins (v0.2.4, Raj 2026-11-11)
+- `slhrm/desk_scope.py` (`extend_bootinfo` + Desktop Icon `permission_query_conditions` / `has_permission`): users who
+  are not Administrator and have no System Manager role get, in boot, only SLHRM's desktop icons (app "slhrm" + child
+  icons), the "SLHRM" module workspaces and the SLHRM workspace sidebar; they can't list / restore other apps' Desktop
+  Icons. Administrator / System Manager see everything. Pages are NOT blocked — access stays with roles / DocPerms; other
+  apps are just not offered in the Desk UI. No Desktop Icon / Workspace record is changed (core-owned; migrate would
+  reset them anyway).
+- Same mechanism as agrosys.evonet.lk, where it lives in evonav as uncommitted local changes (bootinfo filter on
+  User.block_modules + Desktop Icon perms for hidden icons) — GILLSHR's evonav has none of that; don't edit evonav.
+- Module Profile "SLHRM Staff" (Shakila) only hides workspaces / sidebar; it is not a permission boundary either.
+- After changing desk_scope: `bench clear-cache` (bootinfo and desktop icons are cached per user).
+

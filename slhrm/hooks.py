@@ -70,7 +70,15 @@ doc_events = {
 # token / API-key auth -> Desk + PWA pages redirect to /update-password, API calls get 403.
 auth_hooks = ["slhrm.user_setup.enforce_password_change"]
 on_session_creation = ["slhrm.user_setup.on_session_creation"]
-extend_bootinfo = ["slhrm.user_setup.extend_bootinfo"]
+extend_bootinfo = ["slhrm.user_setup.extend_bootinfo", "slhrm.desk_scope.extend_bootinfo"]
+
+# Desk scope (2026-11-11): non-admins see only the SLHRM app; they may not list / re-add other apps' desktop icons
+permission_query_conditions = {
+    "Desktop Icon": "slhrm.desk_scope.desktop_icon_query_conditions",
+}
+has_permission = {
+    "Desktop Icon": "slhrm.desk_scope.desktop_icon_has_permission",
+}
 
 # Employee form: "Issue Temporary Password" (HR Manager / System Manager)
 doctype_js = {"Employee": "public/js/employee.js"}
