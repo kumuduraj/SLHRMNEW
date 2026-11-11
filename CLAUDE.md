@@ -432,16 +432,19 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   handoff + branch-scoped/cutoff docs) carries an old PWA message → write a NEW, uniquely named message file for
   every commit and read `git log -1 --format=%B` BEFORE `git push`.
 
-## Handoff — current state (2026-11-11, v0.2.1, prod = upstream/master = dev)
+## Handoff — current state (2026-11-11, v0.2.2, prod = upstream/master = dev)
 - Audit trail of every phase: `~/slhrm_audit_20261108.md` (… "Phase 3.0 result", "Phase 3.0 completion after
   restart", "Phase 3.1 result", "Phase 3.2 result"). Read the last sections before starting.
-- Version 0.2.1 (`slhrm/__init__.py`, pyproject / setup.py / setup.cfg in step). Last deploy + restart 2026-11-10
-  14:10 UTC; all GILLSHR processes confirmed.
+- Version 0.2.2 (`slhrm/__init__.py`, pyproject / setup.py / setup.cfg in step). Last deploy + restart 2026-11-11
+  03:13 UTC; all GILLSHR processes confirmed.
 - **Employees:** 118 active — DUTCHPUB 45, FORTFUSION 35, BRITISHPUB 22, ALIYA 16. No DEMO data. No user logins
   yet (prod has no outgoing email → temporary passwords). 3 DUTCHPUB employees created from device users with
   placeholder data (HR-EMP-00155 Raveesha 3095, -00156 Dilith 501, -00157 Buddhika Rupasinghe 575; Comment on each).
-- **Payroll (v0.1.0–v0.2.0):** "Standard Staff Structure-1" + components (Overtime, Staff Bill, APIT with exact
-  monthly slabs, EPF/ETF via `slhrm.statutory`). No Employee Salary Package, SSA, marker or worksheet exists yet.
+- **Payroll (v0.1.0–v0.2.2):** "Standard Staff Structure-2" (every payslip line, zeros kept) + components (Overtime,
+  Staff Bill, APIT with exact monthly slabs, EPF/ETF via `slhrm.statutory`); print format "SLHRM Payslip" is the Salary
+  Slip default. No Employee Salary Package, SSA, marker or worksheet exists yet — **HR fills
+  `~/cc-tmp/salary_import_template.xlsx`** (118 active employees, amounts empty, Effective From 2026-10-01) and imports
+  it (Employee Salary Package list → Import Salary Packages).
   ONE OT type: (Early In + Late Out)/60 on a working day, all hours on a holiday/weekly off; OT rate = SLHRM Settings
   `default_ot_rate` (currently **0**), Minimum OT Hours 0.
 - **Attendance:** 7 Shift Types (03-12 Dawn … 21-06 Night) exist, but **no employee has a shift** → every marker row is
