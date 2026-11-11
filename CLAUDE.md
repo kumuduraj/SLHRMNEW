@@ -198,7 +198,9 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - Setup: `bench --site … execute slhrm.salary_setup.apply` (`--kwargs '{"dry_run": 1}'` first). Idempotent; creates
   missing components, reuses existing ones (only depends_on_payment_days of Basic Salary / Base Allowance and SLHRM's
   own fields are set on them), fills SLHRM Settings (OT component Overtime, APIT component, APIT slabs) and updates
-  "Standard Staff Structure" by cancel + amend when no SSA uses it (else "<name> v2").
+  "Standard Staff Structure" by cancel + amend when no SSA uses it (else "<name> v2"). Frappe names an amendment
+  "<name>-1", "-2"…; `_active_structure()` finds the newest. Once SSAs exist the structure is never amended again
+  (v2 path). To tidy a chain nobody uses: clear amended_from, delete the cancelled versions, rename_doc back (2026-11-11).
 - Earnings: Basic Salary, Base Allowance, Vehicle Allowance (package, 0 in the structure, dpd 0), Overtime
   (worksheet → Additional Salary; v0.2.0 renamed from Normal OT, Double OT retired), Other Allowance (Additional Salary). Deductions: Death Donation 200
   (structure, dpd 0), No Pay / Other Deduction / Salary Advance / Personal Loan (Additional Salary only),
@@ -440,7 +442,8 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - **Employees:** 118 active — DUTCHPUB 45, FORTFUSION 35, BRITISHPUB 22, ALIYA 16. No DEMO data. No user logins
   yet (prod has no outgoing email → temporary passwords). 3 DUTCHPUB employees created from device users with
   placeholder data (HR-EMP-00155 Raveesha 3095, -00156 Dilith 501, -00157 Buddhika Rupasinghe 575; Comment on each).
-- **Payroll (v0.1.0–v0.2.2):** "Standard Staff Structure-2" (every payslip line, zeros kept) + components (Overtime,
+- **Payroll (v0.1.0–v0.2.2):** "Standard Staff Structure" (every payslip line, zeros kept; the only active structure —
+  amendment chain removed and "-2" renamed back on 2026-11-11; legacy "Standard Salary Structure - GHPL" kept, inactive) + components (Overtime,
   Staff Bill, APIT with exact monthly slabs, EPF/ETF via `slhrm.statutory`); print format "SLHRM Payslip" is the Salary
   Slip default. No Employee Salary Package, SSA, marker or worksheet exists yet — **HR fills
   `~/cc-tmp/salary_import_template.xlsx`** (118 active employees, amounts empty, Effective From 2026-10-01) and imports
@@ -520,7 +523,7 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - Working day without a shift: row `no_shift` (orange "No shift" in the Shift cell), parent `no_shift_count` ("No shift").
 
 ## Payslip lines + salary package import (v0.2.2, Raj 2026-11-11)
-- **Every payslip line is in the structure** ("Standard Staff Structure-N", `salary_setup.STRUCTURE_ROWS`, order =
+- **Every payslip line is in the structure** ("Standard Staff Structure", `salary_setup.STRUCTURE_ROWS`, order =
   `EARNING_LINES` | `DEDUCTION_LINES`, employer EPF 12% / ETF 3% statistical last); `remove_if_zero_valued` = 0 on
   `SHOW_ZERO`, so zero lines stay; `apply_apit` keeps a 0 APIT line.
 - **Additional Salary adds up** for `ADDITIVE_COMPONENTS` (Overtime, Other Allowance, No Pay, Other Deduction, Salary

@@ -1,7 +1,7 @@
 # slhrm/payslip.py
 """Payslip lines for the "SLHRM Payslip" print format (jinja method `payslip_data`), read-only.
 
-Order = the slip's Salary Structure rows (Standard Staff Structure-1: Basic Salary, Base Allowance, Vehicle Allowance,
+Order = the slip's Salary Structure rows (Standard Staff Structure: Basic Salary, Base Allowance, Vehicle Allowance,
 Overtime, Other Allowance | Death Donation, No Pay, Other Deduction, Salary Advance, Personal Loan, Staff Bill,
 EPF Employee 8%, APIT), then any other component on the slip. Every structure line is shown, zero included.
 HRMS adds ONE slip row per Additional Salary (overwrite 0) next to the structure's 0 row, so amounts are SUMMED
