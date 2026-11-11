@@ -349,7 +349,7 @@ function parse_breakdown(row) {
     let b = {};
     try { b = row.components_json ? JSON.parse(row.components_json) : {}; } catch (e) { b = {}; }
     return { earnings: b.earnings || [], deductions: b.deductions || [], employer: b.employer || [], base_component: b.base_component || null,
-             apit_component: b.apit_component || null, fixed_columns: b.fixed_columns || {} };
+             apit_component: b.apit_component || null, ot_component: b.ot_component || null, fixed_columns: b.fixed_columns || {} };
 }
 
 
@@ -358,6 +358,10 @@ function build_table(rows) {
     const parsed = rows.map(parse_breakdown);
     const apit_comps = [];
     parsed.forEach(b => { if (b.apit_component && !apit_comps.includes(b.apit_component)) apit_comps.push(b.apit_component); });
+    // OT component's structure line (0 in the preview) gets no earnings column while 0 in every row (v0.2.2)
+    const ot_comps = [];
+    parsed.forEach(b => { if (b.ot_component && !ot_comps.includes(b.ot_component)) ot_comps.push(b.ot_component); });
+    const zero_ot = ot_comps.filter(c => !parsed.some(b => b.earnings.some(l => l.component === c && flt(l.amount))));
     const union = kind => {
         const seen = [], bases = [], fixed = [];
         parsed.forEach(b => {
@@ -370,7 +374,7 @@ function build_table(rows) {
         }
         const first = bases.filter(c => seen.includes(c) || fixed.includes(c));
         const head = first.concat(fixed.filter(c => !first.includes(c)));
-        return head.concat(seen.filter(c => !head.includes(c)));
+        return head.concat(seen.filter(c => !head.includes(c))).filter(c => !(kind === 'earnings' && zero_ot.includes(c)));
     };
     const earn = union('earnings'), ded = union('deductions'), emp = [];
     parsed.forEach(b => b.employer.forEach(l => { if (!emp.includes(l.component)) emp.push(l.component); }));

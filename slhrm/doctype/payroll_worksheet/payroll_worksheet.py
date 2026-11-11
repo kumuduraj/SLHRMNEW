@@ -219,7 +219,7 @@ class PayrollWorksheet(Document):
             ads.salary_component = component
             ads.amount = flt(row.ot_amount)
             ads.payroll_date = self.end_date
-            ads.overwrite_salary_structure_amount = 1
+            ads.overwrite_salary_structure_amount = 0  # adds to the structure's 0 Overtime line (v0.2.2)
             ads.ref_doctype = self.doctype
             ads.ref_docname = self.name
             # authorised by submitting this worksheet (HR Manager / System Manager)

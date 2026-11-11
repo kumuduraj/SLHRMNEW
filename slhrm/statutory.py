@@ -125,6 +125,23 @@ def apply_epf(slip):
     return out
 
 
+def employer_lines(slip):
+    """Employer contributions (statistical, rated: EPF 12% / ETF 3%) of a slip, read-only:
+    [{component, amount, rate}] in structure order. Same values apply_epf returns (EPF base x rate)."""
+    structure_rows = _structure_deductions(slip.salary_structure) if slip.get("salary_structure") else []
+    names = ({r.salary_component for r in slip.get("earnings") or []}
+             | {r.salary_component for r in slip.get("deductions") or []}
+             | {r.salary_component for r in structure_rows})
+    flags = _flags(names)
+    base = epf_base(slip, flags)
+    out = []
+    for s in structure_rows:
+        rate = flt(flags[s.salary_component].get(RATE_FIELD)) if s.salary_component in flags else 0.0
+        if rate > 0 and (s.statistical_component or s.do_not_include_in_total):
+            out.append({"component": s.salary_component, "amount": flt(base * rate / 100, 2), "rate": rate})
+    return out
+
+
 def retotal(slip):
     """Totals via HRMS's own helpers: gross = sum of the final (already prorated) earning amounts,
     then set_net_pay() for total deduction, net, rounded total, base_* and words."""
@@ -200,7 +217,8 @@ def apply_apit(slip):
     if not out["exempt"]:
         out["amount"], out["bands"] = calc_apit(out["taxable"], apit_slabs(slip.start_date))
     rows = [r for r in slip.get("deductions") or [] if r.salary_component == comp and not r.additional_salary]
-    if out["amount"] > 0:
+    keep_zero = not cint(frappe.get_cached_value("Salary Component", comp, "remove_if_zero_valued"))
+    if out["amount"] > 0 or keep_zero:  # v0.2.2: zero line stays when the component keeps zero lines
         row = rows[0] if rows else None
         if not row:
             abbr = frappe.db.get_value("Salary Component", comp, "salary_component_abbr")

@@ -12,6 +12,10 @@ Idempotent. Uses the standard HRMS doctypes through the API (no core changes).
   "Double OT" is deleted when nothing references it, else disabled and reported (_single_ot).
 - SLHRM Settings: OT component (Overtime), APIT component, APIT slabs (loaded only when no slab
   with that effective date exists).
+- v0.2.2: every payslip line is in the structure (amount 0 unless package / formula / Additional Salary) and
+  `remove_if_zero_valued` = 0 on SHOW_ZERO, so zero lines stay on the slip. Additional Salary for ADDITIVE components
+  is forced to overwrite_salary_structure_amount = 0 (slhrm.overrides.additional_salary): entries of a month ADD UP
+  (HRMS adds one row per Additional Salary; with overwrite = 1 a second one in the month is refused).
 - Structure: if "Standard Staff Structure" differs from STRUCTURE_ROWS and no Salary Structure Assignment
   (draft or submitted) uses it -> cancel + amend (Frappe names the amendment "<name>-1", "-2", ...);
   otherwise a new "<name> v2" is created and reported.
@@ -48,6 +52,15 @@ COMPONENTS = [
 ]
 DPD_SYNC = {"Basic Salary": 0, "Base Allowance": 0}  # existing components: approved property change
 PACKAGE_EARNINGS = ("Basic Salary", "Base Allowance", "Vehicle Allowance")  # amount 0 in the structure
+# payslip order (v0.2.2): every line shown, zero lines kept on the slip
+EARNING_LINES = ["Basic Salary", "Base Allowance", "Vehicle Allowance", "Overtime", "Other Allowance"]
+DEDUCTION_LINES = ["Death Donation", "No Pay", "Other Deduction", "Salary Advance", "Personal Loan", "Staff Bill",
+                   "EPF Employee 8%", "APIT"]
+EMPLOYER_LINES = ["EPF Employer 12%", "ETF Employer 3%"]
+SHOW_ZERO = EARNING_LINES + DEDUCTION_LINES  # remove_if_zero_valued = 0
+# Additional Salary of these components is always additive (overwrite_salary_structure_amount = 0)
+ADDITIVE_COMPONENTS = ("Overtime", "Other Allowance", "No Pay", "Other Deduction", "Salary Advance", "Personal Loan",
+                       "Staff Bill")
 
 # component -> {slhrm_epf_applicable, slhrm_epf_rate}; applied idempotently, also on existing records
 EPF_FLAGS = {
@@ -71,15 +84,16 @@ APIT_SLABS = [  # monthly = annual table / 12 (exact thresholds; Raj 2026-11-10)
     (358333.33, 0, 36),
 ]
 
+_ZERO_ROW = {"amount": 0, "amount_based_on_formula": 0, "formula": "", "statistical_component": 0,
+             "do_not_include_in_total": 0, "depends_on_payment_days": 0}
 STRUCTURE_ROWS = {
-    "earnings": [{"salary_component": c, "amount": 0, "amount_based_on_formula": 0, "formula": ""} for c in PACKAGE_EARNINGS],
+    "earnings": [{"salary_component": c, "amount": 0, "amount_based_on_formula": 0, "formula": ""} for c in EARNING_LINES],
     "deductions": [
-        {"salary_component": "Death Donation", "amount": 200, "amount_based_on_formula": 0, "formula": "",
-         "statistical_component": 0, "do_not_include_in_total": 0, "depends_on_payment_days": 0},
+        dict(_ZERO_ROW, salary_component="Death Donation", amount=200),
+        *[dict(_ZERO_ROW, salary_component=c) for c in ("No Pay", "Other Deduction", "Salary Advance", "Personal Loan", "Staff Bill")],
         {"salary_component": "EPF Employee 8%", "amount_based_on_formula": 1, "formula": "base * 0.08",
          "statistical_component": 0, "do_not_include_in_total": 0, "depends_on_payment_days": 0},
-        {"salary_component": "APIT", "amount": 0, "amount_based_on_formula": 0, "formula": "",
-         "statistical_component": 0, "do_not_include_in_total": 0, "depends_on_payment_days": 0},
+        dict(_ZERO_ROW, salary_component="APIT"),
         {"salary_component": "EPF Employer 12%", "amount_based_on_formula": 1, "formula": "base * 0.12",
          "statistical_component": 1, "do_not_include_in_total": 1, "depends_on_payment_days": 0},
         {"salary_component": "ETF Employer 3%", "amount_based_on_formula": 1, "formula": "base * 0.03",
@@ -96,8 +110,8 @@ WORKSHEET_FIXED_DEDUCTIONS = ["Death Donation", "No Pay", "Other Deduction", "Sa
 def _component_spec(name, abbr, typ, dpd, stat):
     return {"salary_component": name, "salary_component_abbr": abbr, "type": typ,
             "depends_on_payment_days": dpd, "statistical_component": stat, "do_not_include_in_total": stat,
-            # package earnings must stay on the slip at amount 0 so the overrides can fill them in
-            "remove_if_zero_valued": 0 if name in PACKAGE_EARNINGS else 1}
+            # payslip lines stay on the slip at amount 0 (package earnings: so the overrides can fill them in)
+            "remove_if_zero_valued": 0 if name in SHOW_ZERO else 1}
 
 
 def _norm(v):
@@ -133,6 +147,7 @@ def apply(dry_run=0):
     if not dry:
         frappe.db.commit()
 
+    report["remove_if_zero_valued"] = sync_show_zero(dry)
     report["epf_flags"] = sync_epf_flags(EPF_FLAGS, dry_run=dry)
     report["reduces_flags"] = sync_epf_flags(REDUCES, dry_run=dry)
     report["settings"] = _apply_settings(dry)
@@ -298,6 +313,24 @@ def _apply_structure(dry):
     v2.submit()
     frappe.db.commit()
     return {"action": "created v2 (current is used by SSAs)", "name": v2.name, "ssa_using_current": users, "diffs": diffs}
+
+
+def sync_show_zero(dry):
+    """remove_if_zero_valued = 0 on every payslip line (normal save → Version)."""
+    out = {}
+    for name in SHOW_ZERO:
+        cur = frappe.db.get_value("Salary Component", name, "remove_if_zero_valued")
+        if cur is None:
+            out[name] = "missing"
+        elif cint(cur):
+            out[name] = "1 -> 0"
+            if not dry:
+                doc = frappe.get_doc("Salary Component", name)
+                doc.remove_if_zero_valued = 0
+                doc.save(ignore_permissions=True)
+    if not dry:
+        frappe.db.commit()
+    return out or "unchanged"
 
 
 def sync_epf_flags(flags, dry_run=0):

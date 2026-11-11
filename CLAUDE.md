@@ -516,3 +516,22 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   recalc_attendance_row / calc_attendance_times (they read with get_all).
 - Working day without a shift: row `no_shift` (orange "No shift" in the Shift cell), parent `no_shift_count` ("No shift").
 
+## Payslip lines + salary package import (v0.2.2, Raj 2026-11-11)
+- **Every payslip line is in the structure** ("Standard Staff Structure-N", `salary_setup.STRUCTURE_ROWS`, order =
+  `EARNING_LINES` | `DEDUCTION_LINES`, employer EPF 12% / ETF 3% statistical last); `remove_if_zero_valued` = 0 on
+  `SHOW_ZERO`, so zero lines stay; `apply_apit` keeps a 0 APIT line.
+- **Additional Salary adds up** for `ADDITIVE_COMPONENTS` (Overtime, Other Allowance, No Pay, Other Deduction, Salary
+  Advance, Personal Loan, Staff Bill): doc_event `overrides.additional_salary.before_validate` forces
+  overwrite_salary_structure_amount = 0 (worksheet OT too). HRMS then adds ONE slip row per Additional Salary next to
+  the structure's 0 row (several rows per component on the Salary Slip form); with overwrite = 1 a second entry in the
+  month is refused by HRMS. Totals are right either way; the **"SLHRM Payslip"** print format (default for Salary
+  Slip, Property Setter) and the worksheet table SUM per component (`slhrm/payslip.py` jinja `payslip_data`, employer
+  box from `statutory.employer_lines`).
+- Worksheet table: the OT component's structure line (0 in the preview) gets no EARNINGS column while 0 in every row
+  (OT has its own group); `components_json.ot_component`.
+- **Salary package import** (`slhrm/salary_import.py`): `make_template` (one row per Active employee, amounts EMPTY —
+  never invent salaries), `run(file, dry_run)` (validates, totals per branch, creates / updates Employee Salary Package
+  on the active structure → the package makes the SSA; empty Basic → skipped; identical row → unchanged). Desk:
+  Employee Salary Package list → "Import Salary Packages" (HR Manager / System Manager): private upload → preview →
+  Apply; the uploaded file is deleted after Apply / Cancel.
+

@@ -44,6 +44,9 @@ fixtures = [
 
 # Doc events
 doc_events = {
+    "Additional Salary": {
+        "before_validate": "slhrm.overrides.additional_salary.before_validate",
+    },
     "Employee": {
         "after_insert": "slhrm.user_setup.create_employee_user",
         "validate": "slhrm.biometric.on_employee_validate",
@@ -96,5 +99,5 @@ website_route_rules = [
 
 # Jinja methods (print formats)
 jinja = {
-    "methods": ["slhrm.payroll_table.worksheet_table"],
+    "methods": ["slhrm.payroll_table.worksheet_table", "slhrm.payslip.payslip_data"],
 }

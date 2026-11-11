@@ -10,7 +10,9 @@ Layout (left -> right):
   # | Employee | Working Days | Payment Days | LWP |
   EARNINGS: base component first, then the fixed columns (components_json.fixed_columns: Basic Salary,
             Base Allowance, Vehicle Allowance, Other Allowance — shown even when empty), then any other
-            earning component in a row. Additional Salary lines go to their OWN component column (v0.1.0). |
+            earning component in a row. Additional Salary lines go to their OWN component column (v0.1.0).
+            The OT component's structure line (Overtime, 0 in the preview — the worksheet adds OT itself) gets
+            no column while it is 0 in every row (v0.2.2); a non-zero line (manual Additional Salary) is shown. |
   OT: Hrs, Rate, Amount | GROSS |
   DEDUCTIONS: fixed columns (Death Donation, No Pay, Other Deduction, Salary Advance, Personal Loan,
             Staff Bill, EPF Employee 8%, APIT), then other deduction components (+ Loan if > 0). The APIT cell is the
@@ -45,6 +47,9 @@ def build_table(rows):
     parsed = [_breakdown(r) for r in rows]
 
     apit_comps = list(dict.fromkeys(b.get("apit_component") for b in parsed if b.get("apit_component")))
+    ot_comps = {b.get("ot_component") for b in parsed if b.get("ot_component")}
+    zero_ot = {c for c in ot_comps
+               if not any(flt(line["amount"]) for b in parsed for line in b.get("earnings", []) if line["component"] == c)}
 
     def union(kind):
         seen, base_first, fixed = [], [], []
@@ -64,7 +69,8 @@ def build_table(rows):
                     seen.append(c)
         bases = [c for c in dict.fromkeys(base_first) if c in seen or c in fixed]
         head = bases + [c for c in fixed if c not in bases]
-        return head + [c for c in seen if c not in head]
+        cols = head + [c for c in seen if c not in head]
+        return [c for c in cols if not (kind == "earnings" and c in zero_ot)]
 
     earn_comps = union("earnings")
     ded_comps = union("deductions")

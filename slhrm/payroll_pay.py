@@ -79,6 +79,7 @@ def salary_fields_from_preview(preview):
             "employer": [{"component": r["component"], "amount": r["amount"]} for r in preview.employer or []],
             "base_component": preview.base_component,
             "apit_component": preview.get("apit_component"),
+            "ot_component": frappe.db.get_single_value("SLHRM Settings", "ot_component"),
             "fixed_columns": fixed_columns(),
         }),
     }
