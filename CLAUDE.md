@@ -318,7 +318,7 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   (device time), **unique DB index**; the agent's SQLite queue uses the same key and re-reads the whole
   device log every pull (INSERT OR IGNORE). Confirmed only by the server's per-record result
   (`slhrm.biometric.ingest`: inserted / duplicate / unknown_employee / skipped_old / error; savepoint per record).
-- **Cutoff 2026-11-01** (Raj): SLHRM Settings `biometric_start_date` → older records get `skipped_old` (not stored,
+- **Cutoff** SLHRM Settings `biometric_start_date` (was 2026-11-01; **2026-10-01 since before 2026-11-12**) → older records get `skipped_old` (not stored,
   confirmed by the agent); agent config `min_punch_date` (default for all devices, per-device override) → older
   records are never queued or sent, counted `skipped_old` per pull (log, `device_pull`, `status`). All rows before
   2026-11-01 were deleted on 2026-11-09 (backup `~/cc-tmp/punch_backup_pre_20261101.json.gz`, 600).
@@ -357,7 +357,7 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   "other branch"; refuses an id held by anyone else); columns Employee No. Hit / Reason show rule (b) live; the dialog
   pre-fills the number hit. Report "Device Users Other Branch" lists other-branch matches.
 - Agent scheduler (2026-11-09): rajerp crontab `*/5 … slhrm_agent.py --config ~/slhrm-agent/config.json run` (log
-  `~/slhrm-agent/agent.log`); only devices with `enabled: true` in the config are read (DUTCHPUB). DUTCHPUB backfilled
+  `~/slhrm-agent/agent.log`); only devices with `enabled: true` in the config are read (DUTCHPUB, BRITISHPUB since 2026-11-12). DUTCHPUB backfilled
   (27 975 records from 2025-11-04; re-send = all duplicate). `backfill --device N [--resend]` for new devices. Unit tests: `python3 -m unittest discover -s
   SLHRM-AGENT/tests`; server pure functions: `slhrm.tests.test_biometric`.
 - Throwaway biometric tests use ids like `T4-1` (and throwaway devices / branches named `T23-…`), never plain numbers: a test employee with id `1` in DUTCHPUB
@@ -439,11 +439,11 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   handoff + branch-scoped/cutoff docs) carries an old PWA message → write a NEW, uniquely named message file for
   every commit and read `git log -1 --format=%B` BEFORE `git push`.
 
-## Handoff — current state (2026-11-11, v0.3.1, prod = upstream/master = dev)
+## Handoff — current state (2026-11-12, v0.3.2, prod = upstream/master = dev)
 - Audit trail of every phase: `~/slhrm_audit_20261108.md` (… "Phase 3.0 result", "Phase 3.0 completion after
   restart", "Phase 3.1 result", "Phase 3.2 result", "Phase 3.3 result", … "Phase 3.4 result"). Read the last sections before starting.
-- Version 0.3.1 (`slhrm/__init__.py`, pyproject / setup.py / setup.cfg in step). Last deploy + restart 2026-11-11
-  08:22 UTC; all GILLSHR processes confirmed.
+- Version 0.3.2 (`slhrm/__init__.py`, pyproject / setup.py / setup.cfg in step). Last deploy + restart 2026-11-12
+  04:04 UTC; all GILLSHR processes confirmed.
 - **Employees:** 118 active — DUTCHPUB 45, FORTFUSION 35, BRITISHPUB 22, ALIYA 16. No DEMO data. No user logins
   yet (prod has no outgoing email → temporary passwords). 3 DUTCHPUB employees created from device users with
   placeholder data (HR-EMP-00155 Raveesha 3095, -00156 Dilith 501, -00157 Buddhika Rupasinghe 575; Comment on each).
@@ -462,8 +462,10 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   Role "Attendance Supervisor" exists (no user has it yet); supervisors are scoped by a User Permission on Branch.
 - **Holidays:** HRMS v16 uses Holiday List Assignment only. One company assignment: "Holidays 2026-2027 - GHPL"
   (from 2026-04-01) with **5 public holidays and no weekly offs**.
-- **Biometric:** only DUTCHPUB (serves DUTCHPUB + FORTFUSION) is registered and enabled; agent every 5 min (rajerp
-  crontab, `~/slhrm-agent/`). Cutoff 2026-11-01. Device id = `Employee.attendance_device_id` ("Attendance Device ID
+- **Biometric:** DUTCHPUB (CEZU215160012, serves DUTCHPUB + FORTFUSION) and **BRITISHPUB (A8ME191160004, serves BRITISHPUB;
+  live 2026-11-12, blocked ids 1 + 3095, 14 ids mapped)** are registered and enabled; agent every 5 min (rajerp crontab,
+  `~/slhrm-agent/`; config backup `config.json.bak_20261112`). ALIYA unreachable. Server cutoff 2026-10-01. BRITISHPUB reads its
+  whole log (12.6k records) in ~90–100 s per run; one 04:15 run timed out (no loss — the next run re-reads everything). Device id = `Employee.attendance_device_id` ("Attendance Device ID
   (all devices)", unique company-wide; 50 employees have one). Punches: ~3,100 matched (Pending), 173 Unmatched
   (device users 571, 572, 576, 13426 — names on the device are "NN-…"). 322 Shanaka (ALIYA) matches as other branch.
   DUTCHPUB clock ~11 min slow (−670 s) — fix on site; the agent never sets device time.
@@ -477,10 +479,15 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
     EPF Employee 8%, APIT, Death Donation, No Pay, Other Deduction, Salary Advance, Personal Loan, Staff Bill (+ unused
     Income Tax). EPF Employer 12% / ETF Employer 3% only if an employer-contribution JV is wanted. Payroll Payable
     default: 2120 - Payroll Payable - GHPL.
-  - **BRITISHPUB / ALIYA devices:** unreachable from the VPS; need network access + comm keys (passwords). Then:
-    register the Biometric Device (branch, served branches, timezone) → agent `sync_users` (read-only) →
-    `bench execute slhrm.biometric.device_id_collisions --kwargs '{"serial": "…"}'` (collisions = re-enrol on site;
-    similar / no_name = HR checks) → `backfill --device N` → enable in the agent config. FORTFUSION has no device.
+  - **ALIYA device (124.43.65.205):** still unreachable (2026-11-12: no ping, TCP 80/443/4370/8080 all time out after
+    the ISP edge → the router drops inbound; port 4370 not forwarded to the device, or the public IP changed). Site IT:
+    forward TCP 4370 to the device's LAN IP (or give the current public IP); comm password unknown (agent tries 0 then
+    111111). Then the BRITISHPUB steps: read-only dry run + users → collision check against Attendance Device IDs →
+    Blocked User IDs for real collisions → map exact id + name matches → register → backfill → enable. FORTFUSION has no device.
+  - **BRITISHPUB for HR (Unmatched Device Users):** 3094 NETHMIKA (employee number 3094 = K E N Heeshan Dulakshana — name
+    differs), 2058 Vasantha (~ Wasantha Kumara, spelling), 3106 LOHANA / 3105 MABHUSANKA / 3104 JEYANTH (spelling variants,
+    no punches since 10-01 yet), 3095 blocked (HR check), 1 blocked (re-enrol "cliFForD~" with a free number), and device
+    users 3112–3121, 2109 etc. who are not in hrm (new staff?). Device clocks: DUTCHPUB −11 min, BRITISHPUB −21 min (site).
   - **HR data items:**
     - Shifts: set `default_shift` (or Shift Assignments) for every employee — needed for late/early and the punch window.
     - Supervisor branch permissions: give each supervisor the role "Attendance Supervisor" + a User Permission
@@ -601,3 +608,19 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - Lesson (2026-11-11): the Edit / Write TOOLS of a root session write as root — `overtime.py` in the dev clone became
   root-owned (fixed with a rajerp `cp` + `mv`, identical sha256). Edit files only through `sudo -u rajerp` (script files
   written with `sudo -u rajerp bash -c 'cat > file' <<'EOF'`, run as rajerp).
+
+## Blocked User IDs per device + BRITISHPUB live (v0.3.2, Raj 2026-11-12)
+- Biometric Device child table **Blocked User IDs** (`Biometric Device Blocked User`: device_user_id, reason, note). Reasons
+  (Select, also `match_reason` options on Biometric Punch Log): `collision — re-enrol on device` (the number belongs to another
+  person on another device) and `HR check — do not match` (hold until HR decides). A blocked id is **never matched on that
+  device** — checked before rule (a) (site-wide Attendance Device ID) and rule (b) (employee number) in `ingest` and `rematch`
+  (so also `Employee.on_update`); `map_device_user` refuses it. Device save → `apply_blocks`: Pending punches of a newly blocked
+  id lose their employee (Unmatched + reason), Matched (used by a submitted marker) ones are kept and reported; ids removed
+  from the list are re-matched. Unmatched Device Users shows `blocked: <reason> — <note>`; `device_id_collisions` lists them.
+- **Onboarding a device** (as done for BRITISHPUB): read-only `probe` (≤ 2 connect attempts) → `users` + `pull --dry-run
+  --per-user` → check EVERY id with records since the cutoff (not just device users: ids no longer on the device still match
+  site-wide by rule (a)) against Attendance Device IDs → register with Blocked User IDs → map exact id + name matches via
+  `attendance_device_id` → add to the agent config disabled → `backfill` → `backfill --resend` (all duplicate) → per-day check
+  queue == server (`~/cc-tmp/p34/perday.py <serial>`) → enable → watch 2 clean scheduled runs.
+- The cron run holds the agent lock; a manual backfill during it exits with "another run is in progress" BEFORE connecting —
+  wait for `flock -n ~/slhrm-agent/agent.lock true`.
