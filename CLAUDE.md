@@ -439,11 +439,12 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   handoff + branch-scoped/cutoff docs) carries an old PWA message → write a NEW, uniquely named message file for
   every commit and read `git log -1 --format=%B` BEFORE `git push`.
 
-## Handoff — current state (2026-11-12, v0.3.2, prod = upstream/master = dev)
+## Handoff — current state (2026-11-12, v0.4.0, prod = upstream/master = dev)
 - Audit trail of every phase: `~/slhrm_audit_20261108.md` (… "Phase 3.0 result", "Phase 3.0 completion after
   restart", "Phase 3.1 result", "Phase 3.2 result", "Phase 3.3 result", … "Phase 3.4 result"). Read the last sections before starting.
-- Version 0.3.2 (`slhrm/__init__.py`, pyproject / setup.py / setup.cfg in step). Last deploy + restart 2026-11-12
-  04:04 UTC; all GILLSHR processes confirmed.
+- Version 0.4.0, agent 0.4.0 (`slhrm/__init__.py`, pyproject / setup.py / setup.cfg in step). Last deploy + restart
+  2026-11-12 04:42 UTC; all GILLSHR processes confirmed. Devices show Online / Delayed / Offline; Sync Now is live (Shakila
+  already uses it).
 - **Employees:** 118 active — DUTCHPUB 45, FORTFUSION 35, BRITISHPUB 22, ALIYA 16. No DEMO data. No user logins
   yet (prod has no outgoing email → temporary passwords). 3 DUTCHPUB employees created from device users with
   placeholder data (HR-EMP-00155 Raveesha 3095, -00156 Dilith 501, -00157 Buddhika Rupasinghe 575; Comment on each).
@@ -624,3 +625,34 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   queue == server (`~/cc-tmp/p34/perday.py <serial>`) → enable → watch 2 clean scheduled runs.
 - The cron run holds the agent lock; a manual backfill during it exits with "another run is in progress" BEFORE connecting —
   wait for `flock -n ~/slhrm-agent/agent.lock true`.
+
+## Device Online / Delayed / Offline, Sync Now, independent devices (v0.4.0, Raj 2026-11-12)
+- **Status** (`biometric.connection_status`, pure; stored in `Biometric Device.connection_status`): Online = last successful
+  read ≤ 10 min ago; Delayed = 10–60 min, or the last run failed with a timeout / read error and fewer than 3 runs in a row
+  failed; Offline = > 60 min, never synced, a connect / auth failure (`last_error_kind` connect / auth), or 3 failed runs in a
+  row; Disabled = device disabled. Inputs come only from agent heartbeats (`heartbeat()`: `last_pull_ok`, `error_kind`,
+  `read_seconds` → `last_success_at`, `last_error_at`, `consecutive_failures`, `last_read_seconds`); the scheduler
+  (`refresh_connection_status`, cron */5) does the age-based transitions. No device access from the web.
+- **Offline notification:** Notification Log type Alert (bell only — type Alert never emails) to every enabled HR Manager,
+  ONCE per offline period (`offline_notified`, reset when the device is Online / Delayed again). Tests that make a device
+  Offline must patch `slhrm.biometric.hr_managers` or pre-set `offline_notified = 1` (real HR Managers incl. Shakila).
+- **Sync Now** (form button, list action; HR Manager / System Manager): `biometric.sync_now` → rate limit once per device per
+  60 s (Redis `SET NX EX 60`, key `slhrm:sync_now:<serial>`) → sets `sync_requested` / by / at → enqueues `run_sync_now`
+  (queue long) → subprocess `<slhrm_agent_python> SLHRM-AGENT/slhrm_agent.py --config <slhrm_agent_config> run --once --device
+  <device_name>` (site_config keys, set with `bench set-config`; paths never in code) → result JSON stored in
+  `last_sync_result`, flag cleared, realtime `slhrm_device_sync` to the requesting user (popup: connected, inserted,
+  duplicates, unmatched, drift, read, duration, status / error). Agent name in the config must equal `device_name`.
+  The long queue has ONE worker: Sync Now jobs run one after another (BRITISHPUB ≈ 100 s delays a following job).
+- **Design note — agent on a site LAN box later:** without the two site_config keys `run_sync_now` only publishes "requested"
+  and LEAVES `sync_requested = 1`; a remote agent would ask the server for devices with `sync_requested = 1` on each loop,
+  run them once, and clear the flag through its heartbeat. Keep `sync_requested` / `sync_requested_by` / `sync_requested_at`.
+- **Agent 0.4.0:** socket timeout PER DEVICE (`devices[].timeout_seconds`, default 60; DUTCHPUB 180, BRITISHPUB 240; the global
+  10 s is only for `probe`). One lock file per device (`agent.lock.<name>`); `run` reads every enabled device in its own
+  thread (own queue connection) — a slow read / timeout on one never delays or fails the other; a device whose previous read
+  still runs is skipped ("previous read still in progress"). `run --once --device NAME` waits ≤ 60 s for that device's lock,
+  else `{"busy": true}`. The old global `agent.lock` is no longer used. pyzk reports a refused port (ommit_ping) as
+  "ZKNetworkError: [Errno 32] Broken pipe" (kind connect → Offline).
+- List: Online / Delayed / Offline pill (`biometric_device_list.js` get_indicator) instead of "Enabled"; Enabled stays a column.
+  Form: header indicator + "Last read N s, N records · Last successful sync … · Clock drift … · Last error …". SLHRM workspace:
+  Number Cards "Devices Online / Delayed / Offline" (`slhrm/number_card/`, module symlink `slhrm/slhrm/number_card`, synced by
+  migrate's dashboard sync) → click opens the filtered list. Shared JS `public/js/device_sync.js` (app_include_js).

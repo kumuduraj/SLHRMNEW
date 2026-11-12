@@ -10,7 +10,7 @@ frappe.ui.form.on("Biometric Device", {
 				format_number(frm.doc.record_count || 0, null, 0)]));
 		}
 		parts.push(__("Last successful sync: {0}", [frm.doc.last_success_at ? frappe.datetime.comment_when(frm.doc.last_success_at) : __("never")]));
-		if (frm.doc.clock_drift_seconds !== undefined && frm.doc.clock_drift_seconds !== null) {
+		if (frm.doc.last_success_at && frm.doc.clock_drift_seconds !== undefined && frm.doc.clock_drift_seconds !== null) {
 			parts.push(__("Clock drift {0} s", [format_number(frm.doc.clock_drift_seconds, null, 0)]));
 		}
 		if (st !== "Online" && frm.doc.last_error) {
