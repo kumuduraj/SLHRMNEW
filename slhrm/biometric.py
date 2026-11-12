@@ -21,7 +21,9 @@ IN/OUT pairing and OT are NOT decided here (Attendance Marker / slhrm.overtime).
 Whitelisted wrappers (API key, fail closed) live in slhrm.api: device_ingest, device_heartbeat.
 """
 import json
+import os
 import re
+import subprocess
 from datetime import datetime, timedelta
 from difflib import SequenceMatcher
 from zoneinfo import ZoneInfo
@@ -56,6 +58,16 @@ HEARTBEAT_FIELDS = {
     "user_count": cint, "user_capacity": cint, "record_count": cint, "record_capacity": cint,
     "queue_depth": cint, "last_error": cstr,
 }
+
+# ── connection status (v0.4.0) ──
+ONLINE, DELAYED, OFFLINE, DISABLED = "Online", "Delayed", "Offline", "Disabled"
+ONLINE_MINUTES, DELAYED_MINUTES = 10, 60
+OFFLINE_ERROR_KINDS = ("connect", "auth")  # immediately Offline; timeout / read → Delayed until FAILS_FOR_OFFLINE
+FAILS_FOR_OFFLINE = 3
+SYNC_RATE_SECONDS = 60
+SYNC_ROLES = ("HR Manager", "System Manager")
+SYNC_EVENT = "slhrm_device_sync"
+AGENT_ONCE_TIMEOUT = 600  # seconds for the whole `run --once` (lock wait 60 s + device timeout + push)
 
 
 def punch_key(serial, device_user_id, device_time):
@@ -274,13 +286,90 @@ def _ingest_one(device, p, site_tz, agent, cache):
         return dict(out, result="error", error=cstr(e)[:300])
 
 
+def connection_status(enabled, last_success_at, last_pull_ok, error_kind=None, consecutive_failures=0, now=None):
+    """Pure. Online ≤ 10 min since the last successful read, Delayed ≤ 60 min, else Offline. A failed last run is Offline
+    when it could not connect (connect / auth) or failed FAILS_FOR_OFFLINE times in a row; a timeout / read error is
+    Delayed (or Offline by age). Disabled device → Disabled."""
+    if not cint(enabled):
+        return DISABLED
+    if not last_success_at:
+        return OFFLINE
+    now = now or now_datetime()
+    age = (now - frappe.utils.get_datetime(last_success_at)).total_seconds() / 60
+    if not cint(last_pull_ok):
+        if cstr(error_kind) in OFFLINE_ERROR_KINDS or cint(consecutive_failures) >= FAILS_FOR_OFFLINE:
+            return OFFLINE
+        return OFFLINE if age > DELAYED_MINUTES else DELAYED
+    if age <= ONLINE_MINUTES:
+        return ONLINE
+    return DELAYED if age <= DELAYED_MINUTES else OFFLINE
+
+
+STATUS_FIELDS = ["name", "device_name", "enabled", "last_success_at", "last_pull_ok", "last_error_kind",
+                 "consecutive_failures", "connection_status", "offline_notified", "last_error"]
+
+
+def update_status(serial, now=None, notify=True):
+    """Recompute and store connection_status; notify HR Manager once per Offline period. Returns the status."""
+    d = frappe.db.get_value(DEVICE, serial, STATUS_FIELDS, as_dict=True)
+    if not d:
+        return None
+    status = connection_status(d.enabled, d.last_success_at, d.last_pull_ok, d.last_error_kind, d.consecutive_failures, now)
+    values = {}
+    if status != d.connection_status:
+        values["connection_status"] = status
+    if status == OFFLINE and not cint(d.offline_notified):
+        values["offline_notified"] = 1
+        if notify:
+            notify_offline(d)
+    elif status in (ONLINE, DELAYED) and cint(d.offline_notified):
+        values["offline_notified"] = 0  # the offline period is over; the next one notifies again
+    if values:
+        frappe.db.set_value(DEVICE, serial, values, update_modified=False)
+    return status
+
+
+def refresh_connection_status(notify=True):
+    """Scheduler (every 5 min): age-based transitions (Online → Delayed → Offline) when heartbeats stop."""
+    out = {d: update_status(d, notify=notify) for d in frappe.get_all(DEVICE, pluck="name")}
+    frappe.db.commit()
+    return out
+
+
+def hr_managers():
+    users = frappe.get_all("Has Role", filters={"role": "HR Manager", "parenttype": "User"}, pluck="parent", distinct=True)
+    return [u for u in users if u not in ("Administrator", "Guest")
+            and frappe.db.get_value("User", u, ["enabled", "user_type"], as_dict=True) == {"enabled": 1, "user_type": "System User"}]
+
+
+def notify_offline(d):
+    """One Notification Log (type Alert: bell only, never email) per HR Manager."""
+    subject = _("Biometric device {0} is Offline").format(d.device_name or d.name)
+    body = _("Last successful sync: {0}. Last error: {1}").format(
+        frappe.format_value(d.last_success_at, {"fieldtype": "Datetime"}) if d.last_success_at else _("never"),
+        frappe.utils.escape_html(cstr(d.last_error) or "-"))
+    for user in hr_managers():
+        frappe.get_doc({"doctype": "Notification Log", "for_user": user, "type": "Alert", "subject": subject,
+                        "email_content": body, "document_type": DEVICE, "document_name": d.name,
+                        "from_user": "Administrator"}).insert(ignore_permissions=True)
+
+
 def heartbeat(serial, info, agent=None):
-    """Agent health report for one device: device info, sizes, clock drift, queue depth."""
+    """Agent health report for one device: device info, sizes, clock drift, queue depth, read duration; result of the
+    run (last_pull_ok + error_kind) → last_success_at / last_error_at / consecutive_failures → connection_status."""
     device = get_device(serial)
     if isinstance(info, str):
         info = json.loads(info or "{}")
     info = info if isinstance(info, dict) else {}
     values = {k: conv(info[k]) for k, conv in HEARTBEAT_FIELDS.items() if k in info}
+    if "read_seconds" in info:
+        values["last_read_seconds"] = flt(info["read_seconds"], 1)
+    if "last_pull_ok" in info:
+        if cint(info["last_pull_ok"]):
+            values.update(last_success_at=now_datetime(), consecutive_failures=0, last_error_kind="")
+        else:
+            values.update(last_error_at=now_datetime(), last_error_kind=cstr(info.get("error_kind"))[:20] or "connect",
+                          consecutive_failures=cint(frappe.db.get_value(DEVICE, device.name, "consecutive_failures")) + 1)
     if "last_error" in values:
         values["last_error"] = values["last_error"][:1000]
     if info.get("last_pull"):
@@ -288,7 +377,87 @@ def heartbeat(serial, info, agent=None):
     values["last_heartbeat"] = now_datetime()
     values["agent"] = cstr(agent)[:140]
     frappe.db.set_value(DEVICE, device.name, values, update_modified=False)
-    return {"ok": True}
+    return {"ok": True, "status": update_status(device.name)}
+
+
+# ── Sync Now (v0.4.0) ───────────────────────────────────────────
+
+
+def agent_command():
+    """[python, script, --config, file] of the local agent, from site_config (slhrm_agent_python, slhrm_agent_config,
+    optional slhrm_agent_script; default script = the app's SLHRM-AGENT/slhrm_agent.py). None → the agent does not run
+    on this server: Sync Now only sets the sync_requested flag (a LAN agent would pick it up)."""
+    py, cfg = frappe.conf.get("slhrm_agent_python"), frappe.conf.get("slhrm_agent_config")
+    if not (py and cfg):
+        return None
+    script = frappe.conf.get("slhrm_agent_script") or os.path.abspath(
+        os.path.join(frappe.get_app_path("slhrm"), "..", "SLHRM-AGENT", "slhrm_agent.py"))
+    return [py, script, "--config", cfg]
+
+
+@frappe.whitelist(methods=["POST"])
+def sync_now(devices):
+    """Desk "Sync Now" (form button / list action). HR Manager / System Manager. At most once per device per
+    SYNC_RATE_SECONDS (atomic, Redis). Queues run_sync_now per device; the result arrives as realtime SYNC_EVENT.
+    Returns {"queued": [serial], "refused": [{device, message}]}."""
+    frappe.only_for(SYNC_ROLES)
+    if isinstance(devices, str):
+        devices = json.loads(devices) if devices.strip().startswith("[") else [devices]
+    out = {"queued": [], "refused": []}
+    for serial in devices or []:
+        d = frappe.get_doc(DEVICE, serial)
+        d.check_permission("read")
+        if not cint(d.enabled):
+            out["refused"].append({"device": d.name, "message": _("{0} is disabled.").format(d.device_name)})
+            continue
+        key = frappe.cache.make_key(f"slhrm:sync_now:{d.name}")
+        if not frappe.cache.set(key, frappe.session.user, ex=SYNC_RATE_SECONDS, nx=True):
+            wait = frappe.cache.ttl(key)
+            out["refused"].append({"device": d.name, "message": _("Sync Now for {0} was used less than {1} s ago — try again in {2} s.")
+                                   .format(d.device_name, SYNC_RATE_SECONDS, max(1, cint(wait)))})
+            continue
+        frappe.db.set_value(DEVICE, d.name, {"sync_requested": 1, "sync_requested_by": frappe.session.user,
+                                             "sync_requested_at": now_datetime()}, update_modified=False)
+        frappe.enqueue("slhrm.biometric.run_sync_now", queue="long", timeout=AGENT_ONCE_TIMEOUT + 120, serial=d.name,
+                       user=frappe.session.user, enqueue_after_commit=True)
+        out["queued"].append(d.name)
+    return out
+
+
+def run_sync_now(serial, user):
+    """Background job: the agent once for THIS device (`run --once --device <device_name>`: read-only allowlist, the
+    device's own lock — waits up to 60 s, else "busy"). Publishes the result to the requesting user."""
+    import time
+
+    d = frappe.db.get_value(DEVICE, serial, ["name", "device_name"], as_dict=True)
+    cmd = agent_command()
+    t0 = time.monotonic()
+    if not cmd:
+        result = {"device": d.device_name, "requested": True,
+                  "error": _("The agent does not run on this server; it will pick up the request on its next run.")}
+    else:
+        try:
+            proc = subprocess.run(cmd + ["run", "--once", "--device", d.device_name], capture_output=True, text=True,
+                                  timeout=AGENT_ONCE_TIMEOUT)
+            try:
+                result = json.loads(proc.stdout) if proc.stdout.strip() else None
+            except ValueError:
+                result = None
+            if result is None:
+                tail = (proc.stderr or "").strip().splitlines()[-1:] or [f"agent exit code {proc.returncode}"]
+                result = {"device": d.device_name, "connected": False, "error": tail[0][-500:]}
+        except subprocess.TimeoutExpired:
+            result = {"device": d.device_name, "connected": False, "error": _("agent did not finish within {0} s").format(AGENT_ONCE_TIMEOUT)}
+    result.setdefault("duration_seconds", round(time.monotonic() - t0, 1))
+    frappe.db.commit()  # end this job's snapshot: the agent's heartbeat was committed by another request
+    values = {"last_sync_result": json.dumps(result, indent=1, default=str)[:5000]}
+    if not result.get("requested"):
+        values["sync_requested"] = 0
+    frappe.db.set_value(DEVICE, serial, values, update_modified=False)
+    result["status"] = update_status(serial)
+    frappe.db.commit()
+    frappe.publish_realtime(SYNC_EVENT, {"serial": serial, "device_name": d.device_name, "result": result}, user=user)
+    return result
 
 
 def rematch(device_user_id=None, by_number=None):

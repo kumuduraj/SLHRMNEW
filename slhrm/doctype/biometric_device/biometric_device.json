@@ -14,7 +14,7 @@
  "search_fields": "device_name,branch",
  "sort_field": "modified",
  "sort_order": "DESC",
- "modified": "2026-11-12 10:00:00.000000",
+ "modified": "2026-11-12 12:00:00.000000",
  "fields": [
   {
    "fieldname": "serial",
@@ -86,6 +86,101 @@
    "description": "IANA timezone of the device clock (e.g. Asia/Colombo). Punch times are converted to the site timezone."
   },
   {
+   "fieldname": "section_connection",
+   "fieldtype": "Section Break",
+   "label": "Connection"
+  },
+  {
+   "fieldname": "connection_status",
+   "fieldtype": "Select",
+   "label": "Connection Status",
+   "read_only": 1,
+   "options": "\nOnline\nDelayed\nOffline\nDisabled",
+   "in_standard_filter": 1,
+   "description": "Online: last successful read ≤ 10 min ago. Delayed: 10–60 min, or a timeout (fewer than 3 failed runs in a row). Offline: > 60 min, a connect / password failure, or 3 failed runs in a row. Computed on the server from the agent's heartbeats (no device access from the web)."
+  },
+  {
+   "fieldname": "last_success_at",
+   "fieldtype": "Datetime",
+   "label": "Last successful sync",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "last_read_seconds",
+   "fieldtype": "Float",
+   "label": "Last read (s)",
+   "read_only": 1,
+   "precision": "1"
+  },
+  {
+   "fieldname": "column_break_conn2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_error_at",
+   "fieldtype": "Datetime",
+   "label": "Last error at",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_error_kind",
+   "fieldtype": "Data",
+   "label": "Last error kind",
+   "read_only": 1,
+   "description": "timeout / connect / auth / read (from the agent)."
+  },
+  {
+   "fieldname": "consecutive_failures",
+   "fieldtype": "Int",
+   "label": "Failed runs in a row",
+   "read_only": 1
+  },
+  {
+   "fieldname": "offline_notified",
+   "fieldtype": "Check",
+   "label": "Offline notified",
+   "read_only": 1,
+   "hidden": 1
+  },
+  {
+   "fieldname": "section_sync",
+   "fieldtype": "Section Break",
+   "label": "Sync Now",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "sync_requested",
+   "fieldtype": "Check",
+   "label": "Sync requested",
+   "read_only": 1,
+   "description": "Set by Sync Now, cleared when the agent has run. If the agent ever runs on a site LAN box instead of this server, it picks up this flag (code path kept ready)."
+  },
+  {
+   "fieldname": "sync_requested_by",
+   "fieldtype": "Link",
+   "options": "User",
+   "label": "Sync requested by",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sync_requested_at",
+   "fieldtype": "Datetime",
+   "label": "Sync requested at",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_sync",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_sync_result",
+   "fieldtype": "Code",
+   "options": "JSON",
+   "label": "Last Sync Now result",
+   "read_only": 1
+  },
+  {
    "fieldname": "section_info",
    "fieldtype": "Section Break",
    "label": "Device Info (read by the agent)",
@@ -148,7 +243,8 @@
    "fieldtype": "Float",
    "label": "Clock Drift (s)",
    "read_only": 1,
-   "description": "Device clock minus the agent's NTP-synced clock, in the device timezone. Positive = device ahead."
+   "description": "Device clock minus the agent's NTP-synced clock, in the device timezone. Positive = device ahead.",
+   "in_list_view": 1
   },
   {
    "fieldname": "agent",

@@ -338,9 +338,9 @@ class TestRunAndStats(Base):
         A.cmd_run(self.cfg, factory=lambda *a: FakeConn(conn._records), post=srv.post)
         self.assertEqual(srv.calls, calls + 1)  # heartbeat only
 
-    def test_run_skips_when_locked(self):
+    def test_run_skips_device_whose_lock_is_held(self):
         import fcntl
-        with open(self.cfg["lock_path"], "w") as f:
+        with open(A.device_lock_path(self.cfg, self.cfg["devices"][0]), "w") as f:
             fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
             srv = FakeServer()
             self.assertEqual(A.cmd_run(self.cfg, factory=lambda *a: FakeConn(), post=srv.post), 0)
@@ -490,3 +490,107 @@ class TestConfig(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+class TestIndependentDevices(Base):
+    """v0.4.0: per-device timeout, per-device lock, devices in parallel, Sync Now (run --once)."""
+
+    def setUp(self):
+        super().setUp()
+        self.cfg["devices"].append({"name": "D2", "serial": "SER2", "ip": "10.0.0.2", "port": 4370, "password": 0,
+                                    "transport": "tcp", "timezone": "Asia/Colombo", "enabled": True, "timeout_seconds": 240})
+        self.cfg["devices"][0]["timeout_seconds"] = 180
+
+    def test_per_device_timeout_passed_to_the_connection(self):
+        seen = {}
+
+        def factory(ip, port, password, transport, timeout):
+            seen[ip] = timeout
+            return FakeConn(serial="SER1" if ip == "10.0.0.1" else "SER2")
+        A.cmd_run(self.cfg, factory=factory, post=FakeServer().post)
+        self.assertEqual(seen, {"10.0.0.1": 180, "10.0.0.2": 240})
+
+    def test_default_device_timeout_is_60(self):
+        path = os.path.join(self.dir, "c.json")
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT, 0o600)
+        with os.fdopen(fd, "w") as f:
+            json.dump({"devices": [{"name": "X", "ip": "1.2.3.4"}]}, f)
+        self.assertEqual(A.load_config(path)["devices"][0]["timeout_seconds"], 60)
+
+    def test_timeout_on_one_device_does_not_fail_the_other(self):
+        srv = FakeServer()
+
+        def factory(ip, *a):
+            if ip == "10.0.0.1":
+                raise TimeoutError("timed out")
+            return FakeConn([rec("7", T0)], serial="SER2")
+        rc = A.cmd_run(self.cfg, factory=factory, post=srv.post)
+        self.assertEqual(rc, 1)
+        self.assertEqual(len(srv.stored), 1)  # D2 delivered its record
+        rows = self.db.execute("SELECT serial, ok, error FROM device_pull ORDER BY rowid").fetchall()
+        self.assertEqual({(r["serial"], r["ok"]) for r in rows}, {("SER1", 0), ("SER2", 1)})
+
+    def test_slow_device_does_not_delay_the_other(self):
+        import threading
+        d2_done = threading.Event()
+
+        class SlowConn(FakeConn):
+            def get_attendance(self):
+                self._log("get_attendance")
+                self.waited = d2_done.wait(5)  # only returns early if D2 finished meanwhile (parallel)
+                return self._records
+
+        class FastConn(FakeConn):
+            def get_attendance(self):
+                self._log("get_attendance")
+                d2_done.set()
+                return self._records
+        slow = SlowConn(serial="SER1")
+        A.cmd_run(self.cfg, factory=lambda ip, *a: slow if ip == "10.0.0.1" else FastConn(serial="SER2"), post=FakeServer().post)
+        self.assertTrue(slow.waited)
+
+    def test_once_reports_counts_and_works_for_a_disabled_device(self):
+        self.cfg["devices"][1]["enabled"] = False
+        srv = FakeServer()
+        r = A.cmd_once(self.cfg, "D2", factory=lambda *a: FakeConn([rec("1", T0), rec("999", T0)], serial="SER2"), post=srv.post)
+        self.assertEqual((r["connected"], r["new_in_queue"], r["inserted"], r["unmatched"], r["duplicate"]), (True, 2, 1, 1, 0))
+        self.assertIsNotNone(r["read_seconds"])
+        r = A.cmd_once(self.cfg, "D2", factory=lambda *a: FakeConn([rec("1", T0), rec("999", T0)], serial="SER2"), post=srv.post)
+        self.assertEqual((r["new_in_queue"], r["inserted"]), (0, 0))
+
+    def test_once_busy_when_the_device_lock_is_held(self):
+        import fcntl
+        with open(A.device_lock_path(self.cfg, self.cfg["devices"][0]), "w") as f:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            r = A.cmd_once(self.cfg, "D1", factory=lambda *a: self.fail("must not connect"), post=FakeServer().post, wait=1)
+        self.assertTrue(r["busy"])
+
+    def test_error_kinds_and_heartbeat_payload(self):
+        beats = []
+
+        class Srv(FakeServer):
+            def post(self, cfg, method, payload):
+                if method == "slhrm.api.device_heartbeat":
+                    beats.append(payload["info"])
+                return super().post(cfg, method, payload)
+
+        class Refused(FakeConn):
+            def connect(self):
+                raise ConnectionRefusedError("[Errno 111] Connection refused")
+
+        class Unauth(FakeConn):
+            def connect(self):
+                raise Exception("Unauthenticated")
+        r = A.cmd_once(self.cfg, "D1", factory=lambda *a: Refused(), post=Srv().post)
+        self.assertEqual((r["connected"], r["error_kind"]), (False, "connect"))
+        r = A.cmd_once(self.cfg, "D1", factory=lambda *a: Unauth(), post=Srv().post)
+        self.assertEqual(r["error_kind"], "auth")
+
+        class SlowRead(FakeConn):
+            def get_attendance(self):
+                raise TimeoutError("timed out")
+        r = A.cmd_once(self.cfg, "D1", factory=lambda *a: SlowRead(serial="SER1"), post=Srv().post)
+        self.assertEqual((r["connected"], r["error_kind"]), (True, "timeout"))
+        self.assertEqual([b["error_kind"] for b in beats], ["connect", "auth", "timeout"])
+        self.assertTrue(all("read_seconds" in b and b["last_pull_ok"] == 0 for b in beats))

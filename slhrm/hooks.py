@@ -14,7 +14,15 @@ app_license = "mit"
 # Assets — MUST be lists
 app_include_js = [
     "/assets/slhrm/js/slhrm.js",
+    "/assets/slhrm/js/device_sync.js",
 ]
+
+# Biometric Device connection status: age-based transitions when heartbeats stop (v0.4.0)
+scheduler_events = {
+    "cron": {
+        "*/5 * * * *": ["slhrm.biometric.refresh_connection_status"],
+    },
+}
 app_include_css = ["/assets/slhrm/css/slhrm.css"]
 
 # Install

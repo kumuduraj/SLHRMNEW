@@ -6,8 +6,11 @@ Device rules (HARD, permanent): devices are READ-ONLY. Only the pyzk calls in AL
 made — every device call goes through device_call(), which raises AgentError for anything else BEFORE the
 connection is touched (FORBIDDEN_DEVICE_CALLS lists pyzk's write/control methods explicitly; ReadOnlyDevice
 exposes no attribute of the connection). Never clear, set the time, change users/fingerprints, enable/disable,
-restart/poweroff or change config — on any device, in any command or test. One connection per device at a time (run lock),
-timeout 10 s, ommit_ping. At most 2 connect attempts per device per command; never retried in a loop.
+restart/poweroff or change config — on any device, in any command or test. One connection per device at a time (a lock
+file PER DEVICE: <lock_path>.<device name>), ommit_ping. Socket timeout per device (config timeout_seconds on the device,
+default 60 s; probe / discovery uses the global 10 s). At most 2 connect attempts per device per command; never retried
+in a loop. Devices are independent (v0.4.0): `run` reads every enabled device in its own thread with its own lock, queue
+connection and timeout, so a slow read or timeout on one device never delays or fails another.
 
 Zero loss / zero duplicates:
 - every device record → local SQLite queue by punch_key "<serial>|<device user id>|<YYYY-MM-DD HH:MM:SS>"
@@ -29,7 +32,9 @@ Commands (all need --config, a chmod-600 JSON file):
   push  [--retry-held]             send queued records to SLHRM
   backfill --device NAME [--resend] lock; read the whole device log, push it, report server results
                                    (--resend: send already-confirmed records again → all duplicate)
-  run                              lock; every enabled device: pull + users + heartbeat; then push
+  run                              every enabled device in parallel (own lock each): pull + users + heartbeat + push
+  run --once --device NAME         that device only (also when disabled in the config); waits up to 60 s for its lock,
+                                   else {"busy": true}; prints a JSON result (Sync Now)
   status                           queue counts per device and state
 """
 import argparse
@@ -50,7 +55,9 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-AGENT_VERSION = "0.3.1"
+AGENT_VERSION = "0.4.0"
+DEFAULT_DEVICE_TIMEOUT = 60  # seconds, per device (config devices[].timeout_seconds)
+ONCE_LOCK_WAIT = 60  # run --once: wait this long for the device lock (scheduled run in progress)
 TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 ALLOWED_DEVICE_CALLS = frozenset({
     "connect", "get_serialnumber", "get_firmware_version", "get_device_name", "get_platform", "get_mac",
@@ -80,6 +87,25 @@ class AuthError(AgentError):
     pass
 
 
+class ConnectError(AgentError):
+    """The connect step failed (network / auth) — nothing was read."""
+
+    def __init__(self, message, kind="connect"):
+        super().__init__(message)
+        self.kind = kind
+
+
+def error_kind(e):
+    """timeout | auth | connect | read — sent in the heartbeat; the server maps it to Delayed / Offline
+    (a timeout counts as Delayed until 3 consecutive failures; connect / auth failures are Offline)."""
+    text = str(e).lower()
+    if isinstance(e, ConnectError) and e.kind == "auth":
+        return "auth"
+    if "timed out" in text or "timeout" in text or isinstance(e, TimeoutError):
+        return "timeout"
+    return "connect" if isinstance(e, ConnectError) else "read"
+
+
 # ── config ──────────────────────────────────────────────────────
 
 
@@ -107,7 +133,43 @@ def load_config(path):
         d.setdefault("transport", "tcp")
         d.setdefault("enabled", True)
         d.setdefault("min_punch_date", cfg["min_punch_date"])
+        d.setdefault("timeout_seconds", DEFAULT_DEVICE_TIMEOUT)
     return cfg
+
+
+def device_timeout(dev, cfg=None):
+    return int(dev.get("timeout_seconds") or DEFAULT_DEVICE_TIMEOUT)
+
+
+def device_lock_path(cfg, dev):
+    safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in (dev.get("name") or dev.get("serial") or "device"))
+    return f"{cfg['lock_path']}.{safe}"
+
+
+class DeviceLock:
+    """Exclusive lock for ONE device (no two reads of the same device at once). wait=0: try once."""
+
+    def __init__(self, cfg, dev, wait=0):
+        self.path, self.wait, self.f, self.acquired = device_lock_path(cfg, dev), wait, None, False
+
+    def __enter__(self):
+        self.f = open(self.path, "w")
+        deadline = time.monotonic() + self.wait
+        while True:
+            try:
+                fcntl.flock(self.f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                self.acquired = True
+                return self
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    return self
+                time.sleep(1)
+
+    def __exit__(self, *exc):
+        if self.acquired:
+            fcntl.flock(self.f, fcntl.LOCK_UN)
+        self.f.close()
+        return False
 
 
 def min_ts(min_punch_date):
@@ -252,8 +314,14 @@ def connect_once(ip, port, password, transport, timeout, factory=_zk):
 
 
 def connect_configured(dev, cfg, factory=_zk):
-    """Configured device: exactly one attempt with its known password and transport."""
-    return connect_once(dev["ip"], dev["port"], dev["password"], dev["transport"], cfg["timeout_seconds"], factory)
+    """Configured device: exactly one attempt with its known password and transport, the DEVICE's timeout.
+    Failures are raised as ConnectError (kind auth / connect)."""
+    try:
+        return connect_once(dev["ip"], dev["port"], dev["password"], dev["transport"], device_timeout(dev, cfg), factory)
+    except AuthError as e:
+        raise ConnectError(str(e), kind="auth") from e
+    except AgentError as e:
+        raise ConnectError(str(e), kind="timeout" if "timed out" in str(e).lower() else "connect") from e
 
 
 def connect_discover(ip, port, timeout=10, factory=_zk, tcp_ok=None):
@@ -446,6 +514,8 @@ def push(db, cfg, retry_held=False, post=http_post, serial=None):
         with db:
             db.execute("UPDATE punch SET state = 'failed', attempts = 0 WHERE state = 'held'")
     for dev in cfg["devices"]:  # unconfirmed rows older than min_punch_date are never sent
+        if serial and dev.get("serial") != serial:
+            continue  # per-device push touches only its own rows
         if dev.get("serial") and min_ts(dev.get("min_punch_date")):
             with db:
                 db.execute("UPDATE punch SET state = 'skipped_old' WHERE serial = ? AND ts < ? AND state IN"
@@ -508,6 +578,7 @@ def _fail(db, batch, err, now):
 
 def read_device(dev, cfg, factory=_zk, with_records=True, with_users=False):
     """Connect (one attempt), read, disconnect. Serial must match the configured serial."""
+    t0 = time.monotonic()
     device = connect_configured(dev, cfg, factory)
     try:
         info = device.info()
@@ -522,7 +593,7 @@ def read_device(dev, cfg, factory=_zk, with_records=True, with_users=False):
     finally:
         device.disconnect()
     return {"info": info, "device_time": dev_time, "host_time": host_now, "drift": drift, "sizes": sizes,
-            "users": users, "records": records}
+            "users": users, "records": records, "read_seconds": round(time.monotonic() - t0, 1)}
 
 
 def pull_device(db, dev, cfg, factory=_zk):
@@ -572,54 +643,86 @@ def send_heartbeat(cfg, dev, payload, post=http_post):
         log.error("heartbeat %s: %s", dev["name"], e)
 
 
-def cmd_run(cfg, factory=_zk, post=http_post):
-    with open(cfg["lock_path"], "w") as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            log.info("run: another run is in progress — exiting")
-            return 0
-        return _run_locked(cfg, factory, post)
-
-
-def _run_locked(cfg, factory, post):
-    errors = 0
+def sync_device(cfg, dev, factory=_zk, post=http_post):
+    """ONE device, caller holds its lock: pull → users → heartbeat → push (that serial only). Own queue connection,
+    own timeout. Never raises; returns a result dict (also printed by run --once)."""
+    t0 = time.monotonic()
+    out = {"device": dev["name"], "serial": dev.get("serial"), "connected": False, "error": None, "error_kind": None,
+           "new_in_queue": 0, "inserted": 0, "duplicate": 0, "unmatched": 0, "drift_seconds": None,
+           "read_seconds": None, "record_count": None}
     db = db_open(cfg["db_path"])
-    for dev in cfg["devices"]:
-        if not dev.get("enabled", True):
-            continue
-        hb = {"last_pull": utcnow(), "last_pull_tz": "UTC"}
+    hb = {"last_pull": utcnow(), "last_pull_tz": "UTC"}
+    try:
         try:
-            data, _new = pull_device(db, dev, cfg, factory)
-            sync_users(db, cfg, dev, data["users"], post)
+            data, new = pull_device(db, dev, cfg, factory)
+            out.update(connected=True, new_in_queue=new, drift_seconds=data["drift"], read_seconds=data["read_seconds"],
+                       record_count=len(data["records"]))
+            out["users"] = sync_users(db, cfg, dev, data["users"], post)
             hb.update(data["info"])
             hb.update({k: v for k, v in data["sizes"].items() if k in ("user_count", "user_capacity", "record_count", "record_capacity")})
-            hb.update({"last_pull_ok": 1, "clock_drift_seconds": data["drift"], "last_error": ""})
+            hb.update({"last_pull_ok": 1, "clock_drift_seconds": data["drift"], "last_error": "", "error_kind": "",
+                       "read_seconds": data["read_seconds"]})
         except Exception as e:
-            errors += 1
+            out.update(error=str(e)[:500] or type(e).__name__, error_kind=error_kind(e), connected=not isinstance(e, ConnectError))
             log.error("pull %s: %s", dev["name"], e)
             with db:
                 db.execute("INSERT INTO device_pull (serial, pulled_at, ok, error) VALUES (?, ?, 0, ?)",
-                           (dev.get("serial") or dev["name"], utcnow(), str(e)[:500]))
-            hb.update({"last_pull_ok": 0, "last_error": str(e)[:500]})
+                           (dev.get("serial") or dev["name"], utcnow(), out["error"]))
+            hb.update({"last_pull_ok": 0, "last_error": out["error"], "error_kind": out["error_kind"],
+                       "read_seconds": round(time.monotonic() - t0, 1)})
         hb["queue_depth"] = queue_depth(db, dev.get("serial"))
         if dev.get("serial"):
             send_heartbeat(cfg, dev, hb, post)
-    result = push(db, cfg, post=post)
-    if result.get("stopped"):
-        errors += 1
-    db.close()
-    return 1 if errors else 0
+            res = push(db, cfg, post=post, serial=dev["serial"])
+            out.update(inserted=res.get("inserted", 0), duplicate=res.get("duplicate", 0),
+                       unmatched=res.get("unknown_employee", 0), push_failed=res.get("failed", 0))
+            if res.get("stopped"):
+                out["push_error"] = res["stopped"]
+    finally:
+        db.close()
+    out["duration_seconds"] = round(time.monotonic() - t0, 1)
+    return out
+
+
+def cmd_run(cfg, factory=_zk, post=http_post):
+    """Every enabled device in its own thread with its own lock: a device whose lock is held (its previous read is
+    still running) is skipped this time; others are not affected. Returns 1 if any device failed."""
+    import threading
+
+    results = {}
+
+    def one(dev):
+        with DeviceLock(cfg, dev) as lock:
+            if not lock.acquired:
+                log.info("run %s: previous read still in progress — skipped", dev["name"])
+                results[dev["name"]] = {"busy": True}
+                return
+            results[dev["name"]] = sync_device(cfg, dev, factory, post)
+
+    threads = [threading.Thread(target=one, args=(d,), name=f"dev-{d['name']}") for d in cfg["devices"] if d.get("enabled", True)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    bad = [n for n, r in results.items() if r.get("error") or r.get("push_error")]
+    return 1 if bad else 0
+
+
+def cmd_once(cfg, name, factory=_zk, post=http_post, wait=ONCE_LOCK_WAIT):
+    """Sync Now: one device (even if disabled in the config), waits up to `wait` s for its lock."""
+    dev = get_device_cfg(cfg, name)
+    with DeviceLock(cfg, dev, wait=wait) as lock:
+        if not lock.acquired:
+            return {"device": dev["name"], "busy": True, "error": f"busy: a read of {dev['name']} is in progress — try again"}
+        return sync_device(cfg, dev, factory, post)
 
 
 def cmd_backfill(cfg, name, resend=False, factory=_zk, post=http_post):
     """Whole device log → queue → server, under the run lock. Returns counts by server result."""
     dev = get_device_cfg(cfg, name)
-    with open(cfg["lock_path"], "w") as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            raise AgentError("another run is in progress — try again")
+    with DeviceLock(cfg, dev) as lock:
+        if not lock.acquired:
+            raise AgentError(f"a read of {dev['name']} is in progress — try again")
         db = db_open(cfg["db_path"])
         data, new = pull_device(db, dev, cfg, factory)
         users = sync_users(db, cfg, dev, data["users"], post)
@@ -629,7 +732,7 @@ def cmd_backfill(cfg, name, resend=False, factory=_zk, post=http_post):
                            " AND ts >= ?", (dev["serial"], min_ts(dev.get("min_punch_date")) or ""))
         result = push(db, cfg, post=post, serial=dev["serial"])
         hb = dict(data["info"], last_pull=utcnow(), last_pull_tz="UTC", last_pull_ok=1, clock_drift_seconds=data["drift"],
-                  last_error="", queue_depth=queue_depth(db, dev["serial"]),
+                  last_error="", error_kind="", read_seconds=data["read_seconds"], queue_depth=queue_depth(db, dev["serial"]),
                   **{k: v for k, v in data["sizes"].items() if k in ("user_count", "user_capacity", "record_count", "record_capacity")})
         send_heartbeat(cfg, dev, hb, post)
         states = dict(db.execute("SELECT state, COUNT(*) FROM punch WHERE serial = ? GROUP BY state", (dev["serial"],)).fetchall())
@@ -670,7 +773,9 @@ def main(argv=None):
     p = sub.add_parser("backfill")
     p.add_argument("--device", required=True)
     p.add_argument("--resend", action="store_true")
-    sub.add_parser("run")
+    p = sub.add_parser("run")
+    p.add_argument("--once", action="store_true", help="one device only (needs --device); prints a JSON result")
+    p.add_argument("--device")
     sub.add_parser("status")
     a = ap.parse_args(argv)
 
@@ -731,6 +836,10 @@ def main(argv=None):
         out = push(db_open(cfg["db_path"]), cfg, retry_held=a.retry_held)
     elif a.cmd == "backfill":
         out = cmd_backfill(cfg, a.device, a.resend)
+    elif a.cmd == "run" and a.once:
+        if not a.device:
+            ap.error("run --once needs --device")
+        out = cmd_once(cfg, a.device)
     elif a.cmd == "run":
         return cmd_run(cfg)
     elif a.cmd == "status":

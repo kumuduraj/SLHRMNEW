@@ -1,7 +1,7 @@
 {
  "app": "slhrm",
  "charts": [],
- "content": "[{\"id\": \"sc_dashboard\", \"type\": \"shortcut\", \"label\": \"Attendance Dashboard\", \"link_to\": \"slhrm-dashboard\", \"doc_view\": \"Page\", \"icon\": \"chart-bar\", \"color\": \"#3b82f6\"}, {\"id\": \"sc_marker\", \"type\": \"shortcut\", \"label\": \"New Attendance Marker\", \"link_to\": \"Attendance Marker\", \"doc_view\": \"Form\", \"icon\": \"square-check\", \"color\": \"#3b82f6\"}, {\"id\": \"sc_punch\", \"type\": \"shortcut\", \"label\": \"Biometric Punch Log\", \"link_to\": \"Biometric Punch Log\", \"doc_view\": \"List\", \"icon\": \"file-text\", \"color\": \"#22c55e\"}, {\"id\": \"sc_emp\", \"type\": \"shortcut\", \"label\": \"Employees\", \"link_to\": \"Employee\", \"doc_view\": \"List\", \"icon\": \"user\", \"color\": \"#8b5cf6\"}, {\"id\": \"sc_leave\", \"type\": \"shortcut\", \"label\": \"Leave Applications\", \"link_to\": \"Leave Application\", \"doc_view\": \"List\", \"icon\": \"book-open\", \"color\": \"#f59e0b\"}, {\"id\": \"sc_salary\", \"type\": \"shortcut\", \"label\": \"Salary Slips\", \"link_to\": \"Salary Slip\", \"doc_view\": \"List\", \"icon\": \"file-text\", \"color\": \"#ef4444\"}, {\"id\": \"sc_expense\", \"type\": \"shortcut\", \"label\": \"Expense Claims\", \"link_to\": \"Expense Claim\", \"doc_view\": \"List\", \"icon\": \"file-text\", \"color\": \"#ec4899\"}, {\"id\": \"sc_settings\", \"type\": \"shortcut\", \"label\": \"Settings\", \"link_to\": \"SLHRM Settings\", \"doc_view\": \"Form\", \"icon\": \"settings\", \"color\": \"#6b7280\"}, {\"id\": \"h_tna\", \"type\": \"header\", \"data\": {\"text\": \"Time & Attendance\", \"col\": 12}}, {\"id\": \"card_tna\", \"type\": \"card\", \"data\": {\"card_name\": \"Time & Attendance\", \"col\": 4}}, {\"id\": \"h_emp\", \"type\": \"header\", \"data\": {\"text\": \"Employee\", \"col\": 12}}, {\"id\": \"card_emp\", \"type\": \"card\", \"data\": {\"card_name\": \"Employee\", \"col\": 4}}, {\"id\": \"h_rec\", \"type\": \"header\", \"data\": {\"text\": \"Recruitment\", \"col\": 12}}, {\"id\": \"card_rec\", \"type\": \"card\", \"data\": {\"card_name\": \"Recruitment\", \"col\": 4}}, {\"id\": \"h_leave\", \"type\": \"header\", \"data\": {\"text\": \"Leaves\", \"col\": 12}}, {\"id\": \"card_leave\", \"type\": \"card\", \"data\": {\"card_name\": \"Leaves\", \"col\": 4}}, {\"id\": \"h_pay\", \"type\": \"header\", \"data\": {\"text\": \"Payroll\", \"col\": 12}}, {\"id\": \"card_pay\", \"type\": \"card\", \"data\": {\"card_name\": \"Payroll\", \"col\": 4}}, {\"id\": \"h_exp\", \"type\": \"header\", \"data\": {\"text\": \"Expense & Travel\", \"col\": 12}}, {\"id\": \"card_exp\", \"type\": \"card\", \"data\": {\"card_name\": \"Expense & Travel\", \"col\": 4}}, {\"id\": \"h_perf\", \"type\": \"header\", \"data\": {\"text\": \"Performance\", \"col\": 12}}, {\"id\": \"card_perf\", \"type\": \"card\", \"data\": {\"card_name\": \"Performance\", \"col\": 4}}, {\"id\": \"h_train\", \"type\": \"header\", \"data\": {\"text\": \"Training\", \"col\": 12}}, {\"id\": \"card_train\", \"type\": \"card\", \"data\": {\"card_name\": \"Training\", \"col\": 4}}, {\"id\": \"h_set\", \"type\": \"header\", \"data\": {\"text\": \"Settings\", \"col\": 12}}, {\"id\": \"card_set\", \"type\": \"card\", \"data\": {\"card_name\": \"Settings\", \"col\": 4}}]",
+ "content": "[{\"id\": \"sc_dashboard\", \"type\": \"shortcut\", \"label\": \"Attendance Dashboard\", \"link_to\": \"slhrm-dashboard\", \"doc_view\": \"Page\", \"icon\": \"chart-bar\", \"color\": \"#3b82f6\"}, {\"id\": \"sc_marker\", \"type\": \"shortcut\", \"label\": \"New Attendance Marker\", \"link_to\": \"Attendance Marker\", \"doc_view\": \"Form\", \"icon\": \"square-check\", \"color\": \"#3b82f6\"}, {\"id\": \"sc_punch\", \"type\": \"shortcut\", \"label\": \"Biometric Punch Log\", \"link_to\": \"Biometric Punch Log\", \"doc_view\": \"List\", \"icon\": \"file-text\", \"color\": \"#22c55e\"}, {\"id\": \"sc_emp\", \"type\": \"shortcut\", \"label\": \"Employees\", \"link_to\": \"Employee\", \"doc_view\": \"List\", \"icon\": \"user\", \"color\": \"#8b5cf6\"}, {\"id\": \"sc_leave\", \"type\": \"shortcut\", \"label\": \"Leave Applications\", \"link_to\": \"Leave Application\", \"doc_view\": \"List\", \"icon\": \"book-open\", \"color\": \"#f59e0b\"}, {\"id\": \"sc_salary\", \"type\": \"shortcut\", \"label\": \"Salary Slips\", \"link_to\": \"Salary Slip\", \"doc_view\": \"List\", \"icon\": \"file-text\", \"color\": \"#ef4444\"}, {\"id\": \"sc_expense\", \"type\": \"shortcut\", \"label\": \"Expense Claims\", \"link_to\": \"Expense Claim\", \"doc_view\": \"List\", \"icon\": \"file-text\", \"color\": \"#ec4899\"}, {\"id\": \"sc_settings\", \"type\": \"shortcut\", \"label\": \"Settings\", \"link_to\": \"SLHRM Settings\", \"doc_view\": \"Form\", \"icon\": \"settings\", \"color\": \"#6b7280\"}, {\"id\": \"h_devices\", \"type\": \"header\", \"data\": {\"text\": \"<span class=\\\"h4\\\"><b>Devices</b></span>\", \"col\": 12}}, {\"id\": \"nc_devices_online\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Devices Online\", \"col\": 4}}, {\"id\": \"nc_devices_delayed\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Devices Delayed\", \"col\": 4}}, {\"id\": \"nc_devices_offline\", \"type\": \"number_card\", \"data\": {\"number_card_name\": \"Devices Offline\", \"col\": 4}}, {\"id\": \"h_tna\", \"type\": \"header\", \"data\": {\"text\": \"Time & Attendance\", \"col\": 12}}, {\"id\": \"card_tna\", \"type\": \"card\", \"data\": {\"card_name\": \"Time & Attendance\", \"col\": 4}}, {\"id\": \"h_emp\", \"type\": \"header\", \"data\": {\"text\": \"Employee\", \"col\": 12}}, {\"id\": \"card_emp\", \"type\": \"card\", \"data\": {\"card_name\": \"Employee\", \"col\": 4}}, {\"id\": \"h_rec\", \"type\": \"header\", \"data\": {\"text\": \"Recruitment\", \"col\": 12}}, {\"id\": \"card_rec\", \"type\": \"card\", \"data\": {\"card_name\": \"Recruitment\", \"col\": 4}}, {\"id\": \"h_leave\", \"type\": \"header\", \"data\": {\"text\": \"Leaves\", \"col\": 12}}, {\"id\": \"card_leave\", \"type\": \"card\", \"data\": {\"card_name\": \"Leaves\", \"col\": 4}}, {\"id\": \"h_pay\", \"type\": \"header\", \"data\": {\"text\": \"Payroll\", \"col\": 12}}, {\"id\": \"card_pay\", \"type\": \"card\", \"data\": {\"card_name\": \"Payroll\", \"col\": 4}}, {\"id\": \"h_exp\", \"type\": \"header\", \"data\": {\"text\": \"Expense & Travel\", \"col\": 12}}, {\"id\": \"card_exp\", \"type\": \"card\", \"data\": {\"card_name\": \"Expense & Travel\", \"col\": 4}}, {\"id\": \"h_perf\", \"type\": \"header\", \"data\": {\"text\": \"Performance\", \"col\": 12}}, {\"id\": \"card_perf\", \"type\": \"card\", \"data\": {\"card_name\": \"Performance\", \"col\": 4}}, {\"id\": \"h_train\", \"type\": \"header\", \"data\": {\"text\": \"Training\", \"col\": 12}}, {\"id\": \"card_train\", \"type\": \"card\", \"data\": {\"card_name\": \"Training\", \"col\": 4}}, {\"id\": \"h_set\", \"type\": \"header\", \"data\": {\"text\": \"Settings\", \"col\": 12}}, {\"id\": \"card_set\", \"type\": \"card\", \"data\": {\"card_name\": \"Settings\", \"col\": 4}}]",
  "creation": "2026-06-17 00:00:00.000000",
  "custom_blocks": [],
  "docstatus": 0,
@@ -333,7 +333,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-11-09 11:30:00.000000",
+ "modified": "2026-11-12 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "SLHRM",
  "name": "SLHRM",
@@ -345,5 +345,19 @@
  "sequence_id": 1,
  "shortcuts": [],
  "title": "SLHRM",
- "type": "Workspace"
+ "type": "Workspace",
+ "number_cards": [
+  {
+   "number_card_name": "Devices Online",
+   "label": "Devices Online"
+  },
+  {
+   "number_card_name": "Devices Delayed",
+   "label": "Devices Delayed"
+  },
+  {
+   "number_card_name": "Devices Offline",
+   "label": "Devices Offline"
+  }
+ ]
 }
