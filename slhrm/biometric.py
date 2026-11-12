@@ -13,6 +13,9 @@ Every raw device record is stored exactly once:
   whose name contains the name on the device; (b) then writes attendance_device_id (classify_by_number).
   Unmatched records are re-matched when attendance_device_id is set (doc_events on_update). A branch transfer keeps
   the id. slhrm_biometric_device_id is legacy (hidden, copied by patch v0_2_1, never written).
+- Blocked User IDs (v0.3.2, Biometric Device child table): a device user id blocked on a device is NEVER matched there —
+  checked before (a) and (b) in ingest, rematch and map_device_user; its punches stay Unmatched with match_reason = the
+  row's reason ("collision — re-enrol on device" / "HR check — do not match"). apply_blocks() runs on device save.
 IN/OUT pairing and OT are NOT decided here (Attendance Marker / slhrm.overtime).
 
 Whitelisted wrappers (API key, fail closed) live in slhrm.api: device_ingest, device_heartbeat.
@@ -39,6 +42,10 @@ SETTINGS = "SLHRM Settings"
 NUMBER_SETTING = "match_device_user_by_employee_number"
 ID_FIELD = "attendance_device_id"  # ERPNext Employee field, unique company-wide (v0.2.1)
 OTHER_BRANCH = "other_branch"
+BLOCKED = "Biometric Device Blocked User"
+BLOCK_COLLISION = "collision — re-enrol on device"
+BLOCK_HR_CHECK = "HR check — do not match"
+BLOCK_REASONS = (BLOCK_COLLISION, BLOCK_HR_CHECK)
 
 # ZKTeco punch state → Biometric Punch Log.punch_type (the raw state is kept in device_punch_state)
 PUNCH_TYPES = {0: "IN", 1: "OUT", 2: "BREAK", 3: "RETURN", 4: "IN", 5: "OUT"}
@@ -80,6 +87,38 @@ def served_branches(serial, own_branch=None):
     rows = frappe.get_all(DEVICE_BRANCH, filters={"parent": serial, "parenttype": DEVICE, "parentfield": "served_branches"},
                           pluck="branch", order_by="idx asc") if serial else []
     return as_branches(([own_branch] if own_branch else []) + rows)
+
+
+def blocked_ids(serial):
+    """{device user id: {reason, note}} blocked on this device (Blocked User IDs)."""
+    if not serial:
+        return {}
+    return {cstr(r.device_user_id).strip(): r for r in frappe.get_all(
+        BLOCKED, filters={"parent": serial, "parenttype": DEVICE, "parentfield": "blocked_user_ids"},
+        fields=["device_user_id", "reason", "note"])}
+
+
+def apply_blocks(serial, unblocked=()):
+    """Device saved: Pending punches of blocked ids lose their employee (Unmatched + reason); Unmatched ones get the
+    reason. Punches already Matched (used by a submitted marker) are left alone (counted). Ids removed from the
+    list are re-matched normally. Returns counts."""
+    out = {"unmatched": 0, "kept_matched": 0, "rematched": 0}
+    for uid, b in blocked_ids(serial).items():
+        for r in frappe.get_all(PUNCH, filters={"device_serial": serial, "device_user_id": uid},
+                                fields=["name", "processing_status", "match_reason"]):
+            if r.processing_status == "Matched":
+                out["kept_matched"] += 1
+            elif r.processing_status == "Pending":
+                frappe.db.set_value(PUNCH, r.name, {"employee": None, "employee_name": None, "employee_number": None,
+                                                    "processing_status": "Unmatched", "match_reason": b.reason})
+                out["unmatched"] += 1
+            elif r.processing_status == "Unmatched" and r.match_reason != b.reason:
+                frappe.db.set_value(PUNCH, r.name, "match_reason", b.reason, update_modified=False)
+    for uid in unblocked or ():
+        frappe.db.set_value(PUNCH, {"device_serial": serial, "device_user_id": uid, "processing_status": "Unmatched",
+                                    "match_reason": ["in", BLOCK_REASONS]}, "match_reason", None, update_modified=False)
+        out["rematched"] += rematch(uid)
+    return out
 
 
 def devices_serving(branch):
@@ -139,6 +178,7 @@ def get_device(serial):
     if not device:
         frappe.throw(_("Unknown device serial {0}: register it in Biometric Device first.").format(serial))
     device.branches = served_branches(device.name, device.branch)
+    device.blocked = blocked_ids(device.name)
     return device
 
 
@@ -183,9 +223,13 @@ def _ingest_one(device, p, site_tz, agent, cache):
         if existing:
             return dict(out, result="duplicate", name=existing)
 
-        emp, reason = resolve_employee(uid, device.branches, cache), None
-        if not emp and cache.get("by_number"):
-            emp, reason = match_by_number(device.name, device.branches, uid, cache)
+        block = (device.get("blocked") or {}).get(uid)
+        if block:  # blocked on this device: never matched (no (a), no (b))
+            emp, reason = None, block.reason
+        else:
+            emp, reason = resolve_employee(uid, device.branches, cache), None
+            if not emp and cache.get("by_number"):
+                emp, reason = match_by_number(device.name, device.branches, uid, cache)
         state = p.get("punch_state")
         state = None if state in (None, "") else cint(state)
         verify = p.get("verify_mode")
@@ -255,12 +299,20 @@ def rematch(device_user_id=None, by_number=None):
     if device_user_id:
         filters["device_user_id"] = device_user_id
     by_number = number_matching_enabled() if by_number is None else cint(by_number)
-    branches = {d.name: served_branches(d.name, d.branch) for d in frappe.get_all(DEVICE, fields=["name", "branch"])}
+    devices = frappe.get_all(DEVICE, fields=["name", "branch"])
+    branches = {d.name: served_branches(d.name, d.branch) for d in devices}
+    blocked = {d.name: blocked_ids(d.name) for d in devices}
     groups = {}
     for r in frappe.get_all(PUNCH, filters=filters, fields=["name", "device_serial", "device_user_id", "match_reason"]):
         groups.setdefault((r.device_serial, r.device_user_id), []).append(r)
     cache, matched = {}, 0
     for (serial, uid), rows in groups.items():
+        block = blocked.get(serial, {}).get(uid)
+        if block:  # never matched on this device
+            for r in rows:
+                if cstr(r.match_reason) != block.reason:
+                    frappe.db.set_value(PUNCH, r.name, "match_reason", block.reason, update_modified=False)
+            continue
         emp, reason = resolve_employee(uid, branches.get(serial), cache), None
         if not emp and by_number:
             emp, reason = match_by_number(serial, branches.get(serial), uid, cache)
@@ -552,6 +604,10 @@ def map_device_user(device_serial, device_user_id, employee, replace=0):
     device = get_device(device_serial)
     if not device_user_id or not frappe.db.exists(PUNCH, {"device_serial": device.name, "device_user_id": device_user_id}):
         return {"refused": _("No punches of device user {0} on {1}.").format(device_user_id, device.name)}
+    if device_user_id in (device.blocked or {}):
+        b = device.blocked[device_user_id]
+        return {"refused": _("Device user {0} is blocked on {1} ({2}). Remove it from Blocked User IDs first.").format(
+            device_user_id, device.name, b.reason)}
     emp = frappe.get_doc("Employee", employee)
     emp.check_permission("write")
     if emp.status != "Active":
@@ -607,13 +663,14 @@ def device_id_collisions(serial):
     holders = {cstr(e.get(ID_FIELD)).strip(): e for e in frappe.get_all(
         "Employee", filters={ID_FIELD: ["is", "set"]}, fields=["name", "employee_name", "branch", "status", ID_FIELD])}
     out = {"device": device.name, "served": device.branches, "users": len(users),
-           "collisions": [], "similar": [], "no_name": [], "same_person": []}
+           "collisions": [], "similar": [], "no_name": [], "same_person": [], "blocked": sorted(device.blocked)}
     for u in users:
         h = holders.get(cstr(u.device_user_id).strip())
         if not h:
             continue
         row = {"device_user_id": u.device_user_id, "name_on_device": u.user_name, "holder": h.name,
-               "holder_name": h.employee_name, "holder_branch": h.branch, "holder_status": h.status}
+               "holder_name": h.employee_name, "holder_branch": h.branch, "holder_status": h.status,
+               "blocked": (device.blocked.get(cstr(u.device_user_id).strip()) or {}).get("reason")}
         dn = cstr(u.user_name).strip()
         if name_sanity(dn, h.employee_name):
             out["same_person"].append(row)

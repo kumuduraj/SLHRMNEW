@@ -14,7 +14,7 @@
  "search_fields": "device_name,branch",
  "sort_field": "modified",
  "sort_order": "DESC",
- "modified": "2026-11-10 22:00:00.000000",
+ "modified": "2026-11-12 10:00:00.000000",
  "fields": [
   {
    "fieldname": "serial",
@@ -46,6 +46,13 @@
    "label": "Served Branches",
    "options": "Biometric Device Branch",
    "description": "Branches whose employees punch on this device (always includes the device's own Branch). Device user ids must be unique across these branches."
+  },
+  {
+   "fieldname": "blocked_user_ids",
+   "fieldtype": "Table",
+   "label": "Blocked User IDs",
+   "options": "Biometric Device Blocked User",
+   "description": "Device user ids of THIS device that are never matched to an employee (e.g. the same number belongs to another person on another device). Their punches stay Unmatched with the reason; re-enrol the person on the device with a free number, then remove the row."
   },
   {
    "fieldname": "enabled",

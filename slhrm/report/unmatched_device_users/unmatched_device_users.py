@@ -4,8 +4,8 @@ import frappe
 from frappe import _
 from frappe.utils import add_months, get_first_day, today
 
-from slhrm.biometric import (DEVICE, DEVICE_USER, PUNCH, classify_by_number, mapping_candidates, number_matching_enabled,
-                             served_branches, suggest_employee)
+from slhrm.biometric import (DEVICE, DEVICE_USER, PUNCH, blocked_ids, classify_by_number, mapping_candidates,
+                             number_matching_enabled, served_branches, suggest_employee)
 
 
 def execute(filters=None):
@@ -27,6 +27,7 @@ def execute(filters=None):
     devices = {d.name: d for d in frappe.get_all(DEVICE, fields=["name", "device_name", "branch"])}
     for d in devices.values():
         d.branches = served_branches(d.name, d.branch)
+        d.blocked = blocked_ids(d.name)
     names = {(u.device, u.device_user_id): u for u in frappe.get_all(
         DEVICE_USER, fields=["device", "device_user_id", "user_name", "on_device"])}
     employees = mapping_candidates()
@@ -47,6 +48,10 @@ def execute(filters=None):
         r.number_hit = c.employee.name if c.employee else None
         r.number_hit_name = c.employee.employee_name if c.employee else None
         r.reason = reason_text(c, by_number)
+        b = (d.get("blocked") or {}).get(r.device_user_id)
+        if b:  # blocked on this device: never matched — the block reason (+ note) is the reason
+            r.reason = _("blocked: {0}").format(b.reason) + (f" — {b.note}" if b.note else "")
+            r.number_hit = r.number_hit_name = None
         r.action = ""
     return columns(since), rows
 

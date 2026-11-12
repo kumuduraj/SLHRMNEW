@@ -19,6 +19,27 @@ class BiometricDevice(Document):
         except (ZoneInfoNotFoundError, ValueError):
             frappe.throw(_("Unknown timezone {0}. Use an IANA name such as Asia/Colombo.").format(self.timezone))
         self.set_served_branches()
+        self.clean_blocked_ids()
+
+    def clean_blocked_ids(self):
+        seen = set()
+        for r in self.get("blocked_user_ids") or []:
+            r.device_user_id = (r.device_user_id or "").strip()
+            if not r.device_user_id or "|" in r.device_user_id:
+                frappe.throw(_("Blocked User IDs row {0}: Device User ID is required and may not contain '|'.").format(r.idx))
+            if r.device_user_id in seen:
+                frappe.throw(_("Blocked User IDs: {0} is listed twice.").format(r.device_user_id))
+            seen.add(r.device_user_id)
+
+    def on_update(self):
+        from slhrm.biometric import apply_blocks
+
+        before = self.get_doc_before_save()
+        old = {r.device_user_id for r in (before.get("blocked_user_ids") or [])} if before else set()
+        res = apply_blocks(self.name, unblocked=old - {r.device_user_id for r in self.get("blocked_user_ids") or []})
+        if res.get("kept_matched"):
+            frappe.msgprint(_("{0} punch(es) of blocked ids are already used by a submitted Attendance Marker and stay as they are.")
+                            .format(res["kept_matched"]), indicator="orange")
 
     def set_served_branches(self):
         """The device's own branch is always served; no duplicates."""

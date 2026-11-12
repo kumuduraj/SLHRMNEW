@@ -73,7 +73,7 @@
    "fieldname": "match_reason",
    "fieldtype": "Select",
    "label": "Match Reason",
-   "options": "\nambiguous\nconflict\nname_mismatch\nother_branch",
+   "options": "\nambiguous\nconflict\nname_mismatch\nother_branch\ncollision — re-enrol on device\nHR check — do not match",
    "read_only": 1,
    "description": "Unmatched: why rule (b) did not link. Matched: other_branch = the employee's branch is not served by this device."
   },
@@ -199,5 +199,5 @@
    "report": 1
   }
  ],
- "modified": "2026-11-10 22:00:00.000000"
+ "modified": "2026-11-12 10:00:00.000000"
 }
