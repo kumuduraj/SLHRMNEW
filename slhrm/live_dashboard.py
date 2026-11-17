@@ -6,7 +6,7 @@ Today (site time, Asia/Colombo) from MATCHED punches paired with the marker's ow
 D−2 … now):
 - On duty: the employee's latest session is OPEN (odd taps = an IN without its OUT) and started within ON_DUTY_HOURS (16) —
   also a night shift from yesterday. An older open session → "Missing OUT" (not on duty).
-- Not punched yet: no punch today, not on duty / missing OUT, not on holiday (Holiday List Assignment) or approved leave.
+- Not punched yet: no punch today and not on duty (a stale open session = Missing OUT AND not punched), not on holiday (Holiday List Assignment) or approved leave.
   ONLY for branches served by an enabled device; a branch without one shows "No device — attendance by manual marker" and its
   staff are never "not punched". Shift start + 30 min passed → "late / not arrived".
 - Late arrivals (default shift only): today's first session starts after the shift start.
@@ -139,7 +139,8 @@ def build(branch=None, now=None):
             is_open = bool(last) and len(_taps(last)) % 2 == 1
             age_h = (now - last[0].time).total_seconds() / 3600 if last else None
             row = {"employee": e.name, "employee_name": e.employee_name, "shift": e.default_shift or ""}
-            if is_open and age_h <= ON_DUTY_HOURS:
+            on_duty = is_open and age_h <= ON_DUTY_HOURS
+            if on_duty:
                 L["on_duty"].append(dict(row, time=str(last[0].time), hours=round(age_h, 2)))
             elif is_open:
                 L["missing_out"].append(dict(row, time=str(last[0].time), hours=round(age_h, 2)))
@@ -148,7 +149,7 @@ def build(branch=None, now=None):
             if start_shift and todays and todays[0][0].time > start_shift:
                 L["late"].append(dict(row, time=str(todays[0][0].time), shift_start=str(start_shift),
                                       minutes=int((todays[0][0].time - start_shift).total_seconds() // 60)))
-            if has_device and not today_p and not is_open:
+            if has_device and not today_p and not on_duty:  # a stale open session (Missing OUT) has not arrived today either
                 if get_holiday_info(e.name, str(today))[0] or e.name in on_leave:
                     continue
                 L["not_punched"].append(dict(row, time=str(start_shift) if start_shift else None,
