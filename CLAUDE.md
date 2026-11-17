@@ -439,11 +439,14 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   handoff + branch-scoped/cutoff docs) carries an old PWA message → write a NEW, uniquely named message file for
   every commit and read `git log -1 --format=%B` BEFORE `git push`.
 
-## Handoff — current state (2026-11-17, v0.4.2, prod = upstream/master = dev)
+## Handoff — current state (2026-11-17, v0.4.3, prod = upstream/master = dev)
 - Audit trail of every phase: `~/slhrm_audit_20261108.md` (… "Phase 3.0 result", "Phase 3.0 completion after
   restart", "Phase 3.1 result", "Phase 3.2 result", "Phase 3.3 result", … "Phase 3.4 result"). Read the last sections before starting.
-- Version 0.4.2, agent 0.4.0 (`slhrm/__init__.py`, pyproject / setup.py / setup.cfg in step). Last deploy + restart
-  2026-11-17 04:06 UTC (+ JS-only fit fix 42746a7, build + clear-cache); all GILLSHR processes confirmed. Session pairing
+- Version 0.4.3, agent 0.4.3 (`slhrm/__init__.py`, pyproject / setup.py / setup.cfg in step). Last deploy + restart
+  2026-11-17 04:24 UTC; all GILLSHR processes confirmed. **BRITISHPUB is read every 60 min** (it froze during the ~120 s full
+  log reads every 5 min); DUTCHPUB every 5 min; both have quiet windows 07:30-09:00, 14:30-15:30, 21:00-22:00 (Colombo).
+  BRITISHPUB "Safe to clear up to 2026-11-17" (report 09:56 Colombo; backup CSV on the device form +
+  `~/cc-tmp/britishpub_device_log_backup_20261117.csv`) — site staff may clear the device log right after a sync. Session pairing
   (v0.4.1) and "two sessions on D → first + warning" CONFIRMED by Raj 2026-11-17. All 118 Active employees OT-eligible since 2026-11-17 (bulk tick);
   Shakila's draft marker k84gtoi0mq (DUTCHPUB 2026-10-02) re-loaded with punch sessions (not submitted). Devices show Online / Delayed / Offline; Sync Now is live (Shakila
   already uses it).
@@ -698,3 +701,28 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   wins. Name + Flags columns wrap, time cells nowrap — the real 45-row DUTCHPUB draft fits 798 px at 1366 px.
 - Print format **"Attendance Marker"** (standard, default via the DocType's `default_print_format`): header + summary counts
   + the Punch Overview (jinja `marker_overview`).
+
+## Read interval, quiet windows, safe to clear (v0.4.3, Raj 2026-11-17 — URGENT: BRITISHPUB froze during reads)
+- Agent logs 2026-11-16/17: BRITISHPUB full-log read avg 121 s (max ≈ 280 s) every 5 min (≈ 40 % of the time busy; 34 runs
+  skipped as still running, 2 timeouts) vs DUTCHPUB 17 s. Every read now logs `read <device> start` and `pull <device> …`.
+- **Biometric Device** `sync_interval_minutes` (Read every, default 5) and `quiet_windows` (one `HH:MM-HH:MM` per line, device
+  time; may cross midnight) are the source of truth: the server returns them in every heartbeat answer
+  (`device_schedule`), the agent caches them in its queue meta (`schedule:<serial>`); config `interval_minutes` /
+  `quiet_windows` are the fallback. Scheduled `run`: a device is read only when its interval has passed since its LAST
+  ATTEMPT (device_pull, ok or not — no hammering after a timeout; 45 s cron tolerance) and never in a quiet window.
+  `run --once` (Sync Now) and the server's `sync_now` refuse in a quiet window: "Busy period — try after hh:mm".
+- Status limits follow the schedule: Online ≤ max(10, interval + 5) min, Delayed ≤ max(60, 2 × interval) min, both plus the
+  quiet-window minutes since the last good read (`quiet_minutes`).
+- **Safe to clear**: `slhrm_agent.py safe-to-clear --device NAME --csv FILE [--force]` — ONE read (device lock; refused in a
+  quiet window), queued + pushed like a pull; CSV (600) of EVERY device record with agent state / server / covered_by; every
+  record from the cutoff is checked on the server (`slhrm.api.device_check_keys`, device key); safe_to_clear_date = latest D
+  such that every record dated ≤ D is in the CSV and (from the cutoff) confirmed in the queue AND on the server; records
+  before the cutoff are only in the CSV (by design). Report + CSV (gzip/base64) → `slhrm.api.device_clear_report` → Biometric
+  Device fields (Safe to clear up to, Report at, report JSON) + a PRIVATE File attached to the device (previous one replaced);
+  form button "Download device log backup (CSV)". Staff text: "After saving this backup, the device attendance log may be
+  cleared from the device menu" — right after a sync: a clear removes every record, also newer punches.
+- **Cleared device log is normal**: `note_record_count` — a lower record count is logged ("log shrank … cleared on the
+  device"), never an error; queue rows stay confirmed; nothing re-sent; new records queue as usual.
+- Lesson (2026-11-17): a throwaway user's Sync Now on a REAL device left `Biometric Device.sync_requested_by =
+  t41-hrm@example.com` after its teardown (found when a later save failed the link check) → teardowns must also clear link
+  fields on REAL records that the test touched; search `like 't%-%@example.com'` before calling a teardown complete.
