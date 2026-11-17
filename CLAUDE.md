@@ -439,11 +439,12 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   handoff + branch-scoped/cutoff docs) carries an old PWA message → write a NEW, uniquely named message file for
   every commit and read `git log -1 --format=%B` BEFORE `git push`.
 
-## Handoff — current state (2026-11-17, v0.4.1, prod = upstream/master = dev)
+## Handoff — current state (2026-11-17, v0.4.2, prod = upstream/master = dev)
 - Audit trail of every phase: `~/slhrm_audit_20261108.md` (… "Phase 3.0 result", "Phase 3.0 completion after
   restart", "Phase 3.1 result", "Phase 3.2 result", "Phase 3.3 result", … "Phase 3.4 result"). Read the last sections before starting.
-- Version 0.4.1, agent 0.4.0 (`slhrm/__init__.py`, pyproject / setup.py / setup.cfg in step). Last deploy + restart
-  2026-11-17 03:39 UTC; all GILLSHR processes confirmed. All 118 Active employees OT-eligible since 2026-11-17 (bulk tick);
+- Version 0.4.2, agent 0.4.0 (`slhrm/__init__.py`, pyproject / setup.py / setup.cfg in step). Last deploy + restart
+  2026-11-17 04:06 UTC (+ JS-only fit fix 42746a7, build + clear-cache); all GILLSHR processes confirmed. Session pairing
+  (v0.4.1) and "two sessions on D → first + warning" CONFIRMED by Raj 2026-11-17. All 118 Active employees OT-eligible since 2026-11-17 (bulk tick);
   Shakila's draft marker k84gtoi0mq (DUTCHPUB 2026-10-02) re-loaded with punch sessions (not submitted). Devices show Online / Delayed / Offline; Sync Now is live (Shakila
   already uses it).
 - **Employees:** 118 active — DUTCHPUB 45, FORTFUSION 35, BRITISHPUB 22, ALIYA 16. No DEMO data. No user logins
@@ -681,3 +682,19 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   `prev_punch` (last punch before IN), `next_punch` (first after OUT), `session_range`, `session_punches` (time + device name).
   Frappe hides empty read-only fields: no previous / next punch in the window → the field is not shown.
 - Grid unchanged (9 columns at 1366 px). Unit tests `slhrm.tests.test_sessions` include the real DUTCHPUB raw patterns.
+
+## Punch Overview on Attendance Marker (v0.4.2, Raj 2026-11-17)
+- Section "Punch Overview" (HTML field `punch_overview_html`) replaces the per-punch Punch References grid on screen; the raw
+  child table stays in the document, collapsed as "Punch log (raw)" (audit). One read-only line per Attendance Details row:
+  Employee Name | Emp No. | Previous Punch | IN | OUT | Next Punch | Hrs | Flags. Filters all / flagged / missing punch, sorted
+  by name; a click opens that employee's row editor (session punches with device).
+- **Built on the server from the form's CURRENT rows** (`slhrm.api.marker_punch_overview(date, branch, rows)` →
+  `slhrm.punch_overview.build`; unsaved edits show at once; no stored child table); punches read live over D−2 … D+2.
+  Previous = last punch before IN (before OUT if IN missing); Next = first after OUT (after IN if OUT missing). Every time
+  "dd-mm hh:mm"; another date → muted; OUT on D+1 → "+1". Flags: Missing punch / Long session / No shift (row flags), Two
+  sessions (no-shift row, `sessions_for_day` > 1, punches of other days' submitted markers excluded), Other branch (employee's
+  branch ≠ marker's, or a used punch came from a device not serving the marker's branch).
+- JS: `schedule_overview` (debounced 400 ms) from `update_summary` and `refresh` (submitted markers too); newest request
+  wins. Name + Flags columns wrap, time cells nowrap — the real 45-row DUTCHPUB draft fits 798 px at 1366 px.
+- Print format **"Attendance Marker"** (standard, default via the DocType's `default_print_format`): header + summary counts
+  + the Punch Overview (jinja `marker_overview`).
