@@ -42,6 +42,15 @@ class AttendanceMarker(Document):
                     frappe.format_value(prev.date, {"fieldtype": "Date"})),
                 title=_("Previous day"), indicator="orange")
 
+    def on_trash(self):
+        """Drafts may be deleted by HR Manager / Attendance Supervisor (DocType permission). A submitted marker is refused by
+        Frappe (cancel first — HR Manager only); a cancelled one may only be deleted by HR Manager / System Manager."""
+        if self.docstatus == 1:
+            frappe.throw(_("A submitted Attendance Marker cannot be deleted. Cancel it first (HR Manager)."))
+        if self.docstatus == 2 and frappe.session.user != "Administrator" and not (
+                {"HR Manager", "System Manager"} & set(frappe.get_roles())):
+            frappe.throw(_("Only an HR Manager can delete a cancelled Attendance Marker."), frappe.PermissionError)
+
     def before_submit(self):
         self.approved_by = frappe.session.user
         # Clear stale attendance_record references from prior cancelled submissions

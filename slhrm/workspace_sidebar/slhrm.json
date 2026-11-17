@@ -89,6 +89,18 @@
   {
    "child": 1,
    "collapsible": 0,
+   "icon": "calendar",
+   "indent": 0,
+   "keep_closed": 0,
+   "label": "Attendance Calendar",
+   "link_to": "attendance-calendar",
+   "link_type": "Page",
+   "show_arrow": 0,
+   "type": "Link"
+  },
+  {
+   "child": 1,
+   "collapsible": 0,
    "icon": "file-text",
    "indent": 0,
    "keep_closed": 0,
@@ -563,7 +575,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-11-09 11:30:00.000000",
+ "modified": "2026-11-17 15:00:00.000000",
  "modified_by": "Administrator",
  "module": "SLHRM",
  "name": "SLHRM",
