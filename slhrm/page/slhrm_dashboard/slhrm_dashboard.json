@@ -5,7 +5,7 @@
  "doctype": "Page",
  "icon": "chart-bar",
  "idx": 0,
- "modified": "2026-11-08 15:00:00.000000",
+ "modified": "2026-11-17 16:00:00.000000",
  "modified_by": "Administrator",
  "module": "SLHRM",
  "name": "slhrm-dashboard",
@@ -17,6 +17,9 @@
   },
   {
    "role": "HR Manager"
+  },
+  {
+   "role": "Attendance Supervisor"
   },
   {
    "role": "System Manager"

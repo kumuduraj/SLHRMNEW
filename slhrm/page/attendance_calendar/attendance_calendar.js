@@ -13,6 +13,7 @@ frappe.pages["attendance-calendar"].on_page_load = function (wrapper) {
 	const month = page.add_field({ fieldname: "month", label: __("Month"), fieldtype: "Select", options: months, default: prev.slice(0, 7),
 		change: () => load() });
 	month.set_value(prev.slice(0, 7));
+	wrapper.slhrm_branch = branch;  // the dashboard opens the calendar with frappe.route_options = {branch}
 	page.set_secondary_action(__("Export register (Excel)"), () => {
 		if (!branch.get_value()) return frappe.msgprint(__("Select a Branch."));
 		window.open(`/api/method/slhrm.attendance_calendar.export_register?branch=${encodeURIComponent(branch.get_value())}` +
@@ -21,6 +22,11 @@ frappe.pages["attendance-calendar"].on_page_load = function (wrapper) {
 	const $body = $(`<div class="slhrm-cal" style="padding:8px 0;"></div>`).appendTo(page.main);
 	$body.html(`<p class="text-muted">${__("Select a Branch.")}</p>`);
 	const esc = frappe.utils.escape_html;
+	if (frappe.route_options && frappe.route_options.branch) {
+		const b = frappe.route_options.branch;
+		frappe.route_options = null;
+		setTimeout(() => branch.set_value(b), 0);
+	}
 	const COLOR = { green: ["#e6f4ea", "#2f9e44"], orange: ["#fff4e5", "#e8590c"], red: ["#fdecea", "#e03131"], grey: ["#f1f3f5", "#868e96"] };
 
 	function load() {
@@ -95,5 +101,13 @@ frappe.pages["attendance-calendar"].on_page_load = function (wrapper) {
 		$body.find(".slhrm-cal-day.click").on("click", function () { open_day(data.days.find((x) => x.date === $(this).data("date"))); });
 		$body.find(".slhrm-cal-pend").on("click", function () { open_day(data.days.find((x) => x.date === $(this).data("date"))); });
 		$body.find(".slhrm-reg-only").on("change", function () { state.only_attention = this.checked ? 1 : 0; render(); });
+	}
+};
+
+frappe.pages["attendance-calendar"].on_page_show = function (wrapper) {
+	if (frappe.route_options && frappe.route_options.branch && wrapper.slhrm_branch) {
+		const b = frappe.route_options.branch;
+		frappe.route_options = null;
+		wrapper.slhrm_branch.set_value(b);
 	}
 };
