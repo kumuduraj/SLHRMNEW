@@ -286,27 +286,86 @@ def _ingest_one(device, p, site_tz, agent, cache):
         return dict(out, result="error", error=cstr(e)[:300])
 
 
-def connection_status(enabled, last_success_at, last_pull_ok, error_kind=None, consecutive_failures=0, now=None):
-    """Pure. Online ≤ 10 min since the last successful read, Delayed ≤ 60 min, else Offline. A failed last run is Offline
-    when it could not connect (connect / auth) or failed FAILS_FOR_OFFLINE times in a row; a timeout / read error is
-    Delayed (or Offline by age). Disabled device → Disabled."""
+def parse_quiet_windows(text, as_text=False):
+    """'07:30-09:00' lines (or a list) → [(start time, end time)] (or normalised 'HH:MM-HH:MM' strings). ValueError if bad."""
+    items = text if isinstance(text, (list, tuple)) else [x for x in cstr(text).replace(",", "\n").splitlines()]
+    out = []
+    for raw in items:
+        w = cstr(raw).strip()
+        if not w:
+            continue
+        try:
+            a, b = [datetime.strptime(x.strip(), "%H:%M").time() for x in w.split("-")]
+        except ValueError:
+            raise ValueError(_("Quiet window {0}: use HH:MM-HH:MM, e.g. 07:30-09:00.").format(w))
+        if a == b:
+            raise ValueError(_("Quiet window {0}: start and end are the same.").format(w))
+        out.append((a, b) if not as_text else f"{a:%H:%M}-{b:%H:%M}")
+    return out
+
+
+def quiet_until(windows, now):
+    """'HH:MM' end of the quiet window `now` (device / site time) is in, else None. Windows may cross midnight."""
+    t = now.time()
+    for a, b in windows or []:
+        if (a <= t < b) if a <= b else (t >= a or t < b):
+            return f"{b:%H:%M}"
+    return None
+
+
+def quiet_minutes(windows, start, end):
+    """Minutes of quiet windows inside [start, end] (no read is expected then)."""
+    if not windows or not start or end <= start:
+        return 0.0
+    total = 0.0
+    day = start.date() - timedelta(days=1)
+    while day <= end.date():
+        for a, b in windows:
+            ws = datetime.combine(day, a)
+            we = datetime.combine(day if a < b else day + timedelta(days=1), b)
+            lo, hi = max(ws, start), min(we, end)
+            if hi > lo:
+                total += (hi - lo).total_seconds() / 60
+        day += timedelta(days=1)
+    return total
+
+
+def connection_status(enabled, last_success_at, last_pull_ok, error_kind=None, consecutive_failures=0, now=None,
+                      interval_minutes=5, quiet=None):
+    """Pure. Online ≤ max(10 min, interval + 5) since the last successful read, Delayed ≤ max(60 min, 2 × interval),
+    else Offline — both limits plus the quiet-window minutes in between (v0.4.3: a device read hourly is not "Delayed"
+    after 10 min). A failed last run is Offline when it could not connect (connect / auth) or failed FAILS_FOR_OFFLINE times
+    in a row; a timeout / read error is Delayed (or Offline by age). Disabled device → Disabled."""
     if not cint(enabled):
         return DISABLED
     if not last_success_at:
         return OFFLINE
     now = now or now_datetime()
-    age = (now - frappe.utils.get_datetime(last_success_at)).total_seconds() / 60
+    last = frappe.utils.get_datetime(last_success_at)
+    age = (now - last).total_seconds() / 60
+    iv = max(0, cint(interval_minutes))
+    extra = quiet_minutes(quiet or [], last, now)
+    online, delayed = max(ONLINE_MINUTES, iv + 5) + extra, max(DELAYED_MINUTES, 2 * iv) + extra
     if not cint(last_pull_ok):
         if cstr(error_kind) in OFFLINE_ERROR_KINDS or cint(consecutive_failures) >= FAILS_FOR_OFFLINE:
             return OFFLINE
-        return OFFLINE if age > DELAYED_MINUTES else DELAYED
-    if age <= ONLINE_MINUTES:
+        return OFFLINE if age > delayed else DELAYED
+    if age <= online:
         return ONLINE
-    return DELAYED if age <= DELAYED_MINUTES else OFFLINE
+    return DELAYED if age <= delayed else OFFLINE
+
+
+def device_schedule(serial):
+    """{interval_minutes, quiet_windows: ['HH:MM-HH:MM']} of a device (sent to the agent with every heartbeat)."""
+    d = frappe.db.get_value(DEVICE, serial, ["sync_interval_minutes", "quiet_windows"], as_dict=True) or {}
+    iv = d.get("sync_interval_minutes")
+    return {"interval_minutes": 5 if iv in (None, "") else cint(iv),
+            "quiet_windows": parse_quiet_windows(d.get("quiet_windows"), as_text=True)}
 
 
 STATUS_FIELDS = ["name", "device_name", "enabled", "last_success_at", "last_pull_ok", "last_error_kind",
-                 "consecutive_failures", "connection_status", "offline_notified", "last_error"]
+                 "consecutive_failures", "connection_status", "offline_notified", "last_error", "sync_interval_minutes",
+                 "quiet_windows"]
 
 
 def update_status(serial, now=None, notify=True):
@@ -314,7 +373,9 @@ def update_status(serial, now=None, notify=True):
     d = frappe.db.get_value(DEVICE, serial, STATUS_FIELDS, as_dict=True)
     if not d:
         return None
-    status = connection_status(d.enabled, d.last_success_at, d.last_pull_ok, d.last_error_kind, d.consecutive_failures, now)
+    status = connection_status(d.enabled, d.last_success_at, d.last_pull_ok, d.last_error_kind, d.consecutive_failures, now,
+                               interval_minutes=5 if d.sync_interval_minutes in (None, "") else d.sync_interval_minutes,
+                               quiet=parse_quiet_windows(d.quiet_windows))
     values = {}
     if status != d.connection_status:
         values["connection_status"] = status
@@ -377,7 +438,7 @@ def heartbeat(serial, info, agent=None):
     values["last_heartbeat"] = now_datetime()
     values["agent"] = cstr(agent)[:140]
     frappe.db.set_value(DEVICE, device.name, values, update_modified=False)
-    return {"ok": True, "status": update_status(device.name)}
+    return {"ok": True, "status": update_status(device.name), "schedule": device_schedule(device.name)}
 
 
 # ── Sync Now (v0.4.0) ───────────────────────────────────────────
@@ -409,6 +470,10 @@ def sync_now(devices):
         d.check_permission("read")
         if not cint(d.enabled):
             out["refused"].append({"device": d.name, "message": _("{0} is disabled.").format(d.device_name)})
+            continue
+        until = quiet_until(parse_quiet_windows(d.quiet_windows), now_datetime())
+        if until:  # quiet window (busy period on site): no device read
+            out["refused"].append({"device": d.name, "message": _("Busy period — try after {0}.").format(until)})
             continue
         key = frappe.cache.make_key(f"slhrm:sync_now:{d.name}")
         if not frappe.cache.set(key, frappe.session.user, ex=SYNC_RATE_SECONDS, nx=True):
@@ -851,3 +916,45 @@ def device_id_collisions(serial):
             out["collisions"].append(row)
     print(json.dumps(out, indent=1, default=str))
     return out
+
+
+# ── Safe to clear (v0.4.3) ──────────────────────────────────────
+
+
+def check_keys(serial, keys):
+    """Device API: which punch keys of this device are NOT stored (Biometric Punch Log.punch_key). ≤ 500 keys."""
+    device = get_device(serial)
+    keys = [cstr(k) for k in (json.loads(keys) if isinstance(keys, str) else keys or [])][:MAX_BATCH]
+    have = set(frappe.get_all(PUNCH, filters={"punch_key": ["in", keys or ["-"]], "device_serial": device.name}, pluck="punch_key"))
+    d = frappe.db.get_single_value(SETTINGS, "biometric_start_date")
+    return {"missing": [k for k in keys if k not in have], "start_date": f"{d} 00:00:00" if d else None}
+
+
+MAX_BACKUP_BYTES = 20 * 1024 * 1024
+
+
+def clear_report(serial, report, csv_gz_b64, file_name=None):
+    """Device API: store the agent's "safe to clear" report on the Biometric Device and the CSV backup as a PRIVATE File
+    attached to it (replaces the previous backup file)."""
+    import base64
+    import gzip
+
+    device = get_device(serial)
+    report = json.loads(report) if isinstance(report, str) else (report or {})
+    content = gzip.decompress(base64.b64decode(csv_gz_b64 or ""))
+    if len(content) > MAX_BACKUP_BYTES:
+        frappe.throw(_("Backup too large."))
+    old = frappe.db.get_value(DEVICE, device.name, "clear_backup_file")
+    name = re.sub(r"[^A-Za-z0-9_.-]", "_", cstr(file_name) or f"{device.name}_device_log.csv")[:120]
+    f = frappe.get_doc({"doctype": "File", "file_name": name, "is_private": 1, "content": content,
+                        "attached_to_doctype": DEVICE, "attached_to_name": device.name})
+    f.flags.ignore_permissions = True
+    f.insert(ignore_permissions=True)
+    if old and old != f.file_url:
+        for n in frappe.get_all("File", {"file_url": old, "attached_to_doctype": DEVICE, "attached_to_name": device.name}, pluck="name"):
+            frappe.delete_doc("File", n, ignore_permissions=True, force=1)
+    frappe.db.set_value(DEVICE, device.name, {
+        "safe_to_clear_date": report.get("safe_to_clear_date"), "clear_report_at": now_datetime(),
+        "clear_backup_file": f.file_url, "clear_report": json.dumps(report, indent=1, default=str)[:20000]}, update_modified=False)
+    return {"ok": True, "file_url": f.file_url, "safe_to_clear_date": report.get("safe_to_clear_date")}
+

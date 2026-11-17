@@ -34,7 +34,15 @@ Commands (all need --config, a chmod-600 JSON file):
                                    (--resend: send already-confirmed records again → all duplicate)
   run                              every enabled device in parallel (own lock each): pull + users + heartbeat + push
   run --once --device NAME         that device only (also when disabled in the config); waits up to 60 s for its lock,
-                                   else {"busy": true}; prints a JSON result (Sync Now)
+                                   else {"busy": true}; refused in a quiet window; prints a JSON result (Sync Now)
+  safe-to-clear --device NAME --csv FILE   ONE read of the whole device log (lock; not in a quiet window unless --force):
+                                   CSV backup of every record (chmod 600), every record from the cutoff checked on the
+                                   server; "safe to clear" date; report + CSV sent to SLHRM (Biometric Device)
+
+Schedule (v0.4.3): per device interval_minutes (default 5) and quiet_windows ["HH:MM-HH:MM", …] in the device's timezone —
+`run` reads a device only when its interval has passed since its last read attempt and never in a quiet window. The
+Biometric Device values (returned by the server with every heartbeat, cached in the queue meta table) override the config.
+A device log that shrinks (cleared on the device) is logged, never an error; nothing is re-sent.
   status                           queue counts per device and state
 """
 import argparse
@@ -55,7 +63,9 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-AGENT_VERSION = "0.4.0"
+AGENT_VERSION = "0.4.3"
+DEFAULT_INTERVAL_MINUTES = 5
+INTERVAL_TOLERANCE = timedelta(seconds=45)  # cron start jitter
 DEFAULT_DEVICE_TIMEOUT = 60  # seconds, per device (config devices[].timeout_seconds)
 ONCE_LOCK_WAIT = 60  # run --once: wait this long for the device lock (scheduled run in progress)
 TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -134,7 +144,72 @@ def load_config(path):
         d.setdefault("enabled", True)
         d.setdefault("min_punch_date", cfg["min_punch_date"])
         d.setdefault("timeout_seconds", DEFAULT_DEVICE_TIMEOUT)
+        d.setdefault("interval_minutes", DEFAULT_INTERVAL_MINUTES)
+        d.setdefault("quiet_windows", [])
     return cfg
+
+
+# ── schedule: interval + quiet windows (v0.4.3) ─────────────────
+
+
+def parse_window(text):
+    """'07:30-09:00' → (time, time); raises AgentError on a bad value."""
+    try:
+        a, b = [x.strip() for x in str(text).split("-")]
+        return datetime.strptime(a, "%H:%M").time(), datetime.strptime(b, "%H:%M").time()
+    except ValueError as e:
+        raise AgentError(f"bad quiet window {text!r} (use HH:MM-HH:MM)") from e
+
+
+def quiet_until(windows, now_local):
+    """'HH:MM' end of the quiet window now_local is in, else None. A window may cross midnight (22:00-06:00)."""
+    t = now_local.time()
+    for w in windows or []:
+        a, b = parse_window(w)
+        inside = (a <= t < b) if a <= b else (t >= a or t < b)
+        if inside:
+            return b.strftime("%H:%M")
+    return None
+
+
+def schedule(db, dev):
+    """Effective {interval_minutes, quiet_windows} of a device: the server's (cached from the last heartbeat) or the config's."""
+    iv = dev.get("interval_minutes")
+    out = {"interval_minutes": int(DEFAULT_INTERVAL_MINUTES if iv in (None, "") else iv),  # 0 = every run
+           "quiet_windows": list(dev.get("quiet_windows") or [])}
+    row = db.execute("SELECT v FROM meta WHERE k = ?", (f"schedule:{dev.get('serial')}",)).fetchone() if dev.get("serial") else None
+    if row:
+        try:
+            srv = json.loads(row[0])
+            if srv.get("interval_minutes") not in (None, ""):
+                out["interval_minutes"] = int(srv["interval_minutes"])
+            if srv.get("quiet_windows") is not None:
+                out["quiet_windows"] = list(srv["quiet_windows"])
+        except (ValueError, TypeError):
+            pass
+    return out
+
+
+def device_now(dev):
+    return datetime.now(ZoneInfo(dev.get("timezone") or "Asia/Colombo")).replace(tzinfo=None)
+
+
+def last_attempt(db, dev):
+    row = db.execute("SELECT MAX(pulled_at) FROM device_pull WHERE serial = ?", (dev.get("serial") or dev["name"],)).fetchone()
+    return datetime.strptime(row[0], TIME_FORMAT) if row and row[0] else None
+
+
+def due(db, dev, now_utc=None):
+    """(due?, reason) for a scheduled read: quiet window → no; interval not yet passed since the last attempt → no."""
+    sch = schedule(db, dev)
+    until = quiet_until(sch["quiet_windows"], device_now(dev))
+    if until:
+        return False, f"quiet window until {until}"
+    last = last_attempt(db, dev)
+    now_utc = now_utc or datetime.now(timezone.utc).replace(tzinfo=None)
+    if last and now_utc - last < timedelta(minutes=sch["interval_minutes"]) - INTERVAL_TOLERANCE:
+        return False, f"interval {sch['interval_minutes']} min not yet passed"
+    return True, ""
 
 
 def device_timeout(dev, cfg=None):
@@ -579,6 +654,7 @@ def _fail(db, batch, err, now):
 def read_device(dev, cfg, factory=_zk, with_records=True, with_users=False):
     """Connect (one attempt), read, disconnect. Serial must match the configured serial."""
     t0 = time.monotonic()
+    log.info("read %s start", dev["name"])  # start + end in the log: matches device freezes on site (v0.4.3)
     device = connect_configured(dev, cfg, factory)
     try:
         info = device.info()
@@ -596,11 +672,27 @@ def read_device(dev, cfg, factory=_zk, with_records=True, with_users=False):
             "users": users, "records": records, "read_seconds": round(time.monotonic() - t0, 1)}
 
 
+def note_record_count(db, dev, count):
+    """A device log that shrinks was cleared on the device (by site staff, after a backup): normal — logged, never an
+    error. Records already in the queue stay confirmed; nothing is re-sent; new records are queued as usual."""
+    k = f"record_count:{dev.get('serial')}"
+    row = db.execute("SELECT v FROM meta WHERE k = ?", (k,)).fetchone()
+    prev = int(row[0]) if row and str(row[0]).isdigit() else None
+    if prev is not None and count < prev:
+        log.info("device %s: attendance log shrank %d -> %d records (cleared on the device) — normal, nothing re-sent",
+                 dev["name"], prev, count)
+        with db:
+            db.execute("INSERT OR REPLACE INTO meta (k, v) VALUES (?, ?)", (f"log_cleared:{dev.get('serial')}", utcnow()))
+    with db:
+        db.execute("INSERT OR REPLACE INTO meta (k, v) VALUES (?, ?)", (k, str(count)))
+
+
 def pull_device(db, dev, cfg, factory=_zk):
     serial = dev.get("serial")
     if not serial:
         raise AgentError(f"device {dev['name']}: serial missing in config (run info first)")
     data = read_device(dev, cfg, factory, with_users=True)
+    note_record_count(db, dev, len(data["records"]))
     keep, skipped = split_old(data["records"], dev.get("min_punch_date"))
     new = enqueue(db, serial, keep, data["drift"])
     data["skipped_old"] = skipped
@@ -634,13 +726,20 @@ def sync_users(db, cfg, dev, users, post=http_post):
     return res
 
 
-def send_heartbeat(cfg, dev, payload, post=http_post):
+def send_heartbeat(cfg, dev, payload, post=http_post, db=None):
+    """Heartbeat; the server answers with the device's schedule (interval + quiet windows), cached for `run`."""
     if not device_key(cfg):
-        return
+        return None
     try:
-        post(cfg, "slhrm.api.device_heartbeat", {"serial": dev["serial"], "agent": cfg["agent_name"], "info": payload})
+        res = post(cfg, "slhrm.api.device_heartbeat", {"serial": dev["serial"], "agent": cfg["agent_name"], "info": payload})
     except AgentError as e:
         log.error("heartbeat %s: %s", dev["name"], e)
+        return None
+    sch = (res or {}).get("schedule") if isinstance(res, dict) else None
+    if db is not None and sch is not None:
+        with db:
+            db.execute("INSERT OR REPLACE INTO meta (k, v) VALUES (?, ?)", (f"schedule:{dev['serial']}", json.dumps(sch)))
+    return res
 
 
 def sync_device(cfg, dev, factory=_zk, post=http_post):
@@ -672,7 +771,7 @@ def sync_device(cfg, dev, factory=_zk, post=http_post):
                        "read_seconds": round(time.monotonic() - t0, 1)})
         hb["queue_depth"] = queue_depth(db, dev.get("serial"))
         if dev.get("serial"):
-            send_heartbeat(cfg, dev, hb, post)
+            send_heartbeat(cfg, dev, hb, post, db=db)
             res = push(db, cfg, post=post, serial=dev["serial"])
             out.update(inserted=res.get("inserted", 0), duplicate=res.get("duplicate", 0),
                        unmatched=res.get("unknown_employee", 0), push_failed=res.get("failed", 0))
@@ -692,6 +791,16 @@ def cmd_run(cfg, factory=_zk, post=http_post):
     results = {}
 
     def one(dev):
+        db = db_open(cfg["db_path"])
+        try:
+            ok, why = due(db, dev)
+        finally:
+            db.close()
+        if not ok:
+            if why.startswith("quiet"):
+                log.info("run %s: %s — skipped", dev["name"], why)
+            results[dev["name"]] = {"skipped": why}
+            return
         with DeviceLock(cfg, dev) as lock:
             if not lock.acquired:
                 log.info("run %s: previous read still in progress — skipped", dev["name"])
@@ -711,10 +820,99 @@ def cmd_run(cfg, factory=_zk, post=http_post):
 def cmd_once(cfg, name, factory=_zk, post=http_post, wait=ONCE_LOCK_WAIT):
     """Sync Now: one device (even if disabled in the config), waits up to `wait` s for its lock."""
     dev = get_device_cfg(cfg, name)
+    db = db_open(cfg["db_path"])
+    try:
+        until = quiet_until(schedule(db, dev)["quiet_windows"], device_now(dev))
+    finally:
+        db.close()
+    if until:
+        return {"device": dev["name"], "busy": True, "error": f"Busy period — try after {until}"}
     with DeviceLock(cfg, dev, wait=wait) as lock:
         if not lock.acquired:
             return {"device": dev["name"], "busy": True, "error": f"busy: a read of {dev['name']} is in progress — try again"}
         return sync_device(cfg, dev, factory, post)
+
+
+def cmd_safe_to_clear(cfg, name, csv_path, factory=_zk, post=http_post, force=False, send=True):
+    """ONE read of the whole log (lock), queue + push like a normal pull, then a per-record check:
+    in the agent queue and confirmed, and (from the cutoff) present on the server (slhrm.api.device_check_keys).
+    safe_date = the latest date D such that EVERY device record dated <= D is backed up in the CSV and, from the
+    cutoff on, confirmed in the queue and on the server (records before the cutoff are, by design, only in the CSV).
+    Writes the CSV (chmod 600), sends report + CSV to SLHRM (Biometric Device) and returns the report."""
+    import base64
+    import gzip
+
+    dev = get_device_cfg(cfg, name)
+    db = db_open(cfg["db_path"])
+    try:
+        until = quiet_until(schedule(db, dev)["quiet_windows"], device_now(dev))
+        if until and not force:
+            raise AgentError(f"Busy period — try after {until} (or --force)")
+        with DeviceLock(cfg, dev, wait=ONCE_LOCK_WAIT) as lock:
+            if not lock.acquired:
+                raise AgentError(f"a read of {dev['name']} is in progress — try again")
+            data, new = pull_device(db, dev, cfg, factory)
+            pushed = push(db, cfg, post=post, serial=dev["serial"])
+        recs = sorted(data["records"], key=lambda r: (r["timestamp"], r["user_id"]))
+        start = min_ts(dev.get("min_punch_date"))
+        keys = [make_key(dev["serial"], r["user_id"], r["timestamp"]) for r in recs]
+        states = {}
+        for i in range(0, len(keys), 500):
+            chunk = keys[i:i + 500]
+            q = "SELECT punch_key, state, server_result FROM punch WHERE punch_key IN (%s)" % ",".join("?" * len(chunk))
+            states.update({k: (st, res) for k, st, res in db.execute(q, chunk).fetchall()})
+        need = [k for k, r in zip(keys, recs) if not start or r["timestamp"].strftime(TIME_FORMAT) >= start]
+        missing, server_cutoff = set(), None
+        for i in range(0, len(need), 500):
+            res = post(cfg, "slhrm.api.device_check_keys", {"serial": dev["serial"], "keys": need[i:i + 500]}) or {}
+            missing.update(res.get("missing") or [])
+            server_cutoff = res.get("start_date") or server_cutoff
+        fd = os.open(csv_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        per_day = {}
+        with os.fdopen(fd, "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["serial", "device_user_id", "timestamp", "punch_state", "verify_mode", "punch_key", "agent_state",
+                        "server", "covered_by"])
+            for k, r in zip(keys, recs):
+                ts = r["timestamp"].strftime(TIME_FORMAT)
+                before = bool(start) and ts < start
+                st, _res = states.get(k, ("not in queue", None))
+                on_server = None if before else (k not in missing)
+                ok = before or (st == "confirmed" and on_server)
+                cov = "CSV only (before cutoff)" if before else ("queue + server" if ok else "NOT CONFIRMED")
+                w.writerow([dev["serial"], r["user_id"], ts, r.get("punch_state"), r.get("verify_mode"), k,
+                            "-" if before else st, "-" if before else ("yes" if on_server else "MISSING"), cov])
+                d = per_day.setdefault(ts[:10], {"records": 0, "before_cutoff": 0, "confirmed": 0, "not_confirmed": 0})
+                d["records"] += 1
+                d["before_cutoff" if before else ("confirmed" if ok else "not_confirmed")] += 1
+        safe = None
+        for day in sorted(per_day):
+            if per_day[day]["not_confirmed"]:
+                break
+            safe = day
+        n = len(recs)
+        report = {"device": dev["name"], "serial": dev["serial"], "read_at_utc": utcnow(), "records_on_device": n,
+                  "earliest": recs[0]["timestamp"].strftime(TIME_FORMAT) if recs else None,
+                  "latest": recs[-1]["timestamp"].strftime(TIME_FORMAT) if recs else None,
+                  "cutoff": dev.get("min_punch_date"), "server_cutoff": server_cutoff,
+                  "before_cutoff": sum(d["before_cutoff"] for d in per_day.values()),
+                  "confirmed": sum(d["confirmed"] for d in per_day.values()),
+                  "not_confirmed": sum(d["not_confirmed"] for d in per_day.values()),
+                  "safe_to_clear_date": safe, "all_confirmed": all(not d["not_confirmed"] for d in per_day.values()),
+                  "new_in_queue": new, "push": pushed, "read_seconds": data.get("read_seconds"),
+                  "csv_file": os.path.abspath(csv_path), "csv_rows": n,
+                  "days_not_confirmed": {k: v for k, v in per_day.items() if v["not_confirmed"]}}
+        if send and device_key(cfg):
+            blob = base64.b64encode(gzip.compress(open(csv_path, "rb").read())).decode()
+            try:
+                post(cfg, "slhrm.api.device_clear_report", {"serial": dev["serial"], "report": report, "csv_gz_b64": blob,
+                                                            "file_name": os.path.basename(csv_path)})
+                report["sent_to_server"] = True
+            except AgentError as e:
+                report["sent_to_server"] = f"failed: {e}"
+        return report
+    finally:
+        db.close()
 
 
 def cmd_backfill(cfg, name, resend=False, factory=_zk, post=http_post):
@@ -768,6 +966,10 @@ def main(argv=None):
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--since")
     p.add_argument("--per-user", help="dry run: write per-user activity JSON here (chmod 600)")
+    p = sub.add_parser("safe-to-clear")
+    p.add_argument("--device", required=True)
+    p.add_argument("--csv", required=True)
+    p.add_argument("--force", action="store_true", help="also inside a quiet window")
     p = sub.add_parser("push")
     p.add_argument("--retry-held", action="store_true")
     p = sub.add_parser("backfill")
@@ -836,6 +1038,8 @@ def main(argv=None):
         out = push(db_open(cfg["db_path"]), cfg, retry_held=a.retry_held)
     elif a.cmd == "backfill":
         out = cmd_backfill(cfg, a.device, a.resend)
+    elif a.cmd == "safe-to-clear":
+        out = cmd_safe_to_clear(cfg, a.device, a.csv, force=a.force)
     elif a.cmd == "run" and a.once:
         if not a.device:
             ap.error("run --once needs --device")

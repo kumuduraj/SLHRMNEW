@@ -252,6 +252,24 @@ def device_users(serial, users, agent=None):
 
 
 @frappe.whitelist(allow_guest=True, methods=["POST"])
+def device_check_keys(serial, keys):
+    """SLHRM agent "safe to clear": which punch keys are NOT on the server. Header: X-Device-Key."""
+    _validate_device_api_key(header_only=True)
+    from slhrm.biometric import check_keys
+
+    return check_keys(serial, keys)
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
+def device_clear_report(serial, report, csv_gz_b64, file_name=None):
+    """SLHRM agent "safe to clear" report + CSV backup (private File on the Biometric Device). Header: X-Device-Key."""
+    _validate_device_api_key(header_only=True)
+    from slhrm.biometric import clear_report
+
+    return clear_report(serial, report, csv_gz_b64, file_name)
+
+
+@frappe.whitelist(allow_guest=True, methods=["POST"])
 def device_heartbeat(serial, info, agent=None):
     """SLHRM agent → device health (slhrm.biometric.heartbeat). Header: X-Device-Key."""
     _validate_device_api_key(header_only=True)

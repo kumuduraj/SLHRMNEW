@@ -103,6 +103,13 @@ class FakeServer:
         if method == "slhrm.api.device_users":
             self.users_calls += 1
             return {"users": len(payload["users"])}
+        if method == "slhrm.api.device_check_keys":
+            return {"missing": [k for k in payload["keys"] if k not in self.stored], "start_date": self.start}
+        if method == "slhrm.api.device_clear_report":
+            self.clear_reports = getattr(self, "clear_reports", []) + [payload]
+            return {"ok": True}
+        if method == "slhrm.api.device_heartbeat" and getattr(self, "schedule", None) is not None:
+            return {"ok": True, "schedule": self.schedule}
         if method != "slhrm.api.device_ingest":
             return {"ok": True}
         self.payloads.append(payload)
@@ -330,6 +337,7 @@ class TestRunAndStats(Base):
     def test_run_pull_push_and_lock(self):
         conn = FakeConn([rec("1", T0), rec("1", T0), rec("2", T0 + timedelta(hours=9))])
         srv = FakeServer()
+        self.cfg["devices"][0]["interval_minutes"] = 0  # every run (the interval has its own tests)
         rc = A.cmd_run(self.cfg, factory=lambda *a: conn, post=srv.post)
         self.assertEqual(rc, 0)
         self.assertEqual(self.states(), {"confirmed": 2})  # the device's exact duplicate collapses to one key
@@ -594,3 +602,67 @@ class TestIndependentDevices(Base):
         self.assertEqual((r["connected"], r["error_kind"]), (True, "timeout"))
         self.assertEqual([b["error_kind"] for b in beats], ["connect", "auth", "timeout"])
         self.assertTrue(all("read_seconds" in b and b["last_pull_ok"] == 0 for b in beats))
+
+
+class TestScheduleAndClear(Base):
+    """v0.4.3: per-device interval, quiet windows, server schedule override, cleared log, safe-to-clear."""
+
+    def test_interval_skips_until_passed(self):
+        srv = FakeServer()
+        self.cfg["devices"][0]["interval_minutes"] = 60
+        A.cmd_run(self.cfg, factory=lambda *a: FakeConn([rec("1", T0)]), post=srv.post)
+        calls = srv.calls
+        A.cmd_run(self.cfg, factory=lambda *a: self.fail("must not read before the interval"), post=srv.post)
+        self.assertEqual(srv.calls, calls)
+        with self.db:  # last attempt 61 min ago -> due again
+            self.db.execute("UPDATE device_pull SET pulled_at = ?", ((datetime.utcnow() - timedelta(minutes=61)).strftime(A.TIME_FORMAT),))
+        self.assertEqual(A.due(self.db, self.cfg["devices"][0])[0], True)
+
+    def test_quiet_window(self):
+        self.assertEqual(A.quiet_until(["07:30-09:00"], datetime(2026, 11, 17, 8, 15)), "09:00")
+        self.assertIsNone(A.quiet_until(["07:30-09:00"], datetime(2026, 11, 17, 9, 0)))
+        self.assertEqual(A.quiet_until(["21:00-22:00", "22:30-06:00"], datetime(2026, 11, 17, 2, 0)), "06:00")  # crosses midnight
+        with self.assertRaises(A.AgentError):
+            A.parse_window("7.30-9")
+        now = A.device_now(self.cfg["devices"][0])
+        self.cfg["devices"][0]["quiet_windows"] = [f"{now:%H}:00-{(now + timedelta(hours=1)):%H}:59"]
+        r = A.cmd_once(self.cfg, "D1", factory=lambda *a: self.fail("must not connect in a quiet window"), post=FakeServer().post)
+        self.assertTrue(r["busy"] and r["error"].startswith("Busy period — try after"), r)
+        A.cmd_run(self.cfg, factory=lambda *a: self.fail("no scheduled read in a quiet window"), post=FakeServer().post)
+
+    def test_server_schedule_overrides_config(self):
+        srv = FakeServer()
+        srv.schedule = {"interval_minutes": 60, "quiet_windows": ["01:00-01:30"]}
+        self.cfg["devices"][0]["interval_minutes"] = 5
+        A.cmd_once(self.cfg, "D1", factory=lambda *a: FakeConn([rec("1", T0)]), post=srv.post)
+        self.assertEqual(A.schedule(self.db, self.cfg["devices"][0]), {"interval_minutes": 60, "quiet_windows": ["01:00-01:30"]})
+
+    def test_cleared_device_log_is_normal(self):
+        srv = FakeServer()
+        self.cfg["devices"][0]["interval_minutes"] = 0
+        A.cmd_run(self.cfg, factory=lambda *a: FakeConn([rec("1", T0), rec("2", T0 + timedelta(hours=1)), rec("3", T0 + timedelta(hours=2))]), post=srv.post)
+        sent = len(srv.stored)
+        with self.assertLogs("slhrm_agent", level="INFO") as cm:
+            rc = A.cmd_run(self.cfg, factory=lambda *a: FakeConn([rec("4", T0 + timedelta(hours=3))]), post=srv.post)  # log cleared, 1 new
+        self.assertEqual(rc, 0)
+        self.assertTrue(any("shrank 3 -> 1" in m for m in cm.output), cm.output)
+        self.assertFalse(any("ERROR" in m for m in cm.output))
+        self.assertEqual(len(srv.stored), sent + 1)  # only the new record; nothing re-sent
+        self.assertEqual(self.states(), {"confirmed": 4})
+
+    def test_safe_to_clear_report_and_csv(self):
+        srv = FakeServer()
+        srv.start = "2026-10-01 00:00:00"
+        self.cfg["devices"][0]["min_punch_date"] = "2026-10-01"
+        recs = [rec("1", datetime(2026, 9, 30, 8, 0)), rec("1", T0), rec("2", T0 + timedelta(days=1)), rec("bad", T0 + timedelta(days=2))]
+        path = os.path.join(self.dir, "backup.csv")
+        r = A.cmd_safe_to_clear(self.cfg, "D1", path, factory=lambda *a: FakeConn(recs), post=srv.post)
+        self.assertEqual((r["records_on_device"], r["before_cutoff"], r["confirmed"], r["not_confirmed"]), (4, 1, 2, 1))
+        self.assertEqual(r["safe_to_clear_date"], "2026-10-02")  # 2026-10-03 has the record the server refused
+        self.assertFalse(r["all_confirmed"])
+        self.assertEqual(oct(os.stat(path).st_mode & 0o777), "0o600")
+        lines = open(path).read().splitlines()
+        self.assertEqual(len(lines), 5)
+        self.assertIn("CSV only (before cutoff)", lines[1])
+        self.assertIn("NOT CONFIRMED", lines[4])
+        self.assertTrue(srv.clear_reports and srv.clear_reports[0]["report"]["safe_to_clear_date"] == "2026-10-02")

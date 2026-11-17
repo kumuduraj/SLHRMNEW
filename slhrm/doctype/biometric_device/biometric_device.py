@@ -20,6 +20,14 @@ class BiometricDevice(Document):
             frappe.throw(_("Unknown timezone {0}. Use an IANA name such as Asia/Colombo.").format(self.timezone))
         self.set_served_branches()
         self.clean_blocked_ids()
+        from slhrm.biometric import parse_quiet_windows
+
+        if frappe.utils.cint(self.sync_interval_minutes) < 0:
+            frappe.throw(_("Read every (minutes) cannot be negative."))
+        try:
+            self.quiet_windows = "\n".join(parse_quiet_windows(self.quiet_windows, as_text=True))
+        except ValueError as e:
+            frappe.throw(str(e))
 
     def clean_blocked_ids(self):
         seen = set()

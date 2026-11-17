@@ -14,7 +14,7 @@
  "search_fields": "device_name,branch",
  "sort_field": "modified",
  "sort_order": "DESC",
- "modified": "2026-11-12 12:00:00.000000",
+ "modified": "2026-11-17 13:00:00.000000",
  "fields": [
   {
    "fieldname": "serial",
@@ -84,6 +84,28 @@
    "reqd": 1,
    "default": "Asia/Colombo",
    "description": "IANA timezone of the device clock (e.g. Asia/Colombo). Punch times are converted to the site timezone."
+  },
+  {
+   "fieldname": "section_schedule",
+   "fieldtype": "Section Break",
+   "label": "Read schedule"
+  },
+  {
+   "fieldname": "sync_interval_minutes",
+   "fieldtype": "Int",
+   "label": "Read every (minutes)",
+   "default": "5",
+   "description": "The agent reads this device at most this often (it runs every 5 minutes). A full read can freeze the device for a minute or two."
+  },
+  {
+   "fieldname": "column_break_sched",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "quiet_windows",
+   "fieldtype": "Small Text",
+   "label": "Quiet windows",
+   "description": "One HH:MM-HH:MM per line, device time (e.g. 07:30-09:00). No scheduled read and no Sync Now in these periods."
   },
   {
    "fieldname": "section_connection",
@@ -178,6 +200,42 @@
    "fieldtype": "Code",
    "options": "JSON",
    "label": "Last Sync Now result",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_clear",
+   "fieldtype": "Section Break",
+   "label": "Safe to clear",
+   "collapsible": 1
+  },
+  {
+   "fieldname": "safe_to_clear_date",
+   "fieldtype": "Date",
+   "label": "Safe to clear up to",
+   "read_only": 1,
+   "description": "Latest date D such that every device record dated up to D is in the CSV backup and (from the cutoff) confirmed by the agent and on the server. After saving this backup, the device attendance log may be cleared from the device menu. Clear it right after a successful sync: clearing removes EVERY record on the device, including punches made after the report."
+  },
+  {
+   "fieldname": "clear_report_at",
+   "fieldtype": "Datetime",
+   "label": "Report at",
+   "read_only": 1
+  },
+  {
+   "fieldname": "clear_backup_file",
+   "fieldtype": "Data",
+   "label": "Backup CSV (private file)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_clear",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "clear_report",
+   "fieldtype": "Code",
+   "options": "JSON",
+   "label": "Safe to clear report",
    "read_only": 1
   },
   {

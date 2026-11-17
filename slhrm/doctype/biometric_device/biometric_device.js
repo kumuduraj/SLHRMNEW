@@ -16,8 +16,19 @@ frappe.ui.form.on("Biometric Device", {
 		if (st !== "Online" && frm.doc.last_error) {
 			parts.push(__("Last error: {0}", [frappe.utils.escape_html(frm.doc.last_error)]));
 		}
+		if (frm.doc.sync_interval_minutes && frm.doc.sync_interval_minutes !== 5) {
+			parts.push(__("Read every {0} min", [frm.doc.sync_interval_minutes]));
+		}
+		if (frm.doc.quiet_windows) parts.push(__("Quiet: {0}", [frappe.utils.escape_html(frm.doc.quiet_windows.split("\n").join(", "))]));
+		if (frm.doc.safe_to_clear_date) {
+			parts.push(`<b>${__("Safe to clear up to {0}", [frappe.datetime.str_to_user(frm.doc.safe_to_clear_date)])}</b> (${__("report")} ${
+				frappe.datetime.comment_when(frm.doc.clear_report_at)})`);
+		}
 		frm.set_intro(`<span class="slhrm-device-summary">${parts.join(" · ")}</span>`,
 			{ Online: "green", Delayed: "orange", Offline: "red" }[st] || "blue");
+		if (frm.doc.clear_backup_file && slhrm.device_sync.can_sync()) {
+			frm.add_custom_button(__("Download device log backup (CSV)"), () => window.open(frm.doc.clear_backup_file), __("Safe to clear"));
+		}
 		if (frm.doc.enabled && slhrm.device_sync.can_sync()) {
 			frm.add_custom_button(__("Sync Now"), () => {
 				slhrm.device_sync.start({ [frm.doc.name]: frm.doc.device_name }, () => frm.reload_doc());
