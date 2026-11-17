@@ -439,11 +439,13 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   handoff + branch-scoped/cutoff docs) carries an old PWA message → write a NEW, uniquely named message file for
   every commit and read `git log -1 --format=%B` BEFORE `git push`.
 
-## Handoff — current state (2026-11-17, v0.4.4, prod = upstream/master = dev)
+## Handoff — current state (2026-11-17, v0.4.5, prod = upstream/master = dev)
 - Audit trail of every phase: `~/slhrm_audit_20261108.md` (… "Phase 3.0 result", "Phase 3.0 completion after
   restart", "Phase 3.1 result", "Phase 3.2 result", "Phase 3.3 result", … "Phase 3.4 result"). Read the last sections before starting.
-- Version 0.4.4, agent 0.4.3 (`slhrm/__init__.py`, pyproject / setup.py / setup.cfg in step). Last deploy + restart
-  2026-11-17 04:36 UTC; all GILLSHR processes confirmed. Attendance Calendar page live; HR Manager / Attendance Supervisor may
+- Version 0.4.5, agent 0.4.3 (`slhrm/__init__.py`, pyproject / setup.py / setup.cfg in step). Last deploy + restart
+  2026-11-17 04:44 UTC; all GILLSHR processes confirmed. Live punch-based Attendance Dashboard replaces the old page.
+  Shakila deleted her draft marker k84gtoi0mq (DUTCHPUB 2026-10-02) herself at 10:11 Colombo (Deleted Document
+  3eo06ipqt0 — restorable); prod has no Attendance Marker now. Attendance Calendar page live; HR Manager / Attendance Supervisor may
   delete draft markers. **BRITISHPUB is read every 60 min** (it froze during the ~120 s full
   log reads every 5 min); DUTCHPUB every 5 min; both have quiet windows 07:30-09:00, 14:30-15:30, 21:00-22:00 (Colombo).
   BRITISHPUB "Safe to clear up to 2026-11-17" (report 09:56 Colombo; backup CSV on the device form +
@@ -744,3 +746,18 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - **Register**: active branch employees × days from SUBMITTED markers: P / A / NP / L / SL, ⚠ flagged (tooltip), blank = no
   submitted row (pending = working day for that employee, red cell); totals P (incl. SL), A, NP, OT hrs, Short hrs; filter
   "only pending / flagged"; Excel `slhrm.attendance_calendar.export_register`.
+
+## Live Attendance Dashboard (v0.4.5, Raj 2026-11-17) — page `slhrm-dashboard`
+- Replaced the old page (it read the legacy "Attendance Dashboard" table and offered "Add Attendance Record" — HRMS Attendance
+  is only created by submitting a marker). Roles HR Manager / HR User / Attendance Supervisor / System Manager; branches =
+  `live_dashboard.permitted_branches` (Branch User Permissions; a filter outside them → PermissionError).
+- `slhrm.live_dashboard.build(branch=None, now=None)` (read-only): matched punches D−2 … now paired with the marker's
+  `split_sessions`. On duty = latest session OPEN (odd taps) and started ≤ max_session_hours ago (night shift from yesterday
+  incl.); not punched = no punch today and not on duty, minus today's holiday (employee's Holiday List Assignment) and approved
+  Leave Applications, "late / not arrived" when a default shift's start + 30 min passed; late = today's first session starts
+  after the shift start (shift employees only); unmatched today = devices serving the branches. Devices: next read =
+  last_pull + interval − 45 s on the next */5 tick (`_ceil5`), moved past quiet windows. Yesterday: marker per branch (prefer
+  submitted) + P (incl. SL) / A / NP / missing punch. This month: `attendance_calendar.build` header + OT / short of submitted
+  markers (cached 60 s: the page auto-refreshes every 2 min).
+- Page JS: Branch (empty = all permitted), Refresh + auto-refresh (only while visible), "Open Attendance Markers",
+  "Attendance Calendar"; responsive grid (no page scroll at 390 px). The calendar accepts `frappe.route_options = {branch}`.
