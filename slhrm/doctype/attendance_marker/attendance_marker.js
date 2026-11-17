@@ -519,8 +519,10 @@ function draw_punch_overview(frm) {
 		style="margin:1px 2px;">${esc(__(f))}</span>`;
 	const counts = data.counts;
 	let html = `<style>
-		.slhrm-ov td, .slhrm-ov th { white-space: nowrap; vertical-align: middle; }
-		.slhrm-ov td.flags { white-space: normal; }
+		.slhrm-ov { width: 100%; }
+		.slhrm-ov td, .slhrm-ov th { white-space: nowrap; vertical-align: middle; padding: 3px 5px !important; }
+		.slhrm-ov td.flags, .slhrm-ov td.name { white-space: normal; }
+		.slhrm-ov td.name { min-width: 130px; }
 		.slhrm-ov tbody tr { cursor: pointer; }
 		.slhrm-ov tbody tr:hover td { background: var(--fg-hover-color, #f5f5f5); }
 		</style>
@@ -533,7 +535,7 @@ function draw_punch_overview(frm) {
 		<th>${__("OUT")}</th><th>${__("Next Punch")}</th><th class="text-right">${__("Hrs")}</th><th>${__("Flags")}</th></tr></thead><tbody>`;
 	shown.forEach((r) => {
 		html += `<tr data-row="${esc(r.row_name || "")}" data-employee="${esc(r.employee)}">
-			<td><b>${esc(r.employee_name || "")}</b></td><td>${esc(r.employee_number || "")}</td>
+			<td class="name"><b>${esc(r.employee_name || "")}</b></td><td>${esc(r.employee_number || "")}</td>
 			<td class="slhrm-ov-prev">${cell(r.prev)}</td><td class="slhrm-ov-in">${cell(r.in)}</td>
 			<td class="slhrm-ov-out">${cell(r.out)}</td><td class="slhrm-ov-next">${cell(r.next)}</td>
 			<td class="text-right">${r.hours ? format_number(r.hours, null, 2) : ""}</td>
