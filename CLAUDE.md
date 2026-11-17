@@ -439,11 +439,12 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   handoff + branch-scoped/cutoff docs) carries an old PWA message → write a NEW, uniquely named message file for
   every commit and read `git log -1 --format=%B` BEFORE `git push`.
 
-## Handoff — current state (2026-11-12, v0.4.0, prod = upstream/master = dev)
+## Handoff — current state (2026-11-17, v0.4.1, prod = upstream/master = dev)
 - Audit trail of every phase: `~/slhrm_audit_20261108.md` (… "Phase 3.0 result", "Phase 3.0 completion after
   restart", "Phase 3.1 result", "Phase 3.2 result", "Phase 3.3 result", … "Phase 3.4 result"). Read the last sections before starting.
-- Version 0.4.0, agent 0.4.0 (`slhrm/__init__.py`, pyproject / setup.py / setup.cfg in step). Last deploy + restart
-  2026-11-12 04:42 UTC; all GILLSHR processes confirmed. Devices show Online / Delayed / Offline; Sync Now is live (Shakila
+- Version 0.4.1, agent 0.4.0 (`slhrm/__init__.py`, pyproject / setup.py / setup.cfg in step). Last deploy + restart
+  2026-11-17 03:39 UTC; all GILLSHR processes confirmed. All 118 Active employees OT-eligible since 2026-11-17 (bulk tick);
+  Shakila's draft marker k84gtoi0mq (DUTCHPUB 2026-10-02) re-loaded with punch sessions (not submitted). Devices show Online / Delayed / Offline; Sync Now is live (Shakila
   already uses it).
 - **Employees:** 118 active — DUTCHPUB 45, FORTFUSION 35, BRITISHPUB 22, ALIYA 16. No DEMO data. No user logins
   yet (prod has no outgoing email → temporary passwords). 3 DUTCHPUB employees created from device users with
@@ -656,3 +657,27 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   Form: header indicator + "Last read N s, N records · Last successful sync … · Clock drift … · Last error …". SLHRM workspace:
   Number Cards "Devices Online / Delayed / Offline" (`slhrm/number_card/`, module symlink `slhrm/slhrm/number_card`, synced by
   migrate's dashboard sync) → click opens the filtered list. Shared JS `public/js/device_sync.js` (app_include_js).
+
+## Punch sessions (no shift), missing punch, OT eligible by default (v0.4.1, Raj 2026-11-17)
+- **Root cause of "OT = 0 for everyone"** (2026-11-17): `Employee.slhrm_ot_eligible` defaults to 0 and no employee had it.
+  SLHRM Settings **OT eligible by default** (on) → Employee `before_insert` (`attendance.employee_ot_default`) ticks it (skip with
+  `doc.flags.slhrm_no_ot_default`); HR can untick per employee. Bulk: `bench execute slhrm.attendance.tick_ot_eligible --kwargs
+  '{"dry_run": 1}'` first (db.set_value, no hooks / Versions).
+- **No shift → punch sessions** (`attendance.compute_day_session`; shift employees keep the window logic `compute_day`):
+  punches D−2 00:00 … D+2 00:00 (minus punches used by another date's submitted marker) → taps (punches < 15 min apart =
+  one tap) → `split_sessions`: sessions may only split where taps are ≥ `rest_gap_hours` (6) apart; WHICH long gaps split is
+  the least-cost choice over the window (one-tap session 6, |span − standard day| × 0.2, each extra long gap inside 8,
+  device-state hints 2 each: starts on an OUT-only tap / ends on an IN-only tap / OUT→IN long gap inside; > `max_session_hours`
+  (20) only without a long gap → "Long session"). A session belongs to the date of its FIRST punch; D's row = the first session
+  starting on D (more → warning). **Why not a plain "gap ≥ 6 h splits" rule:** on real DUTCHPUB data both IN→OUT (≈ 9–10 h) and
+  OUT→IN (≈ 14 h) exceed 6 h (only 44 of 3,509 gaps are 1–6 h), so it would make every IN/OUT its own session; device states
+  0/1 are often wrong (0→0 ≥ 6 h 329×, 1→1 209×); the 2026-10-01 cutoff starts most employees on an OUT, and a left-to-right
+  pairing never recovers from one missing punch. The look-back is D−2 (not D−1 12:00) so D−1's session is paired from its
+  own IN. Warnings: single punch, long session, > 16 h ("Unusually long"), IN recorded by the device as OUT, second session.
+  Ambiguous real case kept for the supervisor: Navindu 2026-10-02 (all states IN) → 19:05 → 14:04+1, 19 h (warning).
+- **Missing punch:** Present / Short Leave row with IN but no OUT (or OUT but no IN) → `missing_punch`, worked / short / OT 0
+  (`day_figures`, all rows incl. shift employees); orange "Missing" in the Hrs cell; parent `missing_punch_count`.
+- **Row editor context** (Marker Detail, section "Punch context", from the loader / shift change, kept on manual edits):
+  `prev_punch` (last punch before IN), `next_punch` (first after OUT), `session_range`, `session_punches` (time + device name).
+  Frappe hides empty read-only fields: no previous / next punch in the window → the field is not shown.
+- Grid unchanged (9 columns at 1366 px). Unit tests `slhrm.tests.test_sessions` include the real DUTCHPUB raw patterns.
