@@ -116,5 +116,5 @@ website_route_rules = [
 
 # Jinja methods (print formats)
 jinja = {
-    "methods": ["slhrm.payroll_table.worksheet_table", "slhrm.payslip.payslip_data"],
+    "methods": ["slhrm.payroll_table.worksheet_table", "slhrm.payslip.payslip_data", "slhrm.punch_overview.marker_overview"],
 }

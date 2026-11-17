@@ -390,6 +390,22 @@ def marker_previous_day(branch, date, company=None):
 
 
 @frappe.whitelist()
+def marker_punch_overview(date, branch, rows):
+    """Attendance Marker "Punch Overview" (read-only, nothing written): rows = the form's current Attendance Details rows
+    (JSON list). Punches are read live (slhrm.punch_overview.build)."""
+    from slhrm.punch_overview import MAX_ROWS, build
+
+    frappe.has_permission("Attendance Marker", "read", throw=True)
+    if not date or not branch:
+        frappe.throw(_("Date and Branch are required."))
+    _check_branch_allowed(branch)
+    rows = json.loads(rows) if isinstance(rows, str) else (rows or [])
+    if len(rows) > MAX_ROWS:
+        frappe.throw(_("At most {0} rows.").format(MAX_ROWS))
+    return build(str(date), branch, rows)
+
+
+@frappe.whitelist()
 def calc_attendance_times(employee, date, shift=None, in_time=None, out_time=None, out_next_day=0,
                           short_leave=0, short_leave_min=0, status=None):
     """Attendance Marker row edited by hand (no punches needed): worked hours, early/late minutes,

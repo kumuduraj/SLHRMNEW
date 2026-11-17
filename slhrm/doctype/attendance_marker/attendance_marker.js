@@ -139,6 +139,7 @@ frappe.ui.form.on("Attendance Marker", {
 		update_summary(frm);
 		lock_ineligible_rows(frm);
 		show_previous_day(frm);
+		schedule_overview(frm);  // also for submitted markers (update_summary stops early there)
 	},
 
 	date(frm) {
@@ -469,6 +470,89 @@ function update_summary(frm) {
 	frm.set_value("early_out_count", early_out);
 	frm.set_value("no_shift_count", no_shift);
 	frm.set_value("missing_punch_count", missing_punch);
+	schedule_overview(frm);
+}
+
+// ── Punch Overview (v0.4.2): one read-only line per row, built on the server from the CURRENT rows (no stored table) ──
+
+const OVERVIEW_FIELDS = ["name", "idx", "employee", "employee_name", "shift", "attendance_status", "in_time", "out_time",
+	"out_next_day", "worked_hours", "missing_punch", "long_session", "no_shift"];
+const OVERVIEW_FILTERS = [["all", __("All")], ["flagged", __("Only flagged")], ["missing", __("Only missing punch")]];
+
+function schedule_overview(frm) {
+	clearTimeout(frm._slhrm_overview_timer);
+	frm._slhrm_overview_timer = setTimeout(() => render_punch_overview(frm), 400);
+}
+
+function render_punch_overview(frm) {
+	const field = frm.fields_dict.punch_overview_html;
+	if (!field) return;
+	const rows = (frm.doc.attendance_details || []).filter((r) => r.employee);
+	if (!rows.length || !frm.doc.date || !frm.doc.branch) {
+		field.$wrapper.html(`<p class="text-muted small">${__("Select Date and Branch to load employees.")}</p>`);
+		return;
+	}
+	const payload = rows.map((r) => { const o = {}; OVERVIEW_FIELDS.forEach((f) => { o[f] = r[f]; }); return o; });
+	const seq = (frm._slhrm_overview_seq || 0) + 1;
+	frm._slhrm_overview_seq = seq;
+	frappe.call({
+		method: "slhrm.api.marker_punch_overview",
+		args: { date: frm.doc.date, branch: frm.doc.branch, rows: JSON.stringify(payload) },
+		callback(r) {
+			if (seq !== frm._slhrm_overview_seq || !r.message) return;  // a newer request is on its way
+			frm._slhrm_overview = r.message;
+			draw_punch_overview(frm);
+		},
+	});
+}
+
+function draw_punch_overview(frm) {
+	const field = frm.fields_dict.punch_overview_html;
+	const data = frm._slhrm_overview;
+	if (!field || !data) return;
+	const esc = frappe.utils.escape_html;
+	const filter = frm._slhrm_overview_filter || "all";
+	const shown = data.rows.filter((r) => filter === "all" || (filter === "flagged" ? r.flags.length : r.flags.includes("Missing punch")));
+	const cell = (c) => !c.text ? "" : `<span class="${c.muted ? "text-muted" : ""}">${esc(c.text)}</span>` +
+		(c.plus1 ? ` <span class="badge" style="font-size:10px;background:var(--bg-light-gray,#f3f3f3);color:var(--text-color);">+1</span>` : "");
+	const flag = (f) => `<span class="indicator-pill ${f === "Missing punch" ? "orange" : f === "Other branch" ? "blue" : "yellow"} slhrm-ov-flag"
+		style="margin:1px 2px;">${esc(__(f))}</span>`;
+	const counts = data.counts;
+	let html = `<style>
+		.slhrm-ov td, .slhrm-ov th { white-space: nowrap; vertical-align: middle; }
+		.slhrm-ov td.flags { white-space: normal; }
+		.slhrm-ov tbody tr { cursor: pointer; }
+		.slhrm-ov tbody tr:hover td { background: var(--fg-hover-color, #f5f5f5); }
+		</style>
+		<div class="slhrm-ov-filters" style="margin-bottom:6px;">` +
+		OVERVIEW_FILTERS.map(([k, label]) => `<button class="btn btn-xs ${k === filter ? "btn-primary" : "btn-default"} slhrm-ov-filter"
+			data-filter="${k}" style="margin-right:4px;">${label} (${k === "all" ? counts.all : k === "flagged" ? counts.flagged : counts.missing})</button>`).join("") +
+		`<span class="text-muted small" style="margin-left:8px;">${__("Grey = another date. +1 = OUT on the next day. Click a row to open it.")}</span></div>
+		<div style="overflow-x:auto;"><table class="table table-bordered table-sm slhrm-ov" style="font-size:12px;margin:0;">
+		<thead><tr><th>${__("Employee Name")}</th><th>${__("Emp No.")}</th><th>${__("Previous Punch")}</th><th>${__("IN")}</th>
+		<th>${__("OUT")}</th><th>${__("Next Punch")}</th><th class="text-right">${__("Hrs")}</th><th>${__("Flags")}</th></tr></thead><tbody>`;
+	shown.forEach((r) => {
+		html += `<tr data-row="${esc(r.row_name || "")}" data-employee="${esc(r.employee)}">
+			<td><b>${esc(r.employee_name || "")}</b></td><td>${esc(r.employee_number || "")}</td>
+			<td class="slhrm-ov-prev">${cell(r.prev)}</td><td class="slhrm-ov-in">${cell(r.in)}</td>
+			<td class="slhrm-ov-out">${cell(r.out)}</td><td class="slhrm-ov-next">${cell(r.next)}</td>
+			<td class="text-right">${r.hours ? format_number(r.hours, null, 2) : ""}</td>
+			<td class="flags">${r.flags.map(flag).join("")}</td></tr>`;
+	});
+	if (!shown.length) html += `<tr><td colspan="8" class="text-muted">${__("No rows for this filter.")}</td></tr>`;
+	html += "</tbody></table></div>";
+	field.$wrapper.html(html);
+	field.$wrapper.find(".slhrm-ov-filter").on("click", function () {
+		frm._slhrm_overview_filter = $(this).data("filter");
+		draw_punch_overview(frm);
+	});
+	field.$wrapper.find(".slhrm-ov tbody tr[data-employee]").on("click", function () {
+		const emp = $(this).data("employee");
+		const grid = frm.fields_dict.attendance_details.grid;
+		const row = (frm.doc.attendance_details || []).find((d) => d.employee === emp);
+		const grid_row = row && grid.get_row(row.name);
+		if (grid_row) grid_row.toggle_view(true);  // the row editor: all punches in the session with device
+	});
 }
 
 // row editor: "OT edited by <user>" beside the OT field when OT differs from OT (calculated)

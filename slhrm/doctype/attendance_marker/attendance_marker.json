@@ -153,9 +153,20 @@
    "reqd": 1
   },
   {
+   "fieldname": "section_break_overview",
+   "fieldtype": "Section Break",
+   "label": "Punch Overview"
+  },
+  {
+   "fieldname": "punch_overview_html",
+   "fieldtype": "HTML",
+   "label": "Punch Overview"
+  },
+  {
    "fieldname": "section_break_punches",
    "fieldtype": "Section Break",
-   "label": "Punch References"
+   "label": "Punch log (raw)",
+   "collapsible": 1
   },
   {
    "fieldname": "punch_references",
@@ -225,5 +236,6 @@
    "write": 1
   }
  ],
- "modified": "2026-11-17 10:00:00.000000"
+ "modified": "2026-11-17 12:00:00.000000",
+ "default_print_format": "Attendance Marker"
 }
