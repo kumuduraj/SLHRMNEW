@@ -439,11 +439,11 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   handoff + branch-scoped/cutoff docs) carries an old PWA message → write a NEW, uniquely named message file for
   every commit and read `git log -1 --format=%B` BEFORE `git push`.
 
-## Handoff — current state (2026-11-17, v0.4.5, prod = upstream/master = dev)
+## Handoff — current state (2026-11-17, v0.4.6, prod = upstream/master = dev)
 - Audit trail of every phase: `~/slhrm_audit_20261108.md` (… "Phase 3.0 result", "Phase 3.0 completion after
   restart", "Phase 3.1 result", "Phase 3.2 result", "Phase 3.3 result", … "Phase 3.4 result"). Read the last sections before starting.
-- Version 0.4.5, agent 0.4.3 (`slhrm/__init__.py`, pyproject / setup.py / setup.cfg in step). Last deploy + restart
-  2026-11-17 04:44 UTC; all GILLSHR processes confirmed. Live punch-based Attendance Dashboard replaces the old page.
+- Version 0.4.6, agent 0.4.3 (`slhrm/__init__.py`, pyproject / setup.py / setup.cfg in step). Last deploy + restart
+  2026-11-17 05:10 UTC; all GILLSHR processes confirmed. Attendance Dashboard v2 (branch cards + tabs) live.
   Shakila deleted her draft marker k84gtoi0mq (DUTCHPUB 2026-10-02) herself at 10:11 Colombo (Deleted Document
   3eo06ipqt0 — restorable); prod has no Attendance Marker now. Attendance Calendar page live; HR Manager / Attendance Supervisor may
   delete draft markers. **BRITISHPUB is read every 60 min** (it froze during the ~120 s full
@@ -761,3 +761,17 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   markers (cached 60 s: the page auto-refreshes every 2 min).
 - Page JS: Branch (empty = all permitted), Refresh + auto-refresh (only while visible), "Open Attendance Markers",
   "Attendance Calendar"; responsive grid (no page scroll at 390 px). The calendar accepts `frappe.route_options = {branch}`.
+
+## Attendance Dashboard v2 — branch cards + tabs (v0.4.6, Raj 2026-11-17; supersedes the v0.4.5 layout)
+- `live_dashboard.build` now returns `branches` (one card per permitted branch) + `lists[branch]` (on_duty, not_punched,
+  late, missing_out). Colours fixed per branch (`BRANCH_COLORS`: DUTCHPUB teal, BRITISHPUB indigo, FORTFUSION orange, ALIYA
+  purple; others a stable `PALETTE` colour) — resolved to Frappe CSS tokens with hex fallbacks in the page.
+- Rules: on duty = latest session open and started ≤ `ON_DUTY_HOURS` (16) ago; an older open session = **Missing OUT** (amber)
+  AND, without a punch today, **Not punched**. A branch not served by any ENABLED device → card "No device — attendance by
+  manual marker"; its staff are never "Not punched". Device dot = worst status of the enabled devices serving the branch.
+- Card: name + device dot (tooltip: last sync / next read per device) + red unmatched badge, big "punched x / y" + bar, pills On
+  duty / Not punched / Late / Missing OUT, Yesterday None / Draft / Submitted (opens it, or creates it prefilled), Month x / y
+  days (opens the Attendance Calendar via `route_options`). Clicking a card selects its tab. Tabs All + branches; panels On
+  duty (green) / Not punched yet (red) / Late arrivals (orange), max 10 rows + "Show all (n)", time with date only if not
+  today; Missing OUT strip. "Updated hh:mm" next to the title; auto-refresh 2 min.
+- Real data at deploy: ALIYA "No device" (1 / 16 punched — Shanaka punches on the DUTCHPUB device).
