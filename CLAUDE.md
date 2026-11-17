@@ -439,11 +439,12 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   handoff + branch-scoped/cutoff docs) carries an old PWA message → write a NEW, uniquely named message file for
   every commit and read `git log -1 --format=%B` BEFORE `git push`.
 
-## Handoff — current state (2026-11-17, v0.4.3, prod = upstream/master = dev)
+## Handoff — current state (2026-11-17, v0.4.4, prod = upstream/master = dev)
 - Audit trail of every phase: `~/slhrm_audit_20261108.md` (… "Phase 3.0 result", "Phase 3.0 completion after
   restart", "Phase 3.1 result", "Phase 3.2 result", "Phase 3.3 result", … "Phase 3.4 result"). Read the last sections before starting.
-- Version 0.4.3, agent 0.4.3 (`slhrm/__init__.py`, pyproject / setup.py / setup.cfg in step). Last deploy + restart
-  2026-11-17 04:24 UTC; all GILLSHR processes confirmed. **BRITISHPUB is read every 60 min** (it froze during the ~120 s full
+- Version 0.4.4, agent 0.4.3 (`slhrm/__init__.py`, pyproject / setup.py / setup.cfg in step). Last deploy + restart
+  2026-11-17 04:36 UTC; all GILLSHR processes confirmed. Attendance Calendar page live; HR Manager / Attendance Supervisor may
+  delete draft markers. **BRITISHPUB is read every 60 min** (it froze during the ~120 s full
   log reads every 5 min); DUTCHPUB every 5 min; both have quiet windows 07:30-09:00, 14:30-15:30, 21:00-22:00 (Colombo).
   BRITISHPUB "Safe to clear up to 2026-11-17" (report 09:56 Colombo; backup CSV on the device form +
   `~/cc-tmp/britishpub_device_log_backup_20261117.csv`) — site staff may clear the device log right after a sync. Session pairing
@@ -726,3 +727,20 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
 - Lesson (2026-11-17): a throwaway user's Sync Now on a REAL device left `Biometric Device.sync_requested_by =
   t41-hrm@example.com` after its teardown (found when a later save failed the link check) → teardowns must also clear link
   fields on REAL records that the test touched; search `like 't%-%@example.com'` before calling a teardown complete.
+
+## Attendance Calendar + delete draft markers (v0.4.4, Raj 2026-11-17)
+- **Delete**: Attendance Marker DocType JSON (ours; no Custom DocPerm exists for it — if one is ever added, Frappe ignores the
+  JSON perms) `delete = 1` for HR Manager and Attendance Supervisor. Submitted → refused (Frappe + `on_trash`: cancel first,
+  HR Manager only); cancelled → only HR Manager / System Manager (`on_trash`). A real delete leaves Frappe's normal
+  "Deleted" Comment + Deleted Document (tests that use `frappe.delete_doc` as a user must remove that Comment).
+- **Page "Attendance Calendar"** (`slhrm/page/attendance_calendar`, sidebar Time & Attendance; HR Manager / HR User /
+  Attendance Supervisor / System Manager; branch User Permissions via `api._check_branch_allowed`): Branch + Month (default
+  previous month). Server `slhrm.attendance_calendar.build` (read-only, nothing stored): green = submitted, 0 flagged rows
+  (Missing punch / Long session / Two sessions — `punch_overview.build`) and 0 Unmatched punches of the devices serving the
+  branch that day; orange = draft (no submitted) or submitted with flagged / unmatched; red = working day ≤ today without a
+  marker; grey = holiday for EVERY active branch employee (each one's Holiday List Assignment) or future. Day cell P (Present +
+  Short Leave) / A / NP + ⚠ flagged + unmatched; click → marker, red → new marker (date + branch prefilled). Header
+  "Completed x / y working days" + pending days.
+- **Register**: active branch employees × days from SUBMITTED markers: P / A / NP / L / SL, ⚠ flagged (tooltip), blank = no
+  submitted row (pending = working day for that employee, red cell); totals P (incl. SL), A, NP, OT hrs, Short hrs; filter
+  "only pending / flagged"; Excel `slhrm.attendance_calendar.export_register`.
