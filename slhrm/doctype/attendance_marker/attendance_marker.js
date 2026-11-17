@@ -16,7 +16,15 @@
 const OT_FIELDS = ["ot_hours"];
 const CALC_FOR = { ot_hours: "calc_ot" };
 const FIGURE_FIELDS = ["early_in_min", "late_in_min", "early_out_min", "late_out_min",
-	"late_in_excused", "early_out_excused", "calc_ot", "short_hours", "no_shift"];
+	"late_in_excused", "early_out_excused", "calc_ot", "short_hours", "no_shift", "missing_punch", "long_session"];
+// punch context for the row editor (v0.4.1): set by the loader / shift change, kept on manual edits
+const CONTEXT_FIELDS = ["prev_punch", "next_punch", "session_range", "session_punches"];
+
+function context(m) {
+	const out = {};
+	CONTEXT_FIELDS.forEach((f) => { out[f] = m[f] || (f.endsWith("punch") ? null : ""); });
+	return out;
+}
 const WORKED_STATUSES = ["Present", "Short Leave"];
 const LATE_FIELDS = { late_in_min: "late_in_excused", early_out_min: "early_out_excused" };
 
@@ -35,6 +43,7 @@ function ensure_grid_style() {
 	$('<style id="slhrm-marker-grid-style">')
 		.text(`${GRID_SEL} .grid-heading-row .grid-static-col .static-area ${wrap}` +
 			`${GRID_SEL} .grid-body .grid-static-col[data-fieldname="shift"] .static-area,` +
+			`${GRID_SEL} .grid-body .grid-static-col[data-fieldname="worked_hours"] .static-area,` +
 			`${GRID_SEL} .grid-body .grid-static-col[data-fieldname="employee_name"] .static-area ${wrap}` +
 			`${GRID_SEL} .grid-heading-row, ${GRID_SEL} .grid-heading-row .grid-row, ${GRID_SEL} .grid-heading-row .data-row,` +
 			`${GRID_SEL} .grid-heading-row .grid-static-col { height: auto; min-height: 32px; overflow: visible; }`)
@@ -71,11 +80,31 @@ function set_time_formatters(frm) {
 	});
 }
 
+// Hrs cell: orange "Missing" when IN or OUT is missing (v0.4.1); "!" after the hours of a long session
+function set_hours_formatter(frm) {
+	const grid = frm.fields_dict.attendance_details && frm.fields_dict.attendance_details.grid;
+	const base = frappe.form.get_formatter("Float");
+	const formatter = (value, df, options, doc) => {
+		if (doc && cint(doc.missing_punch)) {
+			return `<span class="slhrm-missing-punch" style="color: var(--orange-600, #e8590c); font-weight: 600;" title="${
+				__("Missing punch — fill the missing IN / OUT")}">${__("Missing")}</span>`;
+		}
+		const txt = base(value, df, options, doc);
+		return doc && cint(doc.long_session)
+			? `<span class="slhrm-long-session" style="color: var(--orange-600, #e8590c);" title="${__("Long session — check IN / OUT")}">${txt} !</span>`
+			: txt;
+	};
+	[frappe.meta.get_docfield("Attendance Marker Detail", "worked_hours", frm.doc.name), grid && grid.get_docfield("worked_hours")]
+		.forEach((df) => { if (df) df.formatter = formatter; });
+	(grid && grid.docfields || []).forEach((df) => { if (df.fieldname === "worked_hours") df.formatter = formatter; });
+}
+
 // orange Late In / Early Out cells in the grid (not when excused by short leave)
 function set_late_formatters(frm) {
 	ensure_grid_style();
 	set_time_formatters(frm);
 	set_shift_formatter(frm);
+	set_hours_formatter(frm);
 	const grid = frm.fields_dict.attendance_details && frm.fields_dict.attendance_details.grid;
 	Object.entries(LATE_FIELDS).forEach(([field, excused]) => {
 		const formatter = (value, df, options, doc) => {
@@ -198,6 +227,7 @@ frappe.ui.form.on("Attendance Marker Detail", {
 					shift_hours: m.shift_hours || 0,
 					ot_eligible: m.ot_eligible || 0,
 					...figures(m),
+					...context(m),
 					punch_source: m.punch_source || "",
 					// keep a status the user chose (Leave / No Pay / Short Leave); Present / Absent follow the punches
 					attendance_status: ["Present", "Absent", ""].includes(row.attendance_status || "")
@@ -343,6 +373,7 @@ function auto_load_data(frm) {
 					shift_hours: m.shift_hours || 0,
 					ot_eligible: m.ot_eligible || 0,
 					...figures(m),
+					...context(m),
 					ot_hours: m.ot_eligible ? m.calc_ot || 0 : 0,
 				});
 				if (m.warning) warnings.push(emp.employee_name + ": " + m.warning);
@@ -418,7 +449,8 @@ function update_summary(frm) {
 		no_pay = 0,
 		late_in = 0,
 		early_out = 0,
-		no_shift = 0;
+		no_shift = 0,
+		missing_punch = 0;
 	rows.forEach((row) => {
 		if (WORKED_STATUSES.includes(row.attendance_status)) present++;
 		else if (row.attendance_status === "Absent") absent++;
@@ -426,6 +458,7 @@ function update_summary(frm) {
 		if (cint(row.late_in_min) && !cint(row.late_in_excused)) late_in++;
 		if (cint(row.early_out_min) && !cint(row.early_out_excused)) early_out++;
 		if (cint(row.no_shift)) no_shift++;
+		if (cint(row.missing_punch)) missing_punch++;
 	});
 	if (frm.doc.docstatus !== 0) return;
 	frm.set_value("total_employees", rows.length);
@@ -435,6 +468,7 @@ function update_summary(frm) {
 	frm.set_value("late_in_count", late_in);
 	frm.set_value("early_out_count", early_out);
 	frm.set_value("no_shift_count", no_shift);
+	frm.set_value("missing_punch_count", missing_punch);
 }
 
 // row editor: "OT edited by <user>" beside the OT field when OT differs from OT (calculated)

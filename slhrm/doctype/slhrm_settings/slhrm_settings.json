@@ -60,6 +60,13 @@
    "description": "A day's extra hours (worked − standard day; on a holiday all worked hours) count as OT only when at least this many — then ALL of them (10:15 worked = 1.25 h OT; 9:30 worked = 0). 0 = no minimum."
   },
   {
+   "fieldname": "ot_eligible_by_default",
+   "fieldtype": "Check",
+   "label": "OT eligible by default",
+   "default": "1",
+   "description": "New employees get 'Eligible for Overtime' ticked. HR can untick it per employee."
+  },
+  {
    "fieldname": "column_break_ot1",
    "fieldtype": "Column Break"
   },
@@ -99,6 +106,31 @@
    "label": "No Pay per day formula",
    "default": "(BS + BA) / 30",
    "description": "Per-day No Pay amount; use salary component abbreviations (BS = Basic Salary, BA = Base Allowance, VA = Vehicle Allowance; the period's package amounts, not prorated) and base. No Pay = No Pay days (marker status No Pay) × this. PLACEHOLDER default — to be confirmed."
+  },
+  {
+   "fieldname": "section_break_sessions",
+   "fieldtype": "Section Break",
+   "label": "Punch sessions (employees without a shift)"
+  },
+  {
+   "fieldname": "rest_gap_hours",
+   "fieldtype": "Float",
+   "label": "Rest gap (hours)",
+   "default": "6",
+   "precision": "2",
+   "description": "A new session starts when two punches are at least this far apart. A session belongs to the date of its first punch."
+  },
+  {
+   "fieldname": "column_break_sess",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "max_session_hours",
+   "fieldtype": "Float",
+   "label": "Max session (hours)",
+   "default": "20",
+   "precision": "2",
+   "description": "Longer sessions are flagged 'Long session'."
   },
   {
    "fieldname": "section_break_defaults",
@@ -211,5 +243,5 @@
    "write": 1
   }
  ],
- "modified": "2026-11-11 14:00:00.000000"
+ "modified": "2026-11-17 10:00:00.000000"
 }

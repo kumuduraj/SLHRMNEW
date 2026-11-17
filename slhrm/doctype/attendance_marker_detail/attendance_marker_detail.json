@@ -122,7 +122,7 @@
    "read_only": 1,
    "in_list_view": 1,
    "columns": 1,
-   "description": "Hrs = Worked Hours from IN to OUT (OUT on the next day when OUT +1 is ticked)."
+   "description": "Hrs = Worked Hours from IN to OUT (OUT on the next day when OUT +1 is ticked). Orange 'Missing' = IN or OUT missing."
   },
   {
    "fieldname": "ot_eligible",
@@ -149,6 +149,22 @@
    "read_only": 1,
    "depends_on": "eval:doc.no_shift",
    "description": "Working day without a Shift: set the Shift so OT and Late In / Early Out can be calculated."
+  },
+  {
+   "fieldname": "missing_punch",
+   "fieldtype": "Check",
+   "label": "Missing punch — fill the missing IN / OUT",
+   "read_only": 1,
+   "depends_on": "eval:doc.missing_punch",
+   "description": "Present with IN but no OUT (or OUT but no IN): worked, short and OT are 0 until the missing time is entered."
+  },
+  {
+   "fieldname": "long_session",
+   "fieldtype": "Check",
+   "label": "Long session — check IN / OUT",
+   "read_only": 1,
+   "depends_on": "eval:doc.long_session",
+   "description": "The punch session is longer than SLHRM Settings Max Session (hours)."
   },
   {
    "fieldname": "early_in_min",
@@ -276,6 +292,44 @@
    "depends_on": "eval:doc.ot_edited_by"
   },
   {
+   "fieldname": "section_break_context",
+   "fieldtype": "Section Break",
+   "label": "Punch context",
+   "collapsible": 0
+  },
+  {
+   "fieldname": "prev_punch",
+   "fieldtype": "Datetime",
+   "label": "Previous punch",
+   "read_only": 1,
+   "description": "Last punch before IN (not used by this row)."
+  },
+  {
+   "fieldname": "next_punch",
+   "fieldtype": "Datetime",
+   "label": "Next punch",
+   "read_only": 1,
+   "description": "First punch after OUT (not used by this row)."
+  },
+  {
+   "fieldname": "column_break_ctx",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "session_range",
+   "fieldtype": "Data",
+   "label": "Session",
+   "read_only": 1,
+   "description": "Date range of the punches used by this row."
+  },
+  {
+   "fieldname": "session_punches",
+   "fieldtype": "Small Text",
+   "label": "All punches in session",
+   "read_only": 1,
+   "description": "Time + device of every punch used by this row."
+  },
+  {
    "fieldname": "section_break_leave",
    "fieldtype": "Section Break",
    "label": "Leave"
@@ -323,5 +377,5 @@
   }
  ],
  "permissions": [],
- "modified": "2026-11-11 15:00:00.000000"
+ "modified": "2026-11-17 10:00:00.000000"
 }

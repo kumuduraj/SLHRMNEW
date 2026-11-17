@@ -149,7 +149,8 @@ class AttendanceMarker(Document):
 
         date_str = str(self.date)
         long_rows = []
-        late_in_count = early_out_count = no_shift_count = present = absent = no_pay = 0
+        late_in_count = early_out_count = no_shift_count = present = absent = no_pay = missing_punch = 0
+        max_session = flt(settings.get("max_session_hours")) or 20
         for row in self.attendance_details:
             row.shift_date = self.date
             prev = stored.get(row.name)
@@ -183,6 +184,8 @@ class AttendanceMarker(Document):
             row.update(fig)
             row.worked_hours = worked
             row.shift_hours = shift_info.hours
+            row.long_session = 1 if not shift_info.start and worked > max_session else 0
+            missing_punch += cint(row.missing_punch)
             row.ot_eligible = is_eligible
             if cint(row.late_in_min) and not cint(row.late_in_excused):
                 late_in_count += 1
@@ -212,6 +215,7 @@ class AttendanceMarker(Document):
         self.no_shift_count = no_shift_count
         self.total_employees = len(self.attendance_details)
         self.present_count, self.absent_count, self.no_pay_count = present, absent, no_pay
+        self.missing_punch_count = missing_punch
         if long_rows:  # warn, don't block (manual overnight entries)
             frappe.msgprint(_("More than {0} worked hours — check IN / OUT and the OUT next day box:").format(MAX_PLAUSIBLE_HOURS)
                             + "<br>" + "<br>".join(long_rows), title=_("Long shifts"), indicator="orange")

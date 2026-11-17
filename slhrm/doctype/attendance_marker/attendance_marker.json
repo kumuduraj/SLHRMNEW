@@ -130,6 +130,17 @@
    "description": "Rows on a working day without a Shift (late/early not calculated; OT / short from worked hours)."
   },
   {
+   "fieldname": "column_break_mp",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "missing_punch_count",
+   "fieldtype": "Int",
+   "label": "Missing punch",
+   "read_only": 1,
+   "description": "Rows with IN but no OUT (or OUT but no IN)."
+  },
+  {
    "fieldname": "section_break_details",
    "fieldtype": "Section Break",
    "label": "Attendance Details"
@@ -214,5 +225,5 @@
    "write": 1
   }
  ],
- "modified": "2026-11-11 15:00:00.000000"
+ "modified": "2026-11-17 10:00:00.000000"
 }

@@ -56,6 +56,7 @@ doc_events = {
         "before_validate": "slhrm.overrides.additional_salary.before_validate",
     },
     "Employee": {
+        "before_insert": "slhrm.attendance.employee_ot_default",
         "after_insert": "slhrm.user_setup.create_employee_user",
         "validate": "slhrm.biometric.on_employee_validate",
         "on_update": "slhrm.biometric.on_employee_update",
