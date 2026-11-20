@@ -32,7 +32,8 @@ SUPERVISOR_READ_DOCTYPES = ("Branch", "Employee", "Shift Type", "Holiday List", 
                             # v0.4.7 HR Assistant (Custom DocPerm fixture rows): full access + link-target reads
                             "Employee Checkin", "Attendance", "Shift Assignment", "Department", "Designation", "Employee Onboarding",
                             "Employee Separation", "Company", "Employment Type", "Employee Grade", "Employee Onboarding Template",
-                            "Employee Separation Template", "Shift Location", "Job Applicant", "Job Offer", "Leave Type")
+                            "Employee Separation Template", "Shift Location", "Job Applicant", "Job Offer", "Leave Type",
+                            "HR Settings")  # new Employee form reads HR Settings.emp_created_by
 
 
 def ensure_custom_perm_base():
