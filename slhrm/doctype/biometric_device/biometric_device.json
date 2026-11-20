@@ -14,7 +14,7 @@
  "search_fields": "device_name,branch",
  "sort_field": "modified",
  "sort_order": "DESC",
- "modified": "2026-11-17 13:00:00.000000",
+ "modified": "2026-11-20 13:00:00.000000",
  "fields": [
   {
    "fieldname": "serial",
@@ -368,6 +368,19 @@
   {
    "role": "HR User",
    "read": 1
+  },
+  {
+   "role": "HR Assistant",
+   "permlevel": 0,
+   "read": 1,
+   "write": 1,
+   "create": 1,
+   "delete": 1,
+   "report": 1,
+   "export": 1,
+   "print": 1,
+   "email": 1,
+   "share": 1
   }
  ]
 }

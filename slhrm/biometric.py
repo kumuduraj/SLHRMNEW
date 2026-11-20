@@ -36,7 +36,7 @@ PUNCH = "Biometric Punch Log"
 DEVICE = "Biometric Device"
 DEVICE_USER = "Biometric Device User"
 DEVICE_BRANCH = "Biometric Device Branch"
-MAP_ROLES = ("HR Manager", "HR User", "System Manager")
+MAP_ROLES = ("HR Manager", "HR User", "HR Assistant", "System Manager")
 TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 MAX_BATCH = 500
 FUTURE_TOLERANCE = timedelta(minutes=10)
@@ -65,7 +65,7 @@ ONLINE_MINUTES, DELAYED_MINUTES = 10, 60
 OFFLINE_ERROR_KINDS = ("connect", "auth")  # immediately Offline; timeout / read → Delayed until FAILS_FOR_OFFLINE
 FAILS_FOR_OFFLINE = 3
 SYNC_RATE_SECONDS = 60
-SYNC_ROLES = ("HR Manager", "System Manager")
+SYNC_ROLES = ("HR Manager", "HR Assistant", "System Manager")
 SYNC_EVENT = "slhrm_device_sync"
 AGENT_ONCE_TIMEOUT = 600  # seconds for the whole `run --once` (lock wait 60 s + device timeout + push)
 

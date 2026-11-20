@@ -20,7 +20,7 @@ from frappe.utils import cint, flt, getdate, nowdate
 
 CODES = {"Present": "P", "Absent": "A", "No Pay": "NP", "Leave": "L", "Short Leave": "SL"}
 FLAG_SET = ("Missing punch", "Long session", "Two sessions")
-READ_ROLES = ("HR Manager", "HR User", "Attendance Supervisor", "System Manager")
+READ_ROLES = ("HR Manager", "HR User", "HR Assistant", "Attendance Supervisor", "System Manager")
 
 
 def _check(branch):

@@ -7,7 +7,7 @@ slhrm.device_sync.EVENT = "slhrm_device_sync";
 slhrm.device_sync.STATUS_COLOR = { Online: "green", Delayed: "orange", Offline: "red", Disabled: "gray" };
 
 slhrm.device_sync.can_sync = function () {
-	return frappe.user.has_role("HR Manager") || frappe.user.has_role("System Manager");
+	return frappe.user.has_role("HR Manager") || frappe.user.has_role("HR Assistant") || frappe.user.has_role("System Manager");
 };
 
 slhrm.device_sync.start = function (devices, on_done) {

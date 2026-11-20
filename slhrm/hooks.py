@@ -45,8 +45,9 @@ fixtures = [
     },
     {
         # v0.2.1: Attendance Supervisor read-only on Branch / Employee / Shift Type / Holiday List
+        # v0.4.7: HR Assistant — full access to Dashboard / Time & Attendance / Employee screens + link-target reads
         "dt": "Custom DocPerm",
-        "filters": [["role", "=", "Attendance Supervisor"]],
+        "filters": [["role", "in", ["Attendance Supervisor", "HR Assistant"]]],
     },
 ]
 

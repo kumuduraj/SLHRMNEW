@@ -13,7 +13,7 @@ import frappe
 from frappe import _
 from frappe.utils import cint
 
-UNRESTRICTED_ROLES = {"HR User", "HR Manager", "System Manager"}
+UNRESTRICTED_ROLES = {"HR User", "HR Manager", "HR Assistant", "System Manager"}
 
 
 def get_session_employee():

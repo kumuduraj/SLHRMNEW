@@ -20,7 +20,7 @@ import frappe
 from frappe import _
 from frappe.utils import add_days, cint, flt, get_datetime, now_datetime
 
-READ_ROLES = ("HR Manager", "HR User", "Attendance Supervisor", "System Manager")
+READ_ROLES = ("HR Manager", "HR User", "HR Assistant", "Attendance Supervisor", "System Manager")
 NOT_ARRIVED_GRACE = timedelta(minutes=30)
 ON_DUTY_HOURS = 16
 MONTH_CACHE_SECONDS = 60

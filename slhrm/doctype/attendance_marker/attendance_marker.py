@@ -48,8 +48,8 @@ class AttendanceMarker(Document):
         if self.docstatus == 1:
             frappe.throw(_("A submitted Attendance Marker cannot be deleted. Cancel it first (HR Manager)."))
         if self.docstatus == 2 and frappe.session.user != "Administrator" and not (
-                {"HR Manager", "System Manager"} & set(frappe.get_roles())):
-            frappe.throw(_("Only an HR Manager can delete a cancelled Attendance Marker."), frappe.PermissionError)
+                {"HR Manager", "HR Assistant", "System Manager"} & set(frappe.get_roles())):
+            frappe.throw(_("Only an HR Manager / HR Assistant can delete a cancelled Attendance Marker."), frappe.PermissionError)
 
     def before_submit(self):
         self.approved_by = frappe.session.user

@@ -13,7 +13,7 @@ use raw SQL. Only idempotent, API-based steps on SLHRM-owned records belong in t
 import frappe
 
 
-ROLES = ("Attendance Supervisor",)  # v0.2.0: create/edit/submit Attendance Marker + edit OT / short leave
+ROLES = ("Attendance Supervisor", "HR Assistant")  # v0.2.0 supervisor; v0.4.7 HR Assistant (Dashboard, Time & Attendance, Employee)
 
 
 def execute():
@@ -28,7 +28,11 @@ def after_migrate():
     ensure_roles()
 
 
-SUPERVISOR_READ_DOCTYPES = ("Branch", "Employee", "Shift Type", "Holiday List")
+SUPERVISOR_READ_DOCTYPES = ("Branch", "Employee", "Shift Type", "Holiday List",  # v0.2.1 Attendance Supervisor reads
+                            # v0.4.7 HR Assistant (Custom DocPerm fixture rows): full access + link-target reads
+                            "Employee Checkin", "Attendance", "Shift Assignment", "Department", "Designation", "Employee Onboarding",
+                            "Employee Separation", "Company", "Employment Type", "Employee Grade", "Employee Onboarding Template",
+                            "Employee Separation Template", "Shift Location", "Job Applicant", "Job Offer", "Leave Type")
 
 
 def ensure_custom_perm_base():
