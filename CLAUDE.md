@@ -439,11 +439,13 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   handoff + branch-scoped/cutoff docs) carries an old PWA message → write a NEW, uniquely named message file for
   every commit and read `git log -1 --format=%B` BEFORE `git push`.
 
-## Handoff — current state (2026-11-17, v0.4.6, prod = upstream/master = dev)
+## Handoff — current state (2026-11-20, v0.4.7, prod = upstream/master = dev)
 - Audit trail of every phase: `~/slhrm_audit_20261108.md` (… "Phase 3.0 result", "Phase 3.0 completion after
   restart", "Phase 3.1 result", "Phase 3.2 result", "Phase 3.3 result", … "Phase 3.4 result"). Read the last sections before starting.
-- Version 0.4.6, agent 0.4.3 (`slhrm/__init__.py`, pyproject / setup.py / setup.cfg in step). Last deploy + restart
-  2026-11-17 05:10 UTC; all GILLSHR processes confirmed. Attendance Dashboard v2 (branch cards + tabs) live.
+- Version 0.4.7, agent 0.4.3 (`slhrm/__init__.py`, pyproject / setup.py / setup.cfg in step). Last deploy + restart
+  2026-11-20 06:55 UTC (+ fixture-only fix 1616ef1, migrate + clear-cache); all GILLSHR processes confirmed.
+  Desk users: shakila@gillsfoods.com (HR Manager, HR User, Attendance Supervisor) and **hrassistant@gillsfoods.com — Madushi
+  (HR Assistant only; must change password at first login)**.
   Shakila deleted her draft marker k84gtoi0mq (DUTCHPUB 2026-10-02) herself at 10:11 Colombo (Deleted Document
   3eo06ipqt0 — restorable); prod has no Attendance Marker now. Attendance Calendar page live; HR Manager / Attendance Supervisor may
   delete draft markers. **BRITISHPUB is read every 60 min** (it froze during the ~120 s full
@@ -775,3 +777,18 @@ frappe, erpnext and hrms will be upgraded later; SLHRM must survive that untouch
   duty (green) / Not punched yet (red) / Late arrivals (orange), max 10 rows + "Show all (n)", time with date only if not
   today; Missing OUT strip. "Updated hh:mm" next to the title; auto-refresh 2 min.
 - Real data at deploy: ALIYA "No device" (1 / 16 punched — Shanaka punches on the DUTCHPUB device).
+
+## HR Assistant role (v0.4.7, Raj 2026-11-20 — "Dashboard, Time & Attendance, Employee: full access")
+- Dedicated role (Attendance Supervisor left unchanged). FULL access (read / write / create / delete / report / export / print
+  / email / share; submit / cancel / amend where submittable; permlevel 1 where used): Biometric Punch Log, Biometric Device,
+  Biometric Device User, Attendance Marker (our DocType JSON) and — Custom DocPerm fixture rows `slhrm-hrasst-*` — Employee
+  Checkin, Attendance, Shift Type, Shift Assignment, Employee, Department, Designation, Employee Onboarding, Employee
+  Separation. READ on link targets: Branch, Holiday List, Company, Employment Type, Employee Grade, onboarding / separation
+  templates, Shift Location, Job Applicant, Job Offer, Leave Type, HR Settings (new Employee form reads emp_created_by).
+  Pages Attendance Dashboard / Calendar, reports Unmatched Device Users / Device Users Other Branch; code role lists:
+  MAP_ROLES, SYNC_ROLES, dashboard / calendar READ_ROLES, Employee Checkin UNRESTRICTED_ROLES, marker on_trash, JS can_sync.
+  Not included: payroll, salary, leave, recruitment (Employee Onboarding needs an existing Job Applicant + Job Offer — HRMS rule).
+- **Custom DocPerm rule (again):** Frappe uses ONLY Custom DocPerm rows once one exists → every doctype that gets a fixture row
+  must be in `install.SUPERVISOR_READ_DOCTYPES` AND have its standard rows copied by a **pre_model_sync patch** before the
+  fixture sync (`after_migrate` runs too late). A doctype added later needs a NEW patch (patches run once) — see
+  v0_4_7.hr_assistant_role and v0_4_7.hr_settings_read_base. Verified with a before / after snapshot: 0 rows lost by any role.
